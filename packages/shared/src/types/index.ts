@@ -1,0 +1,206 @@
+export type UserRole = 'admin' | 'member';
+export type ThemePreference = 'light' | 'dark' | 'system';
+export type AccountType = 'checking' | 'savings' | 'credit_card';
+export type InvestmentAccountType = 'brokerage' | 'retirement' | 'stock_plan';
+export type FileType = 'csv' | 'excel' | 'pdf';
+export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type BudgetPeriod = 'monthly' | 'weekly';
+export type RuleMatchType = 'contains' | 'startsWith' | 'regex' | 'exact';
+export type RuleField = 'description' | 'merchant';
+export type Institution = 'boa' | 'chase' | 'amex' | 'citi' | 'other';
+
+export type AuditAction =
+  | 'login'
+  | 'login_failed'
+  | 'password_changed'
+  | 'role_changed'
+  | 'transaction_edited'
+  | 'transaction_split'
+  | 'bulk_categorized'
+  | 'budget_exceeded'
+  | 'file_imported';
+
+export interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  householdId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Household {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSettings {
+  id: string;
+  userId: string;
+  timezone: string;
+  theme: ThemePreference;
+  enableCloudAi: boolean;
+  haWebhookUrl: string | null;
+  weeklyDigestEnabled: boolean;
+  notificationEmail: string | null;
+}
+
+export interface Account {
+  id: string;
+  userId: string;
+  institution: Institution;
+  accountType: AccountType;
+  nickname: string;
+  lastFour: string;
+  startingBalanceCents: number;
+  creditLimitCents: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Transaction {
+  id: string;
+  accountId: string;
+  userId: string;
+  externalId: string | null;
+  txnHash: string;
+  date: string;
+  description: string;
+  originalDescription: string;
+  amountCents: number;
+  categoryId: string | null;
+  merchantName: string | null;
+  isCredit: boolean;
+  isManual: boolean;
+  tags: string[];
+  sourceFileId: string | null;
+  parentTransactionId: string | null;
+  isSplitParent: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  parentId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CategorizationRule {
+  id: string;
+  userId: string;
+  pattern: string;
+  matchType: RuleMatchType;
+  field: RuleField;
+  categoryId: string;
+  priority: number;
+  isAiGenerated: boolean;
+  confidence: number | null;
+}
+
+export interface Budget {
+  id: string;
+  userId: string | null;
+  householdId: string | null;
+  categoryId: string;
+  amountCents: number;
+  period: BudgetPeriod;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavingsGoal {
+  id: string;
+  userId: string;
+  name: string;
+  targetAmountCents: number;
+  currentAmountCents: number;
+  targetDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FileUpload {
+  id: string;
+  userId: string;
+  accountId: string;
+  filename: string;
+  fileType: FileType;
+  fileHash: string;
+  status: UploadStatus;
+  rowsImported: number;
+  rowsSkipped: number;
+  rowsErrored: number;
+  errorLog: FileUploadError[];
+  archivedPath: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FileUploadError {
+  row: number;
+  error: string;
+  raw: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  webhookSent: boolean;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: number;
+  userId: string | null;
+  action: AuditAction;
+  entityType: string;
+  entityId: string | null;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+export interface HealthCheckResponse {
+  status: 'ok' | 'degraded';
+  timestamp: string;
+  services: {
+    database: 'connected' | 'disconnected';
+    redis: 'connected' | 'disconnected';
+    ollama: 'connected' | 'unavailable' | 'external';
+  };
+  version: string;
+}
+
+// API response wrappers
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  message?: string;
+}
+
+export interface ApiError {
+  statusCode: number;
+  message: string;
+  error: string;
+}

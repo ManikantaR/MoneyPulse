@@ -1,0 +1,27 @@
+{
+  "name": "moneypulse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MoneyPulse — Personal Finance Tracker",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "db:generate": "pnpm --filter @moneypulse/api run db:generate",
+    "db:migrate": "pnpm --filter @moneypulse/api run db:migrate",
+    "db:seed": "pnpm --filter @moneypulse/api run db:seed",
+    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
+    "docker:prod": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "turbo": "^2.8.20"
+  }
+}

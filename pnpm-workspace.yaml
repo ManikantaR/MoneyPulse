@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  '@nestjs/core': false
+  '@scarf/scarf': false
+  bcrypt: false
+  esbuild: false
+  msgpackr-extract: false
