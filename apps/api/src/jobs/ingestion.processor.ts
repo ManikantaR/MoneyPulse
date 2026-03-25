@@ -61,7 +61,7 @@ export class IngestionProcessor extends WorkerHost {
       let rows: Record<string, string>[];
 
       if (fileType === 'excel') {
-        const result = parseExcelToRows(buffer);
+        const result = await parseExcelToRows(buffer);
         headers = result.headers;
         rows = result.rows;
       } else if (fileType === 'csv') {
