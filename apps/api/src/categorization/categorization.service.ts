@@ -254,6 +254,7 @@ export class CategorizationService {
       .from(schema.categorizationRules)
       .where(
         and(
+          eq(schema.categorizationRules.userId, userId),
           eq(schema.categorizationRules.pattern, pattern),
           isNull(schema.categorizationRules.deletedAt),
         ),

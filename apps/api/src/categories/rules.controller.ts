@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull, asc } from 'drizzle-orm';
+import { eq, and, isNull, asc, or } from 'drizzle-orm';
 import type { AuthTokenPayload } from '@moneypulse/shared';
 
 /**
@@ -36,7 +36,15 @@ export class RulesController {
     const rules = await this.db
       .select()
       .from(schema.categorizationRules)
-      .where(isNull(schema.categorizationRules.deletedAt))
+      .where(
+        and(
+          isNull(schema.categorizationRules.deletedAt),
+          or(
+            isNull(schema.categorizationRules.userId),
+            eq(schema.categorizationRules.userId, user.sub),
+          ),
+        ),
+      )
       .orderBy(asc(schema.categorizationRules.priority));
     return { data: rules };
   }

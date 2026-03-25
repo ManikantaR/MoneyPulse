@@ -4,6 +4,17 @@
 **Dependencies**: Phase 2 (transactions, accounts, ingestion pipeline)  
 **Tests**: 72 passing (14 suites) — includes 23 Phase 3-specific tests across 4 test files  
 **Build**: Clean TypeScript compilation  
+**Health Check**: Database connected, Redis connected, Ollama unavailable (expected when not running)  
+
+## Post-Review Fixes (applied after initial commit af246eb)
+
+| # | File | Issue | Fix |
+|---|------|-------|-----|
+| 1 | `categorization.service.ts` | `createAiRule()` missing userId in duplicate-check WHERE clause — different users' rules could conflict | Added `eq(schema.categorizationRules.userId, userId)` to WHERE clause |
+| 2 | `rules.controller.ts` | `findAll()` returned all users' rules (privacy leak) | Added `or(isNull(userId), eq(userId, user.sub))` filter to only return global + own rules |
+| 3 | `categories.service.ts` | `getDescendantIds()` used hardcoded `FROM categories` instead of schema reference | Changed to `FROM ${schema.categories}` for consistency |
+| 4 | `db/migrations/0001_deep_silver_surfer.sql` | Missing `startsWith` → `starts_with` enum rename | Added `ALTER TYPE rule_match_type RENAME VALUE` as first migration statement |
+| 5 | `.env.local` / `.env` | DATABASE_URL password mismatch with actual postgres container credentials | Fixed to use correct `devpassword` matching container's `POSTGRES_PASSWORD` |
 
 ## Decisions Summary
 

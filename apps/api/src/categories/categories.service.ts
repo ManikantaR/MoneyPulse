@@ -182,9 +182,9 @@ export class CategoriesService {
   async getDescendantIds(categoryId: string): Promise<string[]> {
     const result = await this.db.execute(sql`
       WITH RECURSIVE descendants AS (
-        SELECT id FROM categories WHERE parent_id = ${categoryId}
+        SELECT id FROM ${schema.categories} WHERE parent_id = ${categoryId}
         UNION ALL
-        SELECT c.id FROM categories c
+        SELECT c.id FROM ${schema.categories} c
         INNER JOIN descendants d ON c.parent_id = d.id
       )
       SELECT id FROM descendants

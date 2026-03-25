@@ -339,7 +339,7 @@ moneypulse/
 | **Phase 0** | ✅ DONE | `df4e101` | Monorepo, NestJS, Next.js, shared pkg, Docker Compose, DB schema, health checks |
 | **Phase 1** | ✅ DONE | `515556a` | Auth (JWT + cookies + Redis), users, audit, guards, login/register/settings UI, 13 unit tests pass |
 | **Phase 2** | ✅ DONE | `48ab0fa` | Bank accounts, CSV/Excel parsers (BofA/Chase/Amex/Citi/Generic), upload pipeline, dedup, watch folder, transactions CRUD. 49 unit tests pass. Security hardened: account ownership checks, filename sanitization, scoped upload status, .xls rejected, csvFormatConfig validated with Zod |
-| **Phase 3** | ✅ DONE | — | AI categorization: rule engine (60+ seed rules), Ollama batch categorizer, PII sanitizer, learning loop, category tree CRUD, categorization rules REST API. 72 unit tests pass |
+| **Phase 3** | ✅ DONE | `af246eb` | AI categorization: rule engine (60+ seed rules), Ollama batch categorizer, PII sanitizer, learning loop, category tree CRUD, categorization rules REST API. 72 unit tests pass. Post-review fixes: userId in AI rule dedup, user-scoped rules query, schema-ref in getDescendantIds, enum migration, DB credentials |
 | **Phase 4** | ⬜ Not started | — | PDF parser microservice (Python) |
 | **Phase 5** | ⬜ Not started | — | Dashboard & visualization (Recharts) |
 | **Phase 6** | ⬜ Not started | — | Budgets, alerts & notifications |
@@ -544,10 +544,11 @@ Transaction Imported
 - `apps/api/src/categorization/rule-engine.service.ts`
 - `apps/api/src/categorization/ai-categorizer.service.ts`
 - `apps/api/src/categorization/pii-sanitizer.ts`
-- `apps/api/src/categories/` — category CRUD (tree)
-- `apps/api/src/transactions/transactions.service.ts` — bulk categorize
+- `apps/api/src/categorization/learning.service.ts`
+- `apps/api/src/categorization/categorization.service.ts` — orchestration
+- `apps/api/src/categories/` — category tree CRUD + rules REST API
+- `packages/shared/src/constants/seed-rules.ts` — 60+ default merchant→category rules
 - `packages/shared/src/constants/default-categories.ts`
-- `packages/shared/src/constants/default-rules.ts`
 
 ---
 
