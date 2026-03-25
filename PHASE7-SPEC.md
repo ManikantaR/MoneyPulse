@@ -78,7 +78,7 @@ const pool = new pg.Pool({
   port: Number(process.env.DB_PORT) || 5432,
   database: process.env.DB_NAME || 'moneypulse',
   user: process.env.DB_USER || 'moneypulse',
-  password: process.env.DB_PASSWORD || 'devpassword',
+  password: process.env.DB_PASSWORD!,
   max: 5,
   // Read-only: no INSERT/UPDATE/DELETE
   // Enforced by query patterns, not DB role (for simplicity)
@@ -767,7 +767,7 @@ CMD ["node", "dist/index.js", "--sse"]
         "DB_PORT": "5432",
         "DB_NAME": "moneypulse",
         "DB_USER": "moneypulse",
-        "DB_PASSWORD": "devpassword"
+        "DB_PASSWORD": "your_db_password_here"
       }
     }
   }
