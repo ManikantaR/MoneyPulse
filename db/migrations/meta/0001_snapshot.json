@@ -1,6 +1,6 @@
 {
-  "id": "352aeef5-26c7-4063-b9cf-ab256b77ffad",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "2c485dfb-add0-45e9-a00d-2d445845b8da",
+  "prevId": "352aeef5-26c7-4063-b9cf-ab256b77ffad",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -57,6 +57,12 @@
         "credit_limit_cents": {
           "name": "credit_limit_cents",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "csv_format_config": {
+          "name": "csv_format_config",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -407,7 +413,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "categories_parent_id_categories_id_fk": {
+          "name": "categories_parent_id_categories_id_fk",
+          "tableFrom": "categories",
+          "tableTo": "categories",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -429,7 +449,7 @@
           "name": "user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "pattern": {
           "name": "pattern",
@@ -474,7 +494,7 @@
         },
         "confidence": {
           "name": "confidence",
-          "type": "integer",
+          "type": "real",
           "primaryKey": false,
           "notNull": false
         },
@@ -491,6 +511,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},

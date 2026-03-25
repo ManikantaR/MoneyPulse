@@ -339,7 +339,7 @@ moneypulse/
 | **Phase 0** | ✅ DONE | `df4e101` | Monorepo, NestJS, Next.js, shared pkg, Docker Compose, DB schema, health checks |
 | **Phase 1** | ✅ DONE | `515556a` | Auth (JWT + cookies + Redis), users, audit, guards, login/register/settings UI, 13 unit tests pass |
 | **Phase 2** | ✅ DONE | `48ab0fa` | Bank accounts, CSV/Excel parsers (BofA/Chase/Amex/Citi/Generic), upload pipeline, dedup, watch folder, transactions CRUD. 49 unit tests pass. Security hardened: account ownership checks, filename sanitization, scoped upload status, .xls rejected, csvFormatConfig validated with Zod |
-| **Phase 3** | ⬜ Not started | — | AI categorization (Ollama + rules engine) |
+| **Phase 3** | ✅ DONE | — | AI categorization: rule engine (60+ seed rules), Ollama batch categorizer, PII sanitizer, learning loop, category tree CRUD, categorization rules REST API. 72 unit tests pass |
 | **Phase 4** | ⬜ Not started | — | PDF parser microservice (Python) |
 | **Phase 5** | ⬜ Not started | — | Dashboard & visualization (Recharts) |
 | **Phase 6** | ⬜ Not started | — | Budgets, alerts & notifications |
@@ -495,13 +495,13 @@ Cleared,03/10/2026,PAYMENT RECEIVED,,500.00
 
 ---
 
-## Phase 3: AI-Powered Categorization
+## Phase 3: AI-Powered Categorization ✅
 
 **Dependencies: Phase 2**
 
 | # | Step | Details |
 |---|------|---------|
-| 3.1 | Rule engine | Priority-ordered rules from `categorization_rules` table. Match types: `contains`, `startsWith`, `regex`, `exact` on description/merchant. First-match wins. Seed 50+ common rules (AMAZON→Shopping, STARBUCKS→Dining, SHELL→Gas, etc.) |
+| 3.1 | Rule engine | Priority-ordered rules from `categorization_rules` table. Match types: `contains`, `starts_with`, `regex`, `exact` on description/merchant. First-match wins. Seed 60+ common rules (AMAZON→Shopping, STARBUCKS→Dining, SHELL→Gas, etc.) |
 | 3.2 | Ollama categorizer | Uncategorized txns → batch 20-50 per call to Ollama (`llama3.2:3b`). Prompt returns `{category, subcategory, confidence, merchant_name}`. Confidence > 0.85 → auto-assign + create rule. < 0.85 → "suggested" for user review |
 | 3.3 | Cloud AI fallback | PII sanitizer strips all identifiers → only sends merchant+date+amount to OpenAI/Claude API. User setting: `enable_cloud_ai` (default OFF) |
 | 3.4 | Learning loop | User overrides category → auto-generate rule (e.g., "UBER EATS" manually → "Dining" → rule created). Track AI accuracy via `is_ai_generated` + `confidence` fields |

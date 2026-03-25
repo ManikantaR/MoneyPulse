@@ -131,3 +131,6 @@ export const API_RATE_LIMIT = { ttl: 60, limit: 100 };
 export const ANALYTICS_CACHE_TTL_SECONDS = 300; // 5 minutes
 export const BACKUP_RETENTION_DAYS = 30;
 export const APP_VERSION = '1.0.0';
+
+export { SEED_RULES } from './seed-rules.js';
+export type { SeedRule } from './seed-rules.js';

@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { selectParser } from '../ingestion/parsers/parser-registry';
 import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
@@ -13,6 +13,7 @@ import { DedupService } from '../ingestion/dedup.service';
 import { ArchiverService } from '../ingestion/archiver.service';
 import { IngestionService } from '../ingestion/ingestion.service';
 import { AuditService } from '../audit/audit.service';
+import { CategorizationService } from '../categorization/categorization.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
 
 interface IngestionJobData {
@@ -33,6 +34,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly archiverService: ArchiverService,
     private readonly ingestionService: IngestionService,
     private readonly auditService: AuditService,
+    private readonly categorizationService: CategorizationService,
   ) {
     super();
   }
@@ -139,6 +141,28 @@ export class IngestionProcessor extends WorkerHost {
           userId,
           uploadId,
         );
+
+        // Categorize new transactions
+        try {
+          const insertedIds = await this.getInsertedTransactionIds(
+            accountId,
+            uploadId,
+          );
+          const categorizationStats =
+            await this.categorizationService.categorizeBatch(
+              insertedIds,
+              userId,
+            );
+          this.logger.log(
+            `Categorization: ${categorizationStats.categorizedByRule} by rules, ` +
+              `${categorizationStats.categorizedByAi} by AI, ` +
+              `${categorizationStats.uncategorized} uncategorized`,
+          );
+        } catch (err: any) {
+          this.logger.warn(
+            `Categorization failed (transactions still imported): ${err.message}`,
+          );
+        }
       }
 
       // Archive the file
@@ -237,5 +261,21 @@ export class IngestionProcessor extends WorkerHost {
         })),
       );
     }
+  }
+
+  private async getInsertedTransactionIds(
+    accountId: string,
+    sourceFileId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: schema.transactions.id })
+      .from(schema.transactions)
+      .where(
+        and(
+          eq(schema.transactions.accountId, accountId),
+          eq(schema.transactions.sourceFileId, sourceFileId),
+        ),
+      );
+    return rows.map((r: any) => r.id);
   }
 }
