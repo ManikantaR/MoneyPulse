@@ -3203,3 +3203,50 @@ User drops file       API receives           BullMQ Job
      │   rowsSkipped: 0 }  │                      │
      │<────────────────────│                      │
 ```
+
+---
+
+## Post-Implementation Review Fixes
+
+The following issues were identified in code review and addressed:
+
+### Security Fixes
+
+| Issue | Fix |
+|-------|-----|
+| **Path traversal via `file.originalname`** | Sanitize with `basename()` + strip non-alphanumeric/dot/dash chars before using in `path.join()`. Original name stored as display label only. |
+| **Cross-account upload injection** | `uploadFile` now verifies the `accountId` belongs to the requesting `userId` (returns 404 to avoid enumeration). |
+| **Upload status enumeration** | `getUploadStatus` scoped to `userId`; controller passes `user.sub` to the service. |
+| **Manual transaction cross-account** | `transactions.create` validates `accountId` belongs to the user before inserting. |
+| **Unvalidated `csvFormatConfig` JSON** | Zod schema (`csvFormatConfigSchema`) added to shared package; validated at the controller before storing. |
+| **`GET /transactions/:id` without auth check** | `findByIdForUser(id, userId, householdId)` enforces ownership or household membership; returns 404 on no access. |
+
+### Correctness Fixes
+
+| Issue | Fix |
+|-------|-----|
+| **`.xls` listed as supported but exceljs only handles `.xlsx`** | `detectFileType` throws 400 for `.xls`; controller file filter also excludes `.xls`. Docstring updated. |
+| **`sortBy=category` silently fell back to `date`** | `categoryId` added to `sortColumnMap`. |
+| **Split already-split transaction** | Guard added: throws 400 (`BadRequestException`) if `parent.isSplitParent === true`. |
+| **`rowOffset` hardcoded to 2; `skipRows` ignored** | Processor applies `account.csvFormatConfig.skipRows` to skip leading rows before passing to parser; `rowOffset` adjusted accordingly. |
+| **Household accounts not returned by `GET /accounts`** | Controller now calls `findByHousehold(householdId)` when `user.householdId` is set. |
+
+### Performance Fix
+
+| Issue | Fix |
+|-------|-----|
+| **Dedup loaded ALL account hashes into memory** | `DedupService` now uses targeted `WHERE txn_hash IN (...)` and `WHERE external_id IN (...)` queries scoped to the incoming batch, leveraging existing indexes. |
+
+### Robustness Fixes
+
+| Issue | Fix |
+|-------|-----|
+| **Generic CSV parser crashed on null `debitColumn`/`creditColumn`** | Runtime guard: pushes structured error row and `continue` if `debitColumn`/`creditColumn` are null when `signConvention = split_columns`. |
+| **Excel parser: empty header cells caused key collisions** | Header cells are trimmed; empty headers get a `col_N` fallback name. |
+| **Watcher path separator assumed POSIX `/`** | `relativePath.replace(/\\/g, '/')` normalizes backslashes before splitting. |
+
+### CI Fix
+
+| Issue | Fix |
+|-------|-----|
+| **`PNPM_VERSION: '10'` could mismatch lockfile** | Pinned to `'10.32.1'` matching `packageManager` in `package.json`. |
