@@ -42,8 +42,8 @@ jobs:
       - name: Build API
         run: pnpm --filter @moneypulse/api build
 
-      - name: Lint API
-        run: pnpm --filter @moneypulse/api lint
+      - name: Type-check API
+        run: pnpm --filter @moneypulse/api exec tsc --noEmit
 
   # ── Unit Tests ────────────────────────────────────────────
   test:
@@ -65,6 +65,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @moneypulse/shared build
 
       - name: Run API unit tests
         run: pnpm --filter @moneypulse/api test
@@ -119,6 +122,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @moneypulse/shared build
 
       - name: Run database migrations
         run: pnpm --filter @moneypulse/api db:migrate

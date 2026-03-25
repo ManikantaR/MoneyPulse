@@ -75,7 +75,7 @@ export const csvFormatConfigSchema = z
     balanceColumn: z.string().max(200).nullable().default(null),
   })
   .refine(
-    (d) =>
+    (d: { signConvention: string; debitColumn: string | null; creditColumn: string | null }) =>
       d.signConvention !== 'split_columns' ||
       (d.debitColumn !== null && d.creditColumn !== null),
     {
