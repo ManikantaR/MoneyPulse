@@ -77,7 +77,7 @@ All files to create/modify, in implementation order:
 
 ```bash
 # apps/api — add ioredis for direct Redis access (BullMQ uses it too but we need raw client)
-cd apps/api && pnpm add ioredis && pnpm add -D @types/ioredis
+cd apps/api && pnpm add ioredis cookie-parser && pnpm add -D @types/ioredis @types/cookie-parser supertest @types/supertest
 # ioredis provides its own types, @types/ioredis may not be needed — check at install time
 
 # apps/web — add js-cookie for reading non-httpOnly theme cookie (optional)
@@ -2594,9 +2594,9 @@ import * as bcrypt from 'bcrypt';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let usersService: Partial<Record<keyof UsersService, jest.Mock>>;
-  let tokenService: Partial<Record<keyof TokenService, jest.Mock>>;
-  let auditService: Partial<Record<keyof AuditService, jest.Mock>>;
+  let usersService: Partial<Record<keyof UsersService, ReturnType<typeof vi.fn>>>;
+  let tokenService: Partial<Record<keyof TokenService, ReturnType<typeof vi.fn>>>;
+  let auditService: Partial<Record<keyof AuditService, ReturnType<typeof vi.fn>>>;
 
   beforeEach(async () => {
     usersService = {

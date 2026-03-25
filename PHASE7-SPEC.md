@@ -2,6 +2,8 @@
 
 **Dependencies**: Phase 2 (transactions), Phase 5 (analytics), Phase 6 (budgets)
 
+> **Tech Debt Note**: The MCP server currently operates at household level with no per-user data scoping. All tools query based on household context. Per-user filtering will be added as a follow-up once the full application is stable.
+
 ## Decisions Summary
 
 | #   | Decision  | Choice                                                     |

@@ -647,7 +647,7 @@ Respond ONLY with a valid JSON array. No other text.`;
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 
 @Injectable()
 export class LearningService {
@@ -739,7 +739,7 @@ export class LearningService {
       .where(
         and(
           eq(schema.transactions.userId, userId),
-          // Filter to the specific IDs
+          inArray(schema.transactions.id, transactionIds),
         ),
       );
 
@@ -1091,63 +1091,46 @@ export class CategorizationService {
 ### `src/categories/categories.service.ts`
 
 ```typescript
-import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, isNull, asc, sql } from 'drizzle-orm';
-
-interface CategoryTree {
-  id: string;
-  name: string;
-  icon: string | null;
-  color: string | null;
-  parentId: string | null;
-  sortOrder: number;
-  children: CategoryTree[];
-}
+import type { CreateCategoryInput, UpdateCategoryInput } from '@moneypulse/shared';
 
 @Injectable()
 export class CategoriesService {
   constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
 
   /**
-   * Get all categories as a flat list.
+   * Get all categories as a flat list (excludes soft-deleted).
    */
-  async findAll(): Promise<any[]> {
+  async findAll() {
     return this.db
       .select()
       .from(schema.categories)
+      .where(isNull(schema.categories.deletedAt))
       .orderBy(asc(schema.categories.sortOrder), asc(schema.categories.name));
   }
 
   /**
-   * Get categories as a tree structure using recursive CTE.
+   * Get category tree as nested structure (recursive CTE).
    */
-  async getTree(): Promise<CategoryTree[]> {
-    const flat = await this.findAll();
-    return this.buildTree(flat, null);
-  }
-
-  /**
-   * Create a category.
-   */
-  async create(input: { name: string; icon?: string; color?: string; parentId?: string; sortOrder?: number }) {
-    if (input.parentId) {
-      const parent = await this.findById(input.parentId);
-      if (!parent) throw new NotFoundException('Parent category not found');
-    }
-
-    const rows = await this.db
-      .insert(schema.categories)
-      .values({
-        name: input.name,
-        icon: input.icon ?? null,
-        color: input.color ?? null,
-        parentId: input.parentId ?? null,
-        sortOrder: input.sortOrder ?? 0,
-      })
-      .returning();
-    return rows[0];
+  async findTree() {
+    const rows = await this.db.execute(sql`
+      WITH RECURSIVE cat_tree AS (
+        SELECT id, name, icon, color, parent_id, sort_order, 0 AS depth
+        FROM ${schema.categories}
+        WHERE parent_id IS NULL AND deleted_at IS NULL
+        UNION ALL
+        SELECT c.id, c.name, c.icon, c.color, c.parent_id, c.sort_order, ct.depth + 1
+        FROM ${schema.categories} c
+        JOIN cat_tree ct ON c.parent_id = ct.id
+        WHERE c.deleted_at IS NULL
+      )
+      SELECT * FROM cat_tree
+      ORDER BY depth, sort_order, name
+    `);
+    return rows.rows ?? rows;
   }
 
   async findById(id: string) {
@@ -1159,15 +1142,40 @@ export class CategoriesService {
     return rows[0] ?? null;
   }
 
-  async update(id: string, input: { name?: string; icon?: string; color?: string; parentId?: string; sortOrder?: number }) {
-    const category = await this.findById(id);
-    if (!category) throw new NotFoundException('Category not found');
+  async create(input: CreateCategoryInput) {
+    if (input.parentId) {
+      const parent = await this.findById(input.parentId);
+      if (!parent) throw new NotFoundException('Parent category not found');
+    }
+
+    const rows = await this.db
+      .insert(schema.categories)
+      .values({
+        name: input.name,
+        icon: input.icon,
+        color: input.color,
+        parentId: input.parentId ?? null,
+        sortOrder: input.sortOrder ?? 0,
+      })
+      .returning();
+    return rows[0];
+  }
+
+  async update(id: string, input: UpdateCategoryInput) {
+    const existing = await this.findById(id);
+    if (!existing) throw new NotFoundException('Category not found');
+
+    // Prevent setting self as parent
+    if (input.parentId === id) {
+      throw new ConflictException('Category cannot be its own parent');
+    }
 
     // Prevent circular parent reference
     if (input.parentId) {
-      if (input.parentId === id) throw new BadRequestException('Category cannot be its own parent');
-      const isDescendant = await this.isDescendant(input.parentId, id);
-      if (isDescendant) throw new BadRequestException('Cannot set parent to a descendant');
+      const descendants = await this.getDescendantIds(id);
+      if (descendants.includes(input.parentId)) {
+        throw new BadRequestException('Cannot set parent to a descendant');
+      }
     }
 
     const rows = await this.db
@@ -1179,29 +1187,39 @@ export class CategoriesService {
   }
 
   /**
-   * Delete a category. Reassigns child categories to parent (or null).
-   * Transactions with this category are NOT uncategorized — they keep the ID
-   * (soft reference, handled in UI as "Deleted Category").
+   * Soft-delete a category and all its descendants.
    */
-  async delete(id: string): Promise<void> {
-    const category = await this.findById(id);
-    if (!category) throw new NotFoundException('Category not found');
+  async softDelete(id: string): Promise<void> {
+    const existing = await this.findById(id);
+    if (!existing) throw new NotFoundException('Category not found');
 
-    // Reassign children to parent
-    await this.db
-      .update(schema.categories)
-      .set({ parentId: category.parentId, updatedAt: new Date() })
-      .where(eq(schema.categories.parentId, id));
+    await this.db.execute(sql`
+      WITH RECURSIVE descendants AS (
+        SELECT id FROM ${schema.categories} WHERE id = ${id}
+        UNION ALL
+        SELECT c.id FROM ${schema.categories} c
+        JOIN descendants d ON c.parent_id = d.id
+      )
+      UPDATE ${schema.categories}
+      SET deleted_at = NOW()
+      WHERE id IN (SELECT id FROM descendants)
+    `);
+  }
 
-    // Delete the category
-    await this.db
-      .delete(schema.categories)
-      .where(eq(schema.categories.id, id));
+  /**
+   * Reorder categories within the same parent.
+   */
+  async reorder(items: { id: string; sortOrder: number }[]) {
+    for (const item of items) {
+      await this.db
+        .update(schema.categories)
+        .set({ sortOrder: item.sortOrder, updatedAt: new Date() })
+        .where(eq(schema.categories.id, item.id));
+    }
   }
 
   /**
    * Get all descendants of a category (recursive CTE).
-   * Used to check circular references and aggregate spending.
    */
   async getDescendantIds(categoryId: string): Promise<string[]> {
     const result = await this.db.execute(sql`
@@ -1214,24 +1232,6 @@ export class CategoriesService {
       SELECT id FROM descendants
     `);
     return result.rows.map((r: any) => r.id);
-  }
-
-  /**
-   * Check if `potentialDescendantId` is a descendant of `ancestorId`.
-   */
-  private async isDescendant(potentialDescendantId: string, ancestorId: string): Promise<boolean> {
-    const descendants = await this.getDescendantIds(ancestorId);
-    return descendants.includes(potentialDescendantId);
-  }
-
-  private buildTree(flat: any[], parentId: string | null): CategoryTree[] {
-    return flat
-      .filter((c) => c.parentId === parentId)
-      .map((c) => ({
-        ...c,
-        children: this.buildTree(flat, c.id),
-      }))
-      .sort((a, b) => a.sortOrder - b.sortOrder);
   }
 }
 ```
@@ -1246,8 +1246,8 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createCategorySchema } from '@moneypulse/shared';
-import type { CreateCategoryInput } from '@moneypulse/shared';
+import { createCategorySchema, updateCategorySchema } from '@moneypulse/shared';
+import type { CreateCategoryInput, UpdateCategoryInput } from '@moneypulse/shared';
 
 @ApiTags('Categories')
 @Controller('categories')
@@ -1258,15 +1258,15 @@ export class CategoriesController {
   @Get()
   @ApiOperation({ summary: 'Get all categories (flat list)' })
   async findAll() {
-    const categories = await this.categoriesService.findAll();
-    return { data: categories };
+    const data = await this.categoriesService.findAll();
+    return { data };
   }
 
   @Get('tree')
-  @ApiOperation({ summary: 'Get categories as tree structure' })
-  async getTree() {
-    const tree = await this.categoriesService.getTree();
-    return { data: tree };
+  @ApiOperation({ summary: 'Get categories as tree (recursive CTE)' })
+  async findTree() {
+    const data = await this.categoriesService.findTree();
+    return { data };
   }
 
   @Post()
@@ -1281,17 +1281,28 @@ export class CategoriesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update category' })
-  async update(@Param('id') id: string, @Body() body: any) {
+  async update(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateCategorySchema)) body: UpdateCategoryInput,
+  ) {
     const category = await this.categoriesService.update(id, body);
     return { data: category };
   }
 
   @Delete(':id')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Delete category (reassigns children to parent)' })
+  @ApiOperation({ summary: 'Soft delete category (+ descendants)' })
   async remove(@Param('id') id: string) {
-    await this.categoriesService.delete(id);
+    await this.categoriesService.softDelete(id);
     return { data: { deleted: true } };
+  }
+
+  @Post('reorder')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Reorder categories' })
+  async reorder(@Body() body: { items: { id: string; sortOrder: number }[] }) {
+    await this.categoriesService.reorder(body.items);
+    return { data: { reordered: true } };
   }
 
   @Get(':id/descendants')

@@ -661,7 +661,7 @@ All queries filter: `WHERE is_split_parent = false AND deleted_at IS NULL`
 | # | Step | Details |
 |---|------|---------|
 | 5.1 | Analytics SQL queries | PostgreSQL aggregation queries with date range + filters; cached in Redis (5min TTL); filter `is_split_parent=false AND deleted_at IS NULL` |
-| 5.2 | Transaction grid API | Cursor-based pagination, full-text search on description+merchant, multi-column sort, CSV export, bulk select |
+| 5.2 | Transaction grid API | Offset-based pagination (page/pageSize), full-text search on description+merchant, multi-column sort, CSV export, bulk select |
 | 5.3 | Period selector component | Presets: This Month, Last Month, Last 3/6 Months, YTD, Last Year, Custom Range |
 | 5.4 | Build 7 Recharts chart components | `IncomeExpenseBar`, `CategoryDonut`, `SpendingTrendLine`, `AccountBalanceHistory`, `CreditUtilization`, `NetWorthCard`, `TopMerchantsBar` |
 | 5.5 | Dashboard page | Responsive CSS Grid layout, all charts + summary cards, dark mode compatible |
@@ -825,9 +825,9 @@ git pull && docker compose build && docker compose up -d
 
 | Layer | Technology | Version |
 |-------|-----------|---------|
-| **Runtime** | Node.js | 20 LTS |
-| **Backend** | NestJS | 10.x |
-| **Frontend** | Next.js | 14.x |
+| **Runtime** | Node.js | 22 LTS |
+| **Backend** | NestJS | 11.x |
+| **Frontend** | Next.js | 16.x |
 | **UI Components** | shadcn/ui + Tailwind CSS | latest |
 | **Charts** | Recharts | 2.x |
 | **Data Grid** | TanStack Table | 8.x |

@@ -161,7 +161,21 @@ export class InvestmentsService {
 
   // ── Snapshots ────────────────────────────────────────────
 
-  async findSnapshots(investmentAccountId: string, limit = 52) {
+  async findSnapshots(investmentAccountId: string, userId: string, limit = 52) {
+    // Verify account belongs to user
+    const account = await this.db
+      .select({ id: schema.investmentAccounts.id })
+      .from(schema.investmentAccounts)
+      .where(
+        and(
+          eq(schema.investmentAccounts.id, investmentAccountId),
+          eq(schema.investmentAccounts.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!account[0])
+      throw new NotFoundException('Investment account not found');
+
     return this.db
       .select()
       .from(schema.investmentSnapshots)
@@ -264,7 +278,6 @@ import {
   Query,
   UseGuards,
   HttpCode,
-  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import {
@@ -273,6 +286,8 @@ import {
   CreateSnapshotInput,
 } from './investments.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AuthTokenPayload } from '../auth/types';
 
 @ApiTags('Investments')
 @Controller('investments')
@@ -282,9 +297,9 @@ export class InvestmentsController {
 
   @Get('accounts')
   @ApiOperation({ summary: 'List investment accounts with latest balance' })
-  async findAccounts(@Req() req: any) {
+  async findAccounts(@CurrentUser() user: AuthTokenPayload) {
     const data = await this.investmentsService.findAccountsWithBalance(
-      req.user.id,
+      user.sub,
     );
     return { data };
   }
@@ -293,11 +308,11 @@ export class InvestmentsController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Create investment account' })
   async createAccount(
-    @Req() req: any,
+    @CurrentUser() user: AuthTokenPayload,
     @Body() body: CreateInvestmentAccountInput,
   ) {
     const account = await this.investmentsService.createAccount(
-      req.user.id,
+      user.sub,
       body,
     );
     return { data: account };
@@ -306,24 +321,28 @@ export class InvestmentsController {
   @Delete('accounts/:id')
   @HttpCode(200)
   @ApiOperation({ summary: 'Soft delete investment account' })
-  async deleteAccount(@Req() req: any, @Param('id') id: string) {
-    await this.investmentsService.deleteAccount(id, req.user.id);
+  async deleteAccount(@CurrentUser() user: AuthTokenPayload, @Param('id') id: string) {
+    await this.investmentsService.deleteAccount(id, user.sub);
     return { data: { deleted: true } };
   }
 
   @Get('accounts/:accountId/snapshots')
   @ApiOperation({ summary: 'List snapshots for an investment account' })
-  async findSnapshots(@Param('accountId') accountId: string) {
-    const data = await this.investmentsService.findSnapshots(accountId);
+  async findSnapshots(
+    @CurrentUser() user: AuthTokenPayload,
+    @Param('accountId') accountId: string,
+  ) {
+    // Service verifies the account belongs to user.sub before returning snapshots
+    const data = await this.investmentsService.findSnapshots(accountId, user.sub);
     return { data };
   }
 
   @Post('snapshots')
   @HttpCode(201)
   @ApiOperation({ summary: 'Add manual balance snapshot' })
-  async createSnapshot(@Req() req: any, @Body() body: CreateSnapshotInput) {
+  async createSnapshot(@CurrentUser() user: AuthTokenPayload, @Body() body: CreateSnapshotInput) {
     const snapshot = await this.investmentsService.createSnapshot(
-      req.user.id,
+      user.sub,
       body,
     );
     return { data: snapshot };
@@ -333,11 +352,11 @@ export class InvestmentsController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Bulk import snapshots (from CSV parsers)' })
   async bulkCreateSnapshots(
-    @Req() req: any,
+    @CurrentUser() user: AuthTokenPayload,
     @Body() body: { snapshots: CreateSnapshotInput[] },
   ) {
     const data = await this.investmentsService.bulkCreateSnapshots(
-      req.user.id,
+      user.sub,
       body.snapshots,
     );
     return { data };
@@ -345,9 +364,9 @@ export class InvestmentsController {
 
   @Get('total')
   @ApiOperation({ summary: 'Total investment balance' })
-  async investmentTotal(@Req() req: any) {
+  async investmentTotal(@CurrentUser() user: AuthTokenPayload) {
     const totalCents = await this.investmentsService.investmentTotal(
-      req.user.id,
+      user.sub,
     );
     return { data: { totalCents } };
   }

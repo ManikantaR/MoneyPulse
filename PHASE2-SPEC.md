@@ -76,15 +76,18 @@
 
 ```bash
 # apps/api
-cd apps/api && pnpm add csv-parse xlsx multer chokidar && pnpm add -D @types/multer
+cd apps/api && pnpm add csv-parse xlsx multer chokidar date-fns @nestjs/bullmq bullmq && pnpm add -D @types/multer
 ```
 
-| Package     | Purpose                             |
-| ----------- | ----------------------------------- |
-| `csv-parse` | Streaming CSV parser                |
-| `xlsx`      | Excel file reading (SheetJS)        |
-| `multer`    | Multipart file upload handling      |
-| `chokidar`  | File system watcher for auto-import |
+| Package          | Purpose                             |
+| ---------------- | ----------------------------------- |
+| `csv-parse`      | Streaming CSV parser                |
+| `xlsx`           | Excel file reading (SheetJS)        |
+| `multer`         | Multipart file upload handling      |
+| `chokidar`       | File system watcher for auto-import |
+| `date-fns`       | Date parsing in generic CSV parser  |
+| `@nestjs/bullmq` | NestJS BullMQ integration          |
+| `bullmq`         | Job queue for async file processing |
 
 ---
 

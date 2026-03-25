@@ -133,7 +133,7 @@ export const categories = pgTable('categories', {
   name: varchar('name', { length: 50 }).notNull(),
   icon: varchar('icon', { length: 10 }).notNull(),
   color: varchar('color', { length: 7 }).notNull(),
-  parentId: uuid('parent_id'),
+  parentId: uuid('parent_id').references(() => categories.id),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
