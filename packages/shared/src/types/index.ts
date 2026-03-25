@@ -204,3 +204,35 @@ export interface ApiError {
   message: string;
   error: string;
 }
+
+// ── Auth Types ──────────────────────────────────────────────
+
+export interface AuthTokenPayload {
+  sub: string; // userId
+  email: string;
+  role: UserRole;
+  householdId: string | null;
+  mustChangePassword: boolean;
+}
+
+export interface AuthResponse {
+  user: User;
+  mustChangePassword: boolean;
+}
+
+export interface MeResponse {
+  user: User;
+  settings: UserSettings | null;
+  household: Household | null;
+  mustChangePassword: boolean;
+}
+
+export interface InviteResponse {
+  user: User;
+  temporaryPassword: string;
+}
+
+export interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+}

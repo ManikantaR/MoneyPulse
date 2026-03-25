@@ -2,7 +2,9 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { sql } from 'drizzle-orm';
+import type { Redis } from 'ioredis';
 import { DATABASE_CONNECTION } from '../db/db.module';
+import { REDIS_CLIENT } from '../redis/redis.provider';
 import { APP_VERSION } from '@moneypulse/shared';
 
 @ApiTags('Health')
@@ -10,6 +12,7 @@ import { APP_VERSION } from '@moneypulse/shared';
 export class HealthController {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly config: ConfigService,
   ) {}
 
@@ -30,12 +33,10 @@ export class HealthController {
       services.database = 'disconnected';
     }
 
-    // Check Redis (will be implemented when BullMQ module is added)
+    // Check Redis
     try {
-      const redisUrl = this.config.get<string>('REDIS_URL');
-      if (redisUrl) {
-        services.redis = 'connected';
-      }
+      const pong = await this.redis.ping();
+      services.redis = pong === 'PONG' ? 'connected' : 'disconnected';
     } catch {
       services.redis = 'disconnected';
     }
