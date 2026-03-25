@@ -1,0 +1,250 @@
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { DATABASE_CONNECTION } from '../db/db.module';
+import * as schema from '../db/schema';
+import {
+  eq,
+  and,
+  isNull,
+  desc,
+  asc,
+  ilike,
+  sql,
+  between,
+  count,
+} from 'drizzle-orm';
+import type {
+  CreateTransactionInput,
+  UpdateTransactionInput,
+  TransactionQuery,
+  SplitTransactionInput,
+  BulkCategorizeInput,
+} from '@moneypulse/shared';
+import { createHash } from 'crypto';
+
+@Injectable()
+export class TransactionsService {
+  constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
+
+  /**
+   * Manual transaction entry (cash purchases, etc.)
+   */
+  async create(userId: string, input: CreateTransactionInput) {
+    const txnHash = createHash('sha256')
+      .update(
+        `${input.accountId}|${input.date}|${input.amountCents}|${input.description}|manual`,
+      )
+      .digest('hex');
+
+    const rows = await this.db
+      .insert(schema.transactions)
+      .values({
+        accountId: input.accountId,
+        userId,
+        txnHash,
+        date: new Date(input.date),
+        description: input.description,
+        originalDescription: input.description,
+        amountCents: input.amountCents,
+        categoryId: input.categoryId ?? null,
+        merchantName: input.merchantName ?? null,
+        isCredit: input.isCredit,
+        isManual: true,
+        tags: input.tags ?? [],
+      })
+      .returning();
+    return rows[0];
+  }
+
+  /**
+   * Paginated, filterable transaction list.
+   */
+  async findAll(
+    userId: string,
+    query: TransactionQuery,
+    householdId?: string | null,
+  ) {
+    const conditions: any[] = [isNull(schema.transactions.deletedAt)];
+
+    if (householdId) {
+      const members = await this.db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.householdId, householdId));
+      const memberIds = members.map((m: any) => m.id);
+      if (memberIds.length > 0) {
+        conditions.push(
+          sql`${schema.transactions.userId} = ANY(ARRAY[${sql.join(memberIds.map((id: string) => sql`${id}::uuid`), sql`, `)}])`,
+        );
+      }
+    } else {
+      conditions.push(eq(schema.transactions.userId, userId));
+    }
+
+    if (query.accountId)
+      conditions.push(eq(schema.transactions.accountId, query.accountId));
+    if (query.categoryId)
+      conditions.push(eq(schema.transactions.categoryId, query.categoryId));
+    if (query.from && query.to) {
+      conditions.push(
+        between(
+          schema.transactions.date,
+          new Date(query.from),
+          new Date(query.to),
+        ),
+      );
+    }
+    if (query.search) {
+      conditions.push(
+        ilike(schema.transactions.description, `%${query.search}%`),
+      );
+    }
+
+    // Exclude split parents from list
+    conditions.push(eq(schema.transactions.isSplitParent, false));
+
+    const whereCondition = and(...conditions);
+
+    const [{ total }] = await this.db
+      .select({ total: count() })
+      .from(schema.transactions)
+      .where(whereCondition);
+
+    const sortColumnMap: Record<string, any> = {
+      date: schema.transactions.date,
+      amount: schema.transactions.amountCents,
+      description: schema.transactions.description,
+    };
+    const sortColumn = sortColumnMap[query.sortBy] ?? schema.transactions.date;
+
+    const sortFn = query.sortOrder === 'asc' ? asc : desc;
+
+    const offset = (query.page - 1) * query.pageSize;
+    const data = await this.db
+      .select()
+      .from(schema.transactions)
+      .where(whereCondition)
+      .orderBy(sortFn(sortColumn))
+      .limit(query.pageSize)
+      .offset(offset);
+
+    return {
+      data,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      hasMore: offset + data.length < total,
+    };
+  }
+
+  async findById(id: string) {
+    const rows = await this.db
+      .select()
+      .from(schema.transactions)
+      .where(
+        and(
+          eq(schema.transactions.id, id),
+          isNull(schema.transactions.deletedAt),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async update(id: string, userId: string, input: UpdateTransactionInput) {
+    const txn = await this.findById(id);
+    if (!txn || txn.userId !== userId)
+      throw new NotFoundException('Transaction not found');
+
+    const rows = await this.db
+      .update(schema.transactions)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(schema.transactions.id, id))
+      .returning();
+    return rows[0];
+  }
+
+  async softDelete(id: string, userId: string): Promise<void> {
+    const txn = await this.findById(id);
+    if (!txn || txn.userId !== userId)
+      throw new NotFoundException('Transaction not found');
+
+    await this.db
+      .update(schema.transactions)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.transactions.id, id));
+  }
+
+  /**
+   * Split a transaction into children.
+   * Parent gets isSplitParent=true, children created.
+   * Sum of children must equal parent amount.
+   */
+  async splitTransaction(
+    id: string,
+    userId: string,
+    input: SplitTransactionInput,
+  ) {
+    const parent = await this.findById(id);
+    if (!parent || parent.userId !== userId) throw new NotFoundException();
+
+    const splitTotal = input.splits.reduce((sum: number, s: any) => sum + s.amountCents, 0);
+    if (splitTotal !== parent.amountCents) {
+      throw new BadRequestException(
+        `Split amounts (${splitTotal}) must equal parent amount (${parent.amountCents})`,
+      );
+    }
+
+    await this.db
+      .update(schema.transactions)
+      .set({ isSplitParent: true, updatedAt: new Date() })
+      .where(eq(schema.transactions.id, id));
+
+    const children = await this.db
+      .insert(schema.transactions)
+      .values(
+        input.splits.map((split: any, idx: number) => ({
+          accountId: parent.accountId,
+          userId,
+          txnHash: createHash('sha256')
+            .update(`${parent.id}|split|${idx}`)
+            .digest('hex'),
+          date: parent.date,
+          description: split.description || parent.description,
+          originalDescription: parent.originalDescription,
+          amountCents: split.amountCents,
+          categoryId: split.categoryId,
+          isCredit: parent.isCredit,
+          parentTransactionId: parent.id,
+          sourceFileId: parent.sourceFileId,
+          tags: [],
+        })),
+      )
+      .returning();
+
+    return { parent: { ...parent, isSplitParent: true }, children };
+  }
+
+  /**
+   * Bulk categorize multiple transactions.
+   */
+  async bulkCategorize(userId: string, input: BulkCategorizeInput) {
+    const updated = await this.db
+      .update(schema.transactions)
+      .set({ categoryId: input.categoryId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.transactions.userId, userId),
+          sql`${schema.transactions.id} = ANY(ARRAY[${sql.join(input.transactionIds.map((id: string) => sql`${id}::uuid`), sql`, `)}])`,
+          isNull(schema.transactions.deletedAt),
+        ),
+      )
+      .returning({ id: schema.transactions.id });
+
+    return { updatedCount: updated.length };
+  }
+}

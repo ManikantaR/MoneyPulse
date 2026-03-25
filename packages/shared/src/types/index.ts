@@ -185,6 +185,54 @@ export interface HealthCheckResponse {
   version: string;
 }
 
+// ── Ingestion Types ─────────────────────────────────────────
+
+export interface ParsedTransaction {
+  externalId: string | null;
+  date: string; // ISO date string YYYY-MM-DD
+  description: string;
+  amountCents: number; // always positive
+  isCredit: boolean;
+  merchantName: string | null;
+  runningBalanceCents: number | null;
+}
+
+export interface ParseResult {
+  transactions: ParsedTransaction[];
+  errors: FileUploadError[];
+  detectedInstitution: Institution | null;
+}
+
+export interface CsvFormatConfig {
+  delimiter: string; // default ','
+  dateColumn: string; // column name or index
+  dateFormat: string; // e.g., 'MM/DD/YYYY', 'YYYY-MM-DD'
+  descriptionColumn: string;
+  amountColumn: string | null; // single amount column (null if split)
+  debitColumn: string | null; // for split debit/credit
+  creditColumn: string | null; // for split debit/credit
+  signConvention: 'negative_debit' | 'positive_debit' | 'split_columns';
+  externalIdColumn: string | null; // optional bank txn reference
+  skipRows: number; // header rows to skip (0 = first row is header)
+  merchantColumn: string | null;
+  balanceColumn: string | null;
+}
+
+export const DEFAULT_CSV_FORMAT: CsvFormatConfig = {
+  delimiter: ',',
+  dateColumn: 'Date',
+  dateFormat: 'MM/DD/YYYY',
+  descriptionColumn: 'Description',
+  amountColumn: 'Amount',
+  debitColumn: null,
+  creditColumn: null,
+  signConvention: 'negative_debit',
+  externalIdColumn: null,
+  skipRows: 0,
+  merchantColumn: null,
+  balanceColumn: null,
+};
+
 // API response wrappers
 export interface PaginatedResponse<T> {
   data: T[];

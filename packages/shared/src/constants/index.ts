@@ -120,6 +120,10 @@ export const INSTITUTIONS: { value: Institution; label: string }[] = [
 ];
 
 export const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+export const UPLOAD_DIR = '/tmp/moneypulse/uploads';
+export const WATCH_FOLDER_DIR = '/config/watch-folder';
+export const INGESTION_QUEUE = 'ingestion';
+export const AI_BATCH_SIZE = 20;
 export const MIN_PASSWORD_LENGTH = 16;
 export const BCRYPT_COST_FACTOR = 12;
 export const LOGIN_RATE_LIMIT = { ttl: 60, limit: 5 };
