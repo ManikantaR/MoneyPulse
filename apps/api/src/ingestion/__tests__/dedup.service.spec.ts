@@ -110,16 +110,11 @@ describe('DedupService', () => {
       runningBalanceCents: null,
     });
 
-    mockDb.where = vi.fn().mockImplementation(() => {
-      // For hash query return existing hash, for externalId query return empty
-      return Promise.resolve([{ txnHash: existingHash }]);
-    });
-
-    // Override to return hash set
-    (service as any).getExistingHashes = vi
+    // Override to return hash set (new method names)
+    (service as any).getMatchingHashes = vi
       .fn()
       .mockResolvedValue(new Set([existingHash]));
-    (service as any).getExistingExternalIds = vi
+    (service as any).getMatchingExternalIds = vi
       .fn()
       .mockResolvedValue(new Set());
 
@@ -139,8 +134,8 @@ describe('DedupService', () => {
   });
 
   it('should skip transactions with matching external_id', async () => {
-    (service as any).getExistingHashes = vi.fn().mockResolvedValue(new Set());
-    (service as any).getExistingExternalIds = vi
+    (service as any).getMatchingHashes = vi.fn().mockResolvedValue(new Set());
+    (service as any).getMatchingExternalIds = vi
       .fn()
       .mockResolvedValue(new Set(['REF-123']));
 

@@ -8,17 +8,23 @@ import {
   Param,
   UseGuards,
   HttpCode,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AccountsService } from './accounts.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createAccountSchema, updateAccountSchema } from '@moneypulse/shared';
+import {
+  createAccountSchema,
+  updateAccountSchema,
+  csvFormatConfigSchema,
+} from '@moneypulse/shared';
 import type {
   AuthTokenPayload,
   CreateAccountInput,
   UpdateAccountInput,
+  CsvFormatConfigInput,
 } from '@moneypulse/shared';
 
 @ApiTags('Accounts')
@@ -39,8 +45,17 @@ export class AccountsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List user accounts (+ household if member)' })
+  @ApiOperation({
+    summary:
+      'List bank accounts. Returns household accounts when user is a household member.',
+  })
   async list(@CurrentUser() user: AuthTokenPayload) {
+    if (user.householdId) {
+      const accounts = await this.accountsService.findByHousehold(
+        user.householdId,
+      );
+      return { data: accounts };
+    }
     const accounts = await this.accountsService.findByUser(user.sub);
     return { data: accounts };
   }
@@ -53,7 +68,7 @@ export class AccountsController {
   ) {
     const account = await this.accountsService.findById(id);
     if (!account || account.userId !== user.sub) {
-      return { data: null };
+      throw new NotFoundException('Account not found');
     }
     return { data: account };
   }
@@ -81,12 +96,13 @@ export class AccountsController {
   @ApiOperation({ summary: 'Set custom CSV format config for generic account' })
   async setCsvFormat(
     @Param('id') id: string,
-    @Body() body: any,
+    @Body(new ZodValidationPipe(csvFormatConfigSchema))
+    body: CsvFormatConfigInput,
     @CurrentUser() user: AuthTokenPayload,
   ) {
     const account = await this.accountsService.findById(id);
     if (!account || account.userId !== user.sub) {
-      return { data: null };
+      throw new NotFoundException('Account not found');
     }
     await this.accountsService.updateCsvFormatConfig(id, body);
     return { data: { updated: true } };

@@ -33,9 +33,9 @@ export class IngestionController {
       limits: { fileSize: MAX_UPLOAD_SIZE_BYTES },
       storage: undefined, // use memory storage (buffer)
       fileFilter: (_req, file, cb) => {
-        const allowed = /\.(csv|xlsx|xls|pdf)$/i;
+        const allowed = /\.(csv|xlsx|pdf)$/i;
         if (!allowed.test(file.originalname)) {
-          return cb(new BadRequestException('File type not allowed'), false);
+          return cb(new BadRequestException('File type not allowed. Supported: .csv, .xlsx, .pdf'), false);
         }
         cb(null, true);
       },
@@ -59,8 +59,11 @@ export class IngestionController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get upload status (polling)' })
-  async getStatus(@Param('id') id: string) {
-    const upload = await this.ingestionService.getUploadStatus(id);
+  async getStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const upload = await this.ingestionService.getUploadStatus(id, user.sub);
     return { data: upload };
   }
 

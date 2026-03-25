@@ -9,10 +9,10 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createHash } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { join, basename } from 'path';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { INGESTION_QUEUE, MAX_UPLOAD_SIZE_BYTES } from '@moneypulse/shared';
 import type { FileType } from '@moneypulse/shared';
 
@@ -30,10 +30,11 @@ export class IngestionService {
 
   /**
    * Handle file upload:
-   * 1. Compute SHA256 hash → reject duplicate file
-   * 2. Save to UPLOAD_DIR
-   * 3. Create file_uploads record (status: pending)
-   * 4. Enqueue BullMQ job
+   * 1. Verify account belongs to (or is shared with) the uploading user
+   * 2. Compute SHA256 hash → reject duplicate file
+   * 3. Save to UPLOAD_DIR using a sanitized server-side filename
+   * 4. Create file_uploads record (status: pending)
+   * 5. Enqueue BullMQ job
    */
   async uploadFile(
     userId: string,
@@ -44,6 +45,23 @@ export class IngestionService {
       throw new BadRequestException(
         `File too large. Maximum size is ${MAX_UPLOAD_SIZE_BYTES / 1024 / 1024}MB`,
       );
+    }
+
+    // Verify the account belongs to this user (return 404 to avoid enumeration)
+    const account = await this.db
+      .select()
+      .from(schema.accounts)
+      .where(
+        and(
+          eq(schema.accounts.id, accountId),
+          eq(schema.accounts.userId, userId),
+          isNull(schema.accounts.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (account.length === 0) {
+      throw new NotFoundException('Account not found');
     }
 
     // Determine file type
@@ -65,13 +83,16 @@ export class IngestionService {
       );
     }
 
-    // Save file to disk
+    // Sanitize the original filename: strip path separators and control chars,
+    // then use it as a display-only label. The actual file is stored under a
+    // server-controlled name (hash + sanitized basename) to prevent traversal.
+    const safeBasename = basename(file.originalname).replace(/[^\w.\-]/g, '_');
     const uploadDir = join(this.uploadDir, userId);
     await mkdir(uploadDir, { recursive: true });
-    const filePath = join(uploadDir, `${fileHash}_${file.originalname}`);
+    const filePath = join(uploadDir, `${fileHash}_${safeBasename}`);
     await writeFile(filePath, file.buffer);
 
-    // Create DB record
+    // Create DB record (store original name for display, safe path on disk)
     const rows = await this.db
       .insert(schema.fileUploads)
       .values({
@@ -107,12 +128,18 @@ export class IngestionService {
 
   /**
    * Get upload status (polling endpoint).
+   * Scoped to userId — returns 404 for uploads not owned by this user.
    */
-  async getUploadStatus(uploadId: string) {
+  async getUploadStatus(uploadId: string, userId: string) {
     const rows = await this.db
       .select()
       .from(schema.fileUploads)
-      .where(eq(schema.fileUploads.id, uploadId))
+      .where(
+        and(
+          eq(schema.fileUploads.id, uploadId),
+          eq(schema.fileUploads.userId, userId),
+        ),
+      )
       .limit(1);
     if (rows.length === 0) throw new NotFoundException('Upload not found');
     return rows[0];
@@ -152,10 +179,15 @@ export class IngestionService {
   private detectFileType(filename: string): FileType {
     const ext = filename.toLowerCase().split('.').pop();
     if (ext === 'csv') return 'csv';
-    if (ext === 'xlsx' || ext === 'xls') return 'excel';
+    if (ext === 'xlsx') return 'excel';
+    if (ext === 'xls') {
+      throw new BadRequestException(
+        'Legacy .xls files are not supported. Please convert to .xlsx or .csv and re-upload.',
+      );
+    }
     if (ext === 'pdf') return 'pdf';
     throw new BadRequestException(
-      `Unsupported file type: .${ext}. Allowed: .csv, .xlsx, .xls, .pdf`,
+      `Unsupported file type: .${ext}. Allowed: .csv, .xlsx, .pdf`,
     );
   }
 }

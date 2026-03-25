@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   HttpCode,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
@@ -67,9 +68,14 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Get transaction by ID' })
   async findOne(
     @Param('id') id: string,
-    @CurrentUser() _user: AuthTokenPayload,
+    @CurrentUser() user: AuthTokenPayload,
   ) {
-    const txn = await this.txnService.findById(id);
+    const txn = await this.txnService.findByIdForUser(
+      id,
+      user.sub,
+      user.householdId,
+    );
+    if (!txn) throw new NotFoundException('Transaction not found');
     return { data: txn };
   }
 

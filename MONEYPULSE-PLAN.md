@@ -338,7 +338,7 @@ moneypulse/
 |-------|--------|--------|-------|
 | **Phase 0** | ✅ DONE | `df4e101` | Monorepo, NestJS, Next.js, shared pkg, Docker Compose, DB schema, health checks |
 | **Phase 1** | ✅ DONE | `515556a` | Auth (JWT + cookies + Redis), users, audit, guards, login/register/settings UI, 13 unit tests pass |
-| **Phase 2** | ⬜ Not started | — | Bank accounts, CSV/Excel parsers, upload pipeline, dedup, watch folder |
+| **Phase 2** | ✅ DONE | `48ab0fa` | Bank accounts, CSV/Excel parsers (BofA/Chase/Amex/Citi/Generic), upload pipeline, dedup, watch folder, transactions CRUD. 49 unit tests pass. Security hardened: account ownership checks, filename sanitization, scoped upload status, .xls rejected, csvFormatConfig validated with Zod |
 | **Phase 3** | ⬜ Not started | — | AI categorization (Ollama + rules engine) |
 | **Phase 4** | ⬜ Not started | — | PDF parser microservice (Python) |
 | **Phase 5** | ⬜ Not started | — | Dashboard & visualization (Recharts) |

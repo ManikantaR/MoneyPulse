@@ -32,8 +32,26 @@ export class TransactionsService {
 
   /**
    * Manual transaction entry (cash purchases, etc.)
+   * Validates that the account belongs to the user before inserting.
    */
   async create(userId: string, input: CreateTransactionInput) {
+    // Verify account ownership (and not soft-deleted)
+    const account = await this.db
+      .select({ id: schema.accounts.id })
+      .from(schema.accounts)
+      .where(
+        and(
+          eq(schema.accounts.id, input.accountId),
+          eq(schema.accounts.userId, userId),
+          isNull(schema.accounts.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (account.length === 0) {
+      throw new NotFoundException('Account not found');
+    }
+
     const txnHash = createHash('sha256')
       .update(
         `${input.accountId}|${input.date}|${input.amountCents}|${input.description}|manual`,
@@ -118,6 +136,7 @@ export class TransactionsService {
       date: schema.transactions.date,
       amount: schema.transactions.amountCents,
       description: schema.transactions.description,
+      category: schema.transactions.categoryId,
     };
     const sortColumn = sortColumnMap[query.sortBy] ?? schema.transactions.date;
 
@@ -153,6 +172,34 @@ export class TransactionsService {
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async findByIdForUser(
+    id: string,
+    userId: string,
+    householdId?: string | null,
+  ) {
+    const txn = await this.findById(id);
+    if (!txn) return null;
+
+    // Allow access if owned by user or by a household member
+    if (txn.userId === userId) return txn;
+
+    if (householdId) {
+      const member = await this.db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(
+          and(
+            eq(schema.users.id, txn.userId),
+            eq(schema.users.householdId, householdId),
+          ),
+        )
+        .limit(1);
+      if (member.length > 0) return txn;
+    }
+
+    return null;
   }
 
   async update(id: string, userId: string, input: UpdateTransactionInput) {
@@ -191,6 +238,12 @@ export class TransactionsService {
   ) {
     const parent = await this.findById(id);
     if (!parent || parent.userId !== userId) throw new NotFoundException();
+
+    if (parent.isSplitParent) {
+      throw new BadRequestException(
+        'Transaction has already been split. Cannot split again.',
+      );
+    }
 
     const splitTotal = input.splits.reduce((sum: number, s: any) => sum + s.amountCents, 0);
     if (splitTotal !== parent.amountCents) {

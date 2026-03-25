@@ -108,8 +108,15 @@ export class IngestionProcessor extends WorkerHost {
         account.csvFormatConfig,
       );
 
+      // Apply skipRows from generic config (skip non-header leading rows)
+      const skipRows =
+        account.csvFormatConfig?.skipRows ?? 0;
+      const dataRows = skipRows > 0 ? rows.slice(skipRows) : rows;
+      // rowOffset: 1-based; row 1 = header, data starts at row 2 + any skipped rows
+      const rowOffset = 2 + skipRows;
+
       // Parse rows → transactions
-      const parseResult = parser.parseRows(rows, 2);
+      const parseResult = parser.parseRows(dataRows, rowOffset);
 
       // Dedup
       const dedupResult = await this.dedupService.dedup(

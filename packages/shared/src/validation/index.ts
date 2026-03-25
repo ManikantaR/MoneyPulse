@@ -51,7 +51,43 @@ export const createAccountSchema = z.object({
 
 export const updateAccountSchema = createAccountSchema.partial();
 
-// ── Transactions ────────────────────────────────────────────
+// ── CSV Format Config ────────────────────────────────────────
+
+export const csvFormatConfigSchema = z
+  .object({
+    delimiter: z.string().min(1).max(5).default(','),
+    dateColumn: z.string().min(1).max(200),
+    dateFormat: z.enum([
+      'MM/DD/YYYY',
+      'M/D/YYYY',
+      'DD/MM/YYYY',
+      'YYYY-MM-DD',
+      'MM-DD-YYYY',
+    ]),
+    descriptionColumn: z.string().min(1).max(200),
+    amountColumn: z.string().max(200).nullable().default(null),
+    debitColumn: z.string().max(200).nullable().default(null),
+    creditColumn: z.string().max(200).nullable().default(null),
+    signConvention: z.enum(['negative_debit', 'positive_debit', 'split_columns']),
+    externalIdColumn: z.string().max(200).nullable().default(null),
+    skipRows: z.int().min(0).max(20).default(0),
+    merchantColumn: z.string().max(200).nullable().default(null),
+    balanceColumn: z.string().max(200).nullable().default(null),
+  })
+  .refine(
+    (d) =>
+      d.signConvention !== 'split_columns' ||
+      (d.debitColumn !== null && d.creditColumn !== null),
+    {
+      message:
+        'debitColumn and creditColumn are required when signConvention is "split_columns"',
+      path: ['debitColumn'],
+    },
+  );
+
+export type CsvFormatConfigInput = z.infer<typeof csvFormatConfigSchema>;
+
+
 
 export const createTransactionSchema = z.object({
   accountId: z.uuid(),

@@ -2,7 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, inArray, isNotNull } from 'drizzle-orm';
 import type { ParsedTransaction } from '@moneypulse/shared';
 
 export interface DedupResult {
@@ -20,6 +20,9 @@ export class DedupService {
    * Dedup strategies (in priority order):
    * 1. external_id match: if bank provides a reference number, check (account_id, external_id)
    * 2. Hash match: SHA256(date + amountCents + normalized_description + account_id)
+   *
+   * Only queries the DB for hashes/external_ids that appear in the incoming batch,
+   * avoiding a full account scan.
    */
   async dedup(
     accountId: string,
@@ -35,9 +38,20 @@ export class DedupService {
       hash: this.computeHash(accountId, txn),
     }));
 
-    // Batch lookup: get existing hashes and external_ids for this account
-    const existingHashes = await this.getExistingHashes(accountId);
-    const existingExternalIds = await this.getExistingExternalIds(accountId);
+    const incomingHashes = incoming.map((t) => t.hash);
+    const incomingExternalIds = incoming
+      .map((t) => t.externalId)
+      .filter((id): id is string => id !== null);
+
+    // Batch lookup: only fetch rows that could match the incoming batch
+    const existingHashes = await this.getMatchingHashes(
+      accountId,
+      incomingHashes,
+    );
+    const existingExternalIds =
+      incomingExternalIds.length > 0
+        ? await this.getMatchingExternalIds(accountId, incomingExternalIds)
+        : new Set<string>();
 
     const newTransactions: ParsedTransaction[] = [];
     let skippedCount = 0;
@@ -80,21 +94,45 @@ export class DedupService {
     return createHash('sha256').update(input).digest('hex');
   }
 
-  private async getExistingHashes(accountId: string): Promise<Set<string>> {
+  /**
+   * Query only the hashes from the incoming batch that already exist in the DB.
+   * Uses an index-friendly IN clause instead of a full account scan.
+   */
+  private async getMatchingHashes(
+    accountId: string,
+    hashes: string[],
+  ): Promise<Set<string>> {
+    if (hashes.length === 0) return new Set();
     const rows = await this.db
       .select({ txnHash: schema.transactions.txnHash })
       .from(schema.transactions)
-      .where(eq(schema.transactions.accountId, accountId));
+      .where(
+        and(
+          eq(schema.transactions.accountId, accountId),
+          inArray(schema.transactions.txnHash, hashes),
+        ),
+      );
     return new Set(rows.map((r: any) => r.txnHash));
   }
 
-  private async getExistingExternalIds(
+  /**
+   * Query only the external_ids from the incoming batch that already exist in the DB.
+   */
+  private async getMatchingExternalIds(
     accountId: string,
+    externalIds: string[],
   ): Promise<Set<string>> {
+    if (externalIds.length === 0) return new Set();
     const rows = await this.db
       .select({ externalId: schema.transactions.externalId })
       .from(schema.transactions)
-      .where(eq(schema.transactions.accountId, accountId));
+      .where(
+        and(
+          eq(schema.transactions.accountId, accountId),
+          isNotNull(schema.transactions.externalId),
+          inArray(schema.transactions.externalId, externalIds),
+        ),
+      );
     return new Set(
       rows
         .map((r: any) => r.externalId)

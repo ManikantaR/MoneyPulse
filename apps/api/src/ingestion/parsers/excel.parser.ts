@@ -1,10 +1,11 @@
 import * as ExcelJS from 'exceljs';
 
 /**
- * Excel Parser — reads .xlsx/.xls file buffer and converts
- * the first sheet to an array of row objects (header-keyed).
+ * Excel Parser — reads .xlsx file buffer and converts the first sheet to an
+ * array of row objects (header-keyed). Only .xlsx is supported; .xls files
+ * are rejected at the upload layer before reaching this parser.
  * Uses exceljs (no ReDoS or prototype-pollution vulnerabilities).
- * Then delegates to the appropriate CSV parser.
+ * Delegates to the appropriate CSV parser after conversion.
  */
 export async function parseExcelToRows(buffer: Buffer): Promise<{
   headers: string[];
@@ -27,9 +28,10 @@ export async function parseExcelToRows(buffer: Buffer): Promise<{
 
   worksheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) {
-      // First row contains column headers
-      row.eachCell({ includeEmpty: true }, (cell) => {
-        headers.push(cellToString(cell.value));
+      // First row contains column headers; generate fallback names for blanks
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const raw = cellToString(cell.value).trim();
+        headers.push(raw !== '' ? raw : `col_${colNumber}`);
       });
     } else {
       const rowObj: Record<string, string> = {};

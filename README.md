@@ -387,7 +387,7 @@ erDiagram
 |-------|-------------|--------|
 | **Phase 0** | Project scaffolding & infrastructure | ✅ Done |
 | **Phase 1** | Authentication & user management | ✅ Done |
-| **Phase 2** | Bank accounts & CSV/Excel ingestion | ✅ Done |
+| **Phase 2** | Bank accounts & CSV/Excel ingestion | ✅ Done — 49 tests, security hardened |
 | **Phase 3** | AI-powered categorization | 🔲 Up next |
 | **Phase 4** | PDF parser microservice | 🔲 Planned |
 | **Phase 5** | Dashboard & visualization | 🔲 Planned |

@@ -43,8 +43,20 @@ export class GenericCsvParser {
         let isCredit: boolean;
 
         if (this.config.signConvention === 'split_columns') {
-          const debitStr = (row[this.config.debitColumn!] || '').trim();
-          const creditStr = (row[this.config.creditColumn!] || '').trim();
+          const { debitColumn, creditColumn } = this.config;
+
+          if (!debitColumn || !creditColumn) {
+            errors.push({
+              row: rowNum,
+              error:
+                'Invalid CSV format config: debitColumn and creditColumn are required when signConvention is "split_columns".',
+              raw: JSON.stringify(row),
+            });
+            continue;
+          }
+
+          const debitStr = (row[debitColumn] || '').trim();
+          const creditStr = (row[creditColumn] || '').trim();
 
           if (debitStr) {
             amountCents = parseAmountToCents(debitStr) ?? 0;

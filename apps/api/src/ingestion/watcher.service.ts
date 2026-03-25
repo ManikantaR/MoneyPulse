@@ -71,7 +71,8 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const relativePath = relative(this.watchDir, filePath);
-      const parts = relativePath.split('/');
+      const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+      const parts = normalizedRelativePath.split('/');
       if (parts.length < 2) {
         this.logger.warn(`File not in account subfolder: ${filePath}`);
         return;
