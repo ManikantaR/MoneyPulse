@@ -2,15 +2,15 @@
 
 ## Decisions Summary
 
-| # | Decision | Choice |
-|---|----------|--------|
-| 1 | Token strategy | Dual tokens: Access (15min, httpOnly cookie) + Refresh (7d, httpOnly cookie) |
-| 2 | Redis storage | Allowlist: store active refresh tokens; logout = delete |
-| 3 | First user | `POST /auth/register` open only when 0 users exist, 403 after |
-| 4 | Invite flow | Return temp password to admin (manual share, no email) |
-| 5 | Sessions | Multi-device: one refresh token per device, keyed `refresh:{userId}:{deviceId}` |
-| 6 | Frontend auth | Next.js middleware (redirect) + client React Query context (user data) |
-| 7 | Password change | Dedicated `/change-password` page; middleware redirects if `mustChangePassword` |
+| #   | Decision        | Choice                                                                          |
+| --- | --------------- | ------------------------------------------------------------------------------- |
+| 1   | Token strategy  | Dual tokens: Access (15min, httpOnly cookie) + Refresh (7d, httpOnly cookie)    |
+| 2   | Redis storage   | Allowlist: store active refresh tokens; logout = delete                         |
+| 3   | First user      | `POST /auth/register` open only when 0 users exist, 403 after                   |
+| 4   | Invite flow     | Return temp password to admin (manual share, no email)                          |
+| 5   | Sessions        | Multi-device: one refresh token per device, keyed `refresh:{userId}:{deviceId}` |
+| 6   | Frontend auth   | Next.js middleware (redirect) + client React Query context (user data)          |
+| 7   | Password change | Dedicated `/change-password` page; middleware redirects if `mustChangePassword` |
 
 ---
 
@@ -20,56 +20,56 @@ All files to create/modify, in implementation order:
 
 ### Backend (apps/api/)
 
-| # | File | Purpose |
-|---|------|---------|
-| 1 | `src/common/decorators/current-user.decorator.ts` | `@CurrentUser()` param decorator |
-| 2 | `src/common/decorators/roles.decorator.ts` | `@Roles('admin')` metadata decorator |
-| 3 | `src/common/guards/jwt-auth.guard.ts` | JWT cookie extraction + validation guard |
-| 4 | `src/common/guards/roles.guard.ts` | Role-based access guard |
-| 5 | `src/common/guards/throttle-login.guard.ts` | Login-specific rate limit (5/min) |
-| 6 | `src/auth/auth.module.ts` | Auth module wiring |
-| 7 | `src/auth/auth.service.ts` | Register, login, refresh, logout, validateUser |
-| 8 | `src/auth/auth.controller.ts` | REST endpoints: register, login, refresh, logout, me |
-| 9 | `src/auth/strategies/jwt.strategy.ts` | Passport JWT strategy (from cookie) |
-| 10 | `src/auth/strategies/local.strategy.ts` | Passport local strategy (email+password) |
-| 11 | `src/auth/token.service.ts` | JWT sign/verify + Redis refresh token management |
-| 12 | `src/users/users.module.ts` | Users module wiring |
-| 13 | `src/users/users.service.ts` | CRUD: findById, findByEmail, create, invite, changePassword, updateSettings |
-| 14 | `src/users/users.controller.ts` | REST endpoints: invite, list, getMe, updateSettings, changePassword |
-| 15 | `src/audit/audit.module.ts` | Audit module |
-| 16 | `src/audit/audit.service.ts` | Log security events to audit_logs table |
-| 17 | `src/redis/redis.module.ts` | Global Redis provider (ioredis) |
-| 18 | `src/redis/redis.provider.ts` | Redis client factory |
-| 19 | `src/app.module.ts` | **MODIFY** — import AuthModule, UsersModule, AuditModule, RedisModule |
+| #   | File                                              | Purpose                                                                     |
+| --- | ------------------------------------------------- | --------------------------------------------------------------------------- |
+| 1   | `src/common/decorators/current-user.decorator.ts` | `@CurrentUser()` param decorator                                            |
+| 2   | `src/common/decorators/roles.decorator.ts`        | `@Roles('admin')` metadata decorator                                        |
+| 3   | `src/common/guards/jwt-auth.guard.ts`             | JWT cookie extraction + validation guard                                    |
+| 4   | `src/common/guards/roles.guard.ts`                | Role-based access guard                                                     |
+| 5   | `src/common/guards/throttle-login.guard.ts`       | Login-specific rate limit (5/min)                                           |
+| 6   | `src/auth/auth.module.ts`                         | Auth module wiring                                                          |
+| 7   | `src/auth/auth.service.ts`                        | Register, login, refresh, logout, validateUser                              |
+| 8   | `src/auth/auth.controller.ts`                     | REST endpoints: register, login, refresh, logout, me                        |
+| 9   | `src/auth/strategies/jwt.strategy.ts`             | Passport JWT strategy (from cookie)                                         |
+| 10  | `src/auth/strategies/local.strategy.ts`           | Passport local strategy (email+password)                                    |
+| 11  | `src/auth/token.service.ts`                       | JWT sign/verify + Redis refresh token management                            |
+| 12  | `src/users/users.module.ts`                       | Users module wiring                                                         |
+| 13  | `src/users/users.service.ts`                      | CRUD: findById, findByEmail, create, invite, changePassword, updateSettings |
+| 14  | `src/users/users.controller.ts`                   | REST endpoints: invite, list, getMe, updateSettings, changePassword         |
+| 15  | `src/audit/audit.module.ts`                       | Audit module                                                                |
+| 16  | `src/audit/audit.service.ts`                      | Log security events to audit_logs table                                     |
+| 17  | `src/redis/redis.module.ts`                       | Global Redis provider (ioredis)                                             |
+| 18  | `src/redis/redis.provider.ts`                     | Redis client factory                                                        |
+| 19  | `src/app.module.ts`                               | **MODIFY** — import AuthModule, UsersModule, AuditModule, RedisModule       |
 
 ### Frontend (apps/web/)
 
-| # | File | Purpose |
-|---|------|---------|
-| 20 | `src/lib/api.ts` | Fetch wrapper with credentials + error handling |
-| 21 | `src/lib/auth.ts` | Auth context: useAuth hook, AuthProvider |
-| 22 | `src/middleware.ts` | Next.js middleware: cookie check → redirect to /login |
-| 23 | `src/app/login/page.tsx` | Login form |
-| 24 | `src/app/register/page.tsx` | First-user registration form |
-| 25 | `src/app/change-password/page.tsx` | Force password change page |
-| 26 | `src/app/(protected)/layout.tsx` | Protected route group layout with auth context |
-| 27 | `src/app/(protected)/settings/page.tsx` | User settings (display name, timezone, theme, preferences) |
-| 28 | `src/components/ThemeToggle.tsx` | Light/dark/system toggle |
+| #   | File                                    | Purpose                                                    |
+| --- | --------------------------------------- | ---------------------------------------------------------- |
+| 20  | `src/lib/api.ts`                        | Fetch wrapper with credentials + error handling            |
+| 21  | `src/lib/auth.ts`                       | Auth context: useAuth hook, AuthProvider                   |
+| 22  | `src/middleware.ts`                     | Next.js middleware: cookie check → redirect to /login      |
+| 23  | `src/app/login/page.tsx`                | Login form                                                 |
+| 24  | `src/app/register/page.tsx`             | First-user registration form                               |
+| 25  | `src/app/change-password/page.tsx`      | Force password change page                                 |
+| 26  | `src/app/(protected)/layout.tsx`        | Protected route group layout with auth context             |
+| 27  | `src/app/(protected)/settings/page.tsx` | User settings (display name, timezone, theme, preferences) |
+| 28  | `src/components/ThemeToggle.tsx`        | Light/dark/system toggle                                   |
 
 ### Shared Package
 
-| # | File | Purpose |
-|---|------|---------|
-| 29 | `packages/shared/src/types/index.ts` | **MODIFY** — add `AuthTokenPayload`, `AuthResponse`, `MeResponse` types |
+| #   | File                                 | Purpose                                                                 |
+| --- | ------------------------------------ | ----------------------------------------------------------------------- |
+| 29  | `packages/shared/src/types/index.ts` | **MODIFY** — add `AuthTokenPayload`, `AuthResponse`, `MeResponse` types |
 
 ### Tests (TDD)
 
-| # | File | Purpose |
-|---|------|---------|
-| 30 | `apps/api/test/auth.e2e-spec.ts` | E2E: register, login, refresh, logout, me, invite |
-| 31 | `apps/api/src/auth/auth.service.spec.ts` | Unit: auth service logic |
-| 32 | `apps/api/src/users/users.service.spec.ts` | Unit: user CRUD + invite logic |
-| 33 | `apps/api/src/audit/audit.service.spec.ts` | Unit: audit logging |
+| #   | File                                       | Purpose                                           |
+| --- | ------------------------------------------ | ------------------------------------------------- |
+| 30  | `apps/api/test/auth.e2e-spec.ts`           | E2E: register, login, refresh, logout, me, invite |
+| 31  | `apps/api/src/auth/auth.service.spec.ts`   | Unit: auth service logic                          |
+| 32  | `apps/api/src/users/users.service.spec.ts` | Unit: user CRUD + invite logic                    |
+| 33  | `apps/api/src/audit/audit.service.spec.ts` | Unit: audit logging                               |
 
 ---
 
@@ -94,7 +94,7 @@ cd apps/web && pnpm add sonner  # toast notifications for login/error feedback
 // ── Auth Types ──────────────────────────────────────────────
 
 export interface AuthTokenPayload {
-  sub: string;         // userId
+  sub: string; // userId
   email: string;
   role: UserRole;
   householdId: string | null;
@@ -183,15 +183,15 @@ import type { AuthTokenPayload } from '@moneypulse/shared';
 
 @Injectable()
 export class TokenService {
-  private readonly accessTokenTtl: number;   // seconds
-  private readonly refreshTokenTtl: number;  // seconds
+  private readonly accessTokenTtl: number; // seconds
+  private readonly refreshTokenTtl: number; // seconds
 
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
-    this.accessTokenTtl = 15 * 60;          // 15 minutes
+    this.accessTokenTtl = 15 * 60; // 15 minutes
     this.refreshTokenTtl = 7 * 24 * 60 * 60; // 7 days
   }
 
@@ -301,7 +301,7 @@ import { AuthService } from '../auth.service';
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
   constructor(private readonly authService: AuthService) {
-    super({ usernameField: 'email' });  // use "email" instead of default "username"
+    super({ usernameField: 'email' }); // use "email" instead of default "username"
   }
 
   async validate(email: string, password: string): Promise<any> {
@@ -475,23 +475,29 @@ export class AuditModule {}
 ### `src/users/users.service.ts`
 
 ```typescript
-import { Injectable, Inject, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, count } from 'drizzle-orm';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { BCRYPT_COST_FACTOR, MIN_PASSWORD_LENGTH } from '@moneypulse/shared';
-import type { InviteUserInput, UpdateUserSettingsInput } from '@moneypulse/shared';
+import type {
+  InviteUserInput,
+  UpdateUserSettingsInput,
+} from '@moneypulse/shared';
 
 @Injectable()
 export class UsersService {
   constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
 
   async getTotalUserCount(): Promise<number> {
-    const result = await this.db
-      .select({ value: count() })
-      .from(schema.users);
+    const result = await this.db.select({ value: count() }).from(schema.users);
     return result[0].value;
   }
 
@@ -655,9 +661,21 @@ export class UsersModule {}
 
 ```typescript
 import {
-  Controller, Get, Post, Patch, Body, UseGuards, Req, HttpCode,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  UseGuards,
+  Req,
+  HttpCode,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { Request } from 'express';
 import { UsersService } from './users.service';
 import { AuditService } from '../audit/audit.service';
@@ -665,7 +683,11 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import type { AuthTokenPayload, InviteUserInput, UpdateUserSettingsInput } from '@moneypulse/shared';
+import type {
+  AuthTokenPayload,
+  InviteUserInput,
+  UpdateUserSettingsInput,
+} from '@moneypulse/shared';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -686,7 +708,10 @@ export class UsersController {
     @CurrentUser() currentUser: AuthTokenPayload,
     @Req() req: Request,
   ) {
-    const result = await this.usersService.invite(body, currentUser.householdId);
+    const result = await this.usersService.invite(
+      body,
+      currentUser.householdId,
+    );
 
     await this.auditService.log({
       userId: currentUser.sub,
@@ -771,7 +796,11 @@ import { UsersService } from '../users/users.service';
 import { TokenService } from './token.service';
 import { AuditService } from '../audit/audit.service';
 import { BCRYPT_COST_FACTOR } from '@moneypulse/shared';
-import type { AuthTokenPayload, RegisterInput, ChangePasswordInput } from '@moneypulse/shared';
+import type {
+  AuthTokenPayload,
+  RegisterInput,
+  ChangePasswordInput,
+} from '@moneypulse/shared';
 
 @Injectable()
 export class AuthService {
@@ -787,7 +816,9 @@ export class AuthService {
   async register(input: RegisterInput, ipAddress: string | null) {
     const userCount = await this.usersService.getTotalUserCount();
     if (userCount > 0) {
-      throw new ForbiddenException('Registration is closed. Contact admin for an invite.');
+      throw new ForbiddenException(
+        'Registration is closed. Contact admin for an invite.',
+      );
     }
 
     const user = await this.usersService.create({
@@ -912,7 +943,10 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('User not found');
 
     // If mustChangePassword, currentPassword is the temp password
-    const valid = await bcrypt.compare(input.currentPassword, user.passwordHash);
+    const valid = await bcrypt.compare(
+      input.currentPassword,
+      user.passwordHash,
+    );
     if (!valid) {
       throw new BadRequestException('Current password is incorrect');
     }
@@ -957,9 +991,21 @@ Cookie configuration and all endpoints:
 
 ```typescript
 import {
-  Controller, Post, Get, Body, Req, Res, UseGuards, HttpCode, HttpStatus,
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Res,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse as SwaggerRes } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse as SwaggerRes,
+} from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -967,7 +1013,11 @@ import { TokenService } from './token.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuditService } from '../audit/audit.service';
-import type { AuthTokenPayload, RegisterInput, ChangePasswordInput } from '@moneypulse/shared';
+import type {
+  AuthTokenPayload,
+  RegisterInput,
+  ChangePasswordInput,
+} from '@moneypulse/shared';
 
 // Cookie options — secure, httpOnly, SameSite
 const COOKIE_BASE = {
@@ -992,7 +1042,9 @@ export class AuthController {
    */
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Register first admin user (only when no users exist)' })
+  @ApiOperation({
+    summary: 'Register first admin user (only when no users exist)',
+  })
   async register(@Body() body: RegisterInput, @Req() req: Request) {
     const user = await this.authService.register(body, req.ip ?? null);
     return { data: { user } };
@@ -1014,7 +1066,12 @@ export class AuthController {
       req.ip ?? null,
     );
 
-    this.setAuthCookies(res, result.accessToken, result.refreshToken, result.deviceId);
+    this.setAuthCookies(
+      res,
+      result.accessToken,
+      result.refreshToken,
+      result.deviceId,
+    );
 
     return {
       data: {
@@ -1031,7 +1088,10 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token using refresh token cookie' })
-  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const refreshToken = req.cookies?.refresh_token;
     if (!refreshToken) {
       this.clearAuthCookies(res);
@@ -1040,7 +1100,12 @@ export class AuthController {
 
     const result = await this.authService.refresh(refreshToken);
 
-    this.setAuthCookies(res, result.accessToken, result.refreshToken, result.deviceId);
+    this.setAuthCookies(
+      res,
+      result.accessToken,
+      result.refreshToken,
+      result.deviceId,
+    );
 
     return { data: { refreshed: true } };
   }
@@ -1097,7 +1162,9 @@ export class AuthController {
   @Post('change-password')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Change password (also clears mustChangePassword flag)' })
+  @ApiOperation({
+    summary: 'Change password (also clears mustChangePassword flag)',
+  })
   async changePassword(
     @Body() body: ChangePasswordInput,
     @CurrentUser() user: AuthTokenPayload,
@@ -1127,12 +1194,12 @@ export class AuthController {
     res.cookie('refresh_token', refreshToken, {
       ...COOKIE_BASE,
       maxAge: this.tokenService.getRefreshTokenTtlMs(),
-      path: '/api/auth/refresh',  // Only sent to refresh endpoint
+      path: '/api/auth/refresh', // Only sent to refresh endpoint
     });
 
     res.cookie('device_id', deviceId, {
       ...COOKIE_BASE,
-      httpOnly: false,  // Readable by frontend for logout
+      httpOnly: false, // Readable by frontend for logout
       maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
     });
   }
@@ -1147,11 +1214,11 @@ export class AuthController {
 
 ### Cookie Summary
 
-| Cookie | HttpOnly | Secure (prod) | SameSite | MaxAge | Path |
-|--------|----------|---------------|----------|--------|------|
-| `access_token` | yes | yes | lax | 15min | `/` |
-| `refresh_token` | yes | yes | lax | 7 days | `/api/auth/refresh` |
-| `device_id` | no | yes | lax | 1 year | `/` |
+| Cookie          | HttpOnly | Secure (prod) | SameSite | MaxAge | Path                |
+| --------------- | -------- | ------------- | -------- | ------ | ------------------- |
+| `access_token`  | yes      | yes           | lax      | 15min  | `/`                 |
+| `refresh_token` | yes      | yes           | lax      | 7 days | `/api/auth/refresh` |
+| `device_id`     | no       | yes           | lax      | 1 year | `/`                 |
 
 ---
 
@@ -1217,9 +1284,7 @@ import { AuditModule } from './audit/audit.module';
       envFilePath: ['.env.local', '.env'],
     }),
     ThrottlerModule.forRoot({
-      throttlers: [
-        { name: 'default', ttl: 60000, limit: 100 },
-      ],
+      throttlers: [{ name: 'default', ttl: 60000, limit: 100 }],
     }),
     DbModule,
     RedisModule,
@@ -1228,9 +1293,7 @@ import { AuditModule } from './audit/audit.module';
     UsersModule,
     HealthModule,
   ],
-  providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-  ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
 ```
@@ -1299,7 +1362,12 @@ export class HealthController {
     }
 
     const status = services.database === 'connected' ? 'ok' : 'degraded';
-    return { status, timestamp: new Date().toISOString(), services, version: APP_VERSION };
+    return {
+      status,
+      timestamp: new Date().toISOString(),
+      services,
+      version: APP_VERSION,
+    };
   }
 }
 ```
@@ -1340,12 +1408,15 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: FetchOptions = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: FetchOptions = {},
+): Promise<T> {
   const { body, headers: customHeaders, ...rest } = options;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...customHeaders as Record<string, string>,
+    ...(customHeaders as Record<string, string>),
   };
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -1373,7 +1444,11 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
 
       if (!retryRes.ok) {
         const err = await retryRes.json().catch(() => ({}));
-        throw new ApiError(retryRes.status, err.message || 'Request failed', err.error);
+        throw new ApiError(
+          retryRes.status,
+          err.message || 'Request failed',
+          err.error,
+        );
       }
 
       return retryRes.json();
@@ -1396,8 +1471,10 @@ async function request<T>(path: string, options: FetchOptions = {}): Promise<T> 
 
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
-  patch: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'POST', body }),
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
@@ -1554,9 +1631,7 @@ export function middleware(request: NextRequest) {
 
     // Force password change if required
     if (payload.mustChangePassword && pathname !== '/change-password') {
-      return NextResponse.redirect(
-        new URL('/change-password', request.url),
-      );
+      return NextResponse.redirect(new URL('/change-password', request.url));
     }
   } catch {
     // Invalid token — let API handle it
@@ -1668,9 +1743,7 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <button
             type="submit"
@@ -1718,7 +1791,9 @@ export default function RegisterPage() {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(
+    null,
+  );
 
   useEffect(() => {
     api
@@ -1831,7 +1906,10 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium"
+            >
               Confirm Password
             </label>
             <input
@@ -1929,7 +2007,10 @@ export default function ChangePasswordPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="currentPassword" className="block text-sm font-medium">
+            <label
+              htmlFor="currentPassword"
+              className="block text-sm font-medium"
+            >
               Current / Temporary Password
             </label>
             <input
@@ -1964,7 +2045,10 @@ export default function ChangePasswordPage() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium"
+            >
               Confirm New Password
             </label>
             <input
@@ -2056,9 +2140,15 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 export default function SettingsPage() {
   const { user, settings, refetchUser, logout } = useAuth();
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
-  const [timezone, setTimezone] = useState(settings?.timezone ?? 'America/New_York');
-  const [weeklyDigest, setWeeklyDigest] = useState(settings?.weeklyDigestEnabled ?? false);
-  const [haWebhookUrl, setHaWebhookUrl] = useState(settings?.haWebhookUrl ?? '');
+  const [timezone, setTimezone] = useState(
+    settings?.timezone ?? 'America/New_York',
+  );
+  const [weeklyDigest, setWeeklyDigest] = useState(
+    settings?.weeklyDigestEnabled ?? false,
+  );
+  const [haWebhookUrl, setHaWebhookUrl] = useState(
+    settings?.haWebhookUrl ?? '',
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -2102,7 +2192,9 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="block text-sm font-medium">Role</label>
-            <p className="mt-1 text-sm text-muted-foreground capitalize">{user?.role}</p>
+            <p className="mt-1 text-sm text-muted-foreground capitalize">
+              {user?.role}
+            </p>
           </div>
         </section>
 
@@ -2119,11 +2211,21 @@ export default function SettingsPage() {
               className="mt-1 block w-full rounded-lg border border-input bg-background
                          px-3 py-2 text-sm"
             >
-              {['America/New_York', 'America/Chicago', 'America/Denver',
-                'America/Los_Angeles', 'America/Phoenix', 'Pacific/Honolulu',
-                'Europe/London', 'Europe/Berlin', 'Asia/Tokyo', 'UTC',
+              {[
+                'America/New_York',
+                'America/Chicago',
+                'America/Denver',
+                'America/Los_Angeles',
+                'America/Phoenix',
+                'Pacific/Honolulu',
+                'Europe/London',
+                'Europe/Berlin',
+                'Asia/Tokyo',
+                'UTC',
               ].map((tz) => (
-                <option key={tz} value={tz}>{tz}</option>
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
               ))}
             </select>
           </div>
@@ -2161,7 +2263,9 @@ export default function SettingsPage() {
         </section>
 
         {message && (
-          <p className={`text-sm ${message.includes('Failed') ? 'text-destructive' : 'text-green-600'}`}>
+          <p
+            className={`text-sm ${message.includes('Failed') ? 'text-destructive' : 'text-green-600'}`}
+          >
             {message}
           </p>
         )}
@@ -2228,9 +2332,10 @@ export function ThemeToggle() {
           key={t.value}
           onClick={() => setTheme(t.value)}
           className={`rounded-lg border px-3 py-1.5 text-sm transition-colors
-            ${theme === t.value
-              ? 'border-primary bg-primary text-primary-foreground'
-              : 'border-input hover:bg-accent'
+            ${
+              theme === t.value
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-input hover:bg-accent'
             }`}
         >
           {t.label}
@@ -2268,7 +2373,9 @@ describe('Auth (e2e)', () => {
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
     app.use(cookieParser());
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -2359,9 +2466,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('should 401 without cookies', async () => {
-      await request(app.getHttpServer())
-        .get('/api/auth/me')
-        .expect(401);
+      await request(app.getHttpServer()).get('/api/auth/me').expect(401);
     });
   });
 
@@ -2444,7 +2549,9 @@ describe('Auth (e2e)', () => {
         .send({ email: 'member3@test.com', password: tempPassword })
         .expect(200);
 
-      const memberCookies3 = loginRes.headers['set-cookie'] as unknown as string[];
+      const memberCookies3 = loginRes.headers[
+        'set-cookie'
+      ] as unknown as string[];
 
       await request(app.getHttpServer())
         .post('/api/auth/change-password')
@@ -2539,7 +2646,11 @@ describe('AuthService', () => {
       });
 
       const result = await service.register(
-        { email: 'admin@test.com', password: 'secure-password-16chars', displayName: 'Admin' },
+        {
+          email: 'admin@test.com',
+          password: 'secure-password-16chars',
+          displayName: 'Admin',
+        },
         '127.0.0.1',
       );
 
@@ -2555,7 +2666,11 @@ describe('AuthService', () => {
 
       await expect(
         service.register(
-          { email: 'x@test.com', password: 'secure-password-16chars', displayName: 'X' },
+          {
+            email: 'x@test.com',
+            password: 'secure-password-16chars',
+            displayName: 'X',
+          },
           null,
         ),
       ).rejects.toThrow(ForbiddenException);
@@ -2572,7 +2687,10 @@ describe('AuthService', () => {
         deletedAt: null,
       });
 
-      const result = await service.validateUser('test@test.com', 'my-password-value');
+      const result = await service.validateUser(
+        'test@test.com',
+        'my-password-value',
+      );
       expect(result).toBeDefined();
       expect(result.id).toBe('user-1');
     });
@@ -2585,7 +2703,10 @@ describe('AuthService', () => {
         deletedAt: null,
       });
 
-      const result = await service.validateUser('test@test.com', 'wrong-password');
+      const result = await service.validateUser(
+        'test@test.com',
+        'wrong-password',
+      );
       expect(result).toBeNull();
     });
 
@@ -2653,25 +2774,26 @@ Step 29: Git commit
 
 ## API Endpoints Summary
 
-| Method | Path | Auth | Rate Limit | Description |
-|--------|------|------|------------|-------------|
-| `GET` | `/api/auth/registration-status` | Public | 100/min | Check if registration open |
-| `POST` | `/api/auth/register` | Public (0 users only) | 100/min | Register first admin |
-| `POST` | `/api/auth/login` | Public (local strategy) | 5/min (TODO) | Login, set cookies |
-| `POST` | `/api/auth/refresh` | Cookie only | 100/min | Rotate tokens |
-| `POST` | `/api/auth/logout` | JWT | 100/min | Revoke session, clear cookies |
-| `GET` | `/api/auth/me` | JWT | 100/min | Get JWT payload |
-| `POST` | `/api/auth/change-password` | JWT | 100/min | Change password, revoke all |
-| `GET` | `/api/users/me` | JWT | 100/min | Full profile + settings |
-| `PATCH` | `/api/users/settings` | JWT | 100/min | Update user settings |
-| `GET` | `/api/users` | JWT + admin | 100/min | List all users |
-| `POST` | `/api/users/invite` | JWT + admin | 100/min | Create user with temp password |
+| Method  | Path                            | Auth                    | Rate Limit   | Description                    |
+| ------- | ------------------------------- | ----------------------- | ------------ | ------------------------------ |
+| `GET`   | `/api/auth/registration-status` | Public                  | 100/min      | Check if registration open     |
+| `POST`  | `/api/auth/register`            | Public (0 users only)   | 100/min      | Register first admin           |
+| `POST`  | `/api/auth/login`               | Public (local strategy) | 5/min (TODO) | Login, set cookies             |
+| `POST`  | `/api/auth/refresh`             | Cookie only             | 100/min      | Rotate tokens                  |
+| `POST`  | `/api/auth/logout`              | JWT                     | 100/min      | Revoke session, clear cookies  |
+| `GET`   | `/api/auth/me`                  | JWT                     | 100/min      | Get JWT payload                |
+| `POST`  | `/api/auth/change-password`     | JWT                     | 100/min      | Change password, revoke all    |
+| `GET`   | `/api/users/me`                 | JWT                     | 100/min      | Full profile + settings        |
+| `PATCH` | `/api/users/settings`           | JWT                     | 100/min      | Update user settings           |
+| `GET`   | `/api/users`                    | JWT + admin             | 100/min      | List all users                 |
+| `POST`  | `/api/users/invite`             | JWT + admin             | 100/min      | Create user with temp password |
 
 ---
 
 ## Auth Flow Diagrams
 
 ### First User Registration
+
 ```
 Browser                    API                         Database
   │                         │                            │
@@ -2697,6 +2819,7 @@ Browser                    API                         Database
 ```
 
 ### Invited User Flow
+
 ```
 Admin Browser              API                         Database     Redis
   │                         │                            │           │
@@ -2735,6 +2858,7 @@ Member Browser             API                         Database     Redis
 ```
 
 ### Token Refresh Flow
+
 ```
 Browser                    API                         Redis
   │                         │                            │
@@ -2758,3 +2882,551 @@ Browser                    API                         Redis
   │  200 OK                 │                            │
   │<────────────────────────│                            │
 ```
+
+---
+
+## ADDENDUM: Missing Items (Post-Review)
+
+The following sections address gaps identified during spec review.
+
+---
+
+## A1. Throttle Login Guard
+
+### `src/common/guards/throttle-login.guard.ts`
+
+Custom rate limit for login endpoint: 5 attempts per minute per IP.
+
+```typescript
+import {
+  Injectable,
+  ExecutionContext,
+  HttpException,
+  HttpStatus,
+  Inject,
+} from '@nestjs/common';
+import { CanActivate } from '@nestjs/common';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../../redis/redis.provider';
+import { LOGIN_RATE_LIMIT } from '@moneypulse/shared';
+
+@Injectable()
+export class ThrottleLoginGuard implements CanActivate {
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const ip = request.ip || request.connection.remoteAddress || 'unknown';
+    const key = `login_throttle:${ip}`;
+
+    const current = await this.redis.incr(key);
+
+    if (current === 1) {
+      // First request — set TTL
+      await this.redis.expire(key, LOGIN_RATE_LIMIT.ttl);
+    }
+
+    if (current > LOGIN_RATE_LIMIT.limit) {
+      const ttl = await this.redis.ttl(key);
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message: `Too many login attempts. Try again in ${ttl} seconds.`,
+          error: 'Too Many Requests',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return true;
+  }
+}
+```
+
+Apply to the login endpoint in `auth.controller.ts`:
+
+```typescript
+// Add to imports:
+import { ThrottleLoginGuard } from '../common/guards/throttle-login.guard';
+
+// Change login decorator:
+@Post('login')
+@UseGuards(ThrottleLoginGuard, AuthGuard('local'))  // ThrottleLoginGuard BEFORE local strategy
+@HttpCode(HttpStatus.OK)
+async login(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  // ... existing code
+}
+```
+
+---
+
+## A2. Zod Validation Pipe
+
+NestJS `ValidationPipe` uses class-validator, not Zod. We need a custom pipe.
+
+### `src/common/pipes/zod-validation.pipe.ts`
+
+```typescript
+import { PipeTransform, Injectable, BadRequestException } from '@nestjs/common';
+import type { ZodType, ZodError } from 'zod/v4';
+
+@Injectable()
+export class ZodValidationPipe implements PipeTransform {
+  constructor(private schema: ZodType<any>) {}
+
+  transform(value: unknown) {
+    const result = this.schema.safeParse(value);
+    if (!result.success) {
+      const error = result.error as ZodError;
+      const messages = error.issues.map((issue) => {
+        const path = issue.path.join('.');
+        return path ? `${path}: ${issue.message}` : issue.message;
+      });
+      throw new BadRequestException({
+        statusCode: 400,
+        message: messages,
+        error: 'Validation Error',
+      });
+    }
+    return result.data;
+  }
+}
+```
+
+### Usage in Controllers
+
+```typescript
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { registerSchema, loginSchema, changePasswordSchema } from '@moneypulse/shared';
+
+// In AuthController:
+@Post('register')
+async register(
+  @Body(new ZodValidationPipe(registerSchema)) body: RegisterInput,
+  @Req() req: Request,
+) { /* ... */ }
+
+@Post('change-password')
+async changePassword(
+  @Body(new ZodValidationPipe(changePasswordSchema)) body: ChangePasswordInput,
+  // ...
+) { /* ... */ }
+
+// In UsersController:
+@Post('invite')
+async invite(
+  @Body(new ZodValidationPipe(inviteUserSchema)) body: InviteUserInput,
+  // ...
+) { /* ... */ }
+
+@Patch('settings')
+async updateSettings(
+  @Body(new ZodValidationPipe(updateUserSettingsSchema)) body: UpdateUserSettingsInput,
+  // ...
+) { /* ... */ }
+```
+
+---
+
+## A3. Login Failed Audit Logging
+
+The `login_failed` audit action is defined but never logged. Fix by adding a custom handler.
+
+### Modify `src/auth/auth.service.ts` — add `logLoginFailed`:
+
+```typescript
+/**
+ * Log a failed login attempt. Called by the controller when LocalStrategy throws.
+ */
+async logLoginFailed(email: string, ipAddress: string | null): Promise<void> {
+  await this.auditService.log({
+    userId: null,
+    action: 'login_failed',
+    entityType: 'auth',
+    entityId: null,
+    newValue: { email },
+    ipAddress,
+  });
+}
+```
+
+### Modify `src/auth/auth.controller.ts` — wrap login to catch failures:
+
+```typescript
+@Post('login')
+@HttpCode(HttpStatus.OK)
+async login(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  // Manual validation instead of @UseGuards(AuthGuard('local'))
+  // so we can audit login failures
+  const { email, password } = req.body;
+  const user = await this.authService.validateUser(email, password);
+
+  if (!user) {
+    await this.authService.logLoginFailed(email, req.ip ?? null);
+    throw new UnauthorizedException('Invalid email or password');
+  }
+
+  const deviceId = req.cookies?.device_id ?? null;
+  const result = await this.authService.login(user, deviceId, req.ip ?? null);
+
+  this.setAuthCookies(res, result.accessToken, result.refreshToken, result.deviceId);
+
+  return {
+    data: {
+      user: result.user,
+      mustChangePassword: result.mustChangePassword,
+    },
+  };
+}
+```
+
+> **Note**: This replaces `@UseGuards(AuthGuard('local'))` with manual validation to intercept failures. The `ThrottleLoginGuard` remains on the endpoint. The `LocalStrategy` is still used by Passport but we call `validateUser` directly for better control.
+
+---
+
+## A4. Household Management (Admin-only)
+
+### Modify `src/users/users.service.ts` — add household methods:
+
+```typescript
+async createHousehold(name: string) {
+  const rows = await this.db
+    .insert(schema.households)
+    .values({ name })
+    .returning();
+  return rows[0];
+}
+
+async assignUserToHousehold(userId: string, householdId: string): Promise<void> {
+  await this.db
+    .update(schema.users)
+    .set({ householdId, updatedAt: new Date() })
+    .where(eq(schema.users.id, userId));
+}
+
+async removeUserFromHousehold(userId: string): Promise<void> {
+  await this.db
+    .update(schema.users)
+    .set({ householdId: null, updatedAt: new Date() })
+    .where(eq(schema.users.id, userId));
+}
+
+async listHouseholdMembers(householdId: string) {
+  return this.db
+    .select({
+      id: schema.users.id,
+      email: schema.users.email,
+      displayName: schema.users.displayName,
+      role: schema.users.role,
+    })
+    .from(schema.users)
+    .where(eq(schema.users.householdId, householdId));
+}
+```
+
+### Modify `src/users/users.controller.ts` — add household endpoints:
+
+```typescript
+@Post('household')
+@Roles('admin')
+@HttpCode(201)
+@ApiOperation({ summary: 'Create a household (admin only)' })
+async createHousehold(
+  @Body() body: { name: string },
+  @CurrentUser() currentUser: AuthTokenPayload,
+) {
+  const household = await this.usersService.createHousehold(body.name);
+  // Auto-assign admin to this household
+  await this.usersService.assignUserToHousehold(currentUser.sub, household.id);
+  return { data: household };
+}
+
+@Post('household/members/:userId')
+@Roles('admin')
+@HttpCode(200)
+@ApiOperation({ summary: 'Assign user to admin\'s household' })
+async addToHousehold(
+  @Param('userId') userId: string,
+  @CurrentUser() currentUser: AuthTokenPayload,
+) {
+  if (!currentUser.householdId) {
+    throw new BadRequestException('Create a household first');
+  }
+  await this.usersService.assignUserToHousehold(userId, currentUser.householdId);
+  return { data: { assigned: true } };
+}
+
+@Delete('household/members/:userId')
+@Roles('admin')
+@HttpCode(200)
+@ApiOperation({ summary: 'Remove user from household' })
+async removeFromHousehold(@Param('userId') userId: string) {
+  await this.usersService.removeUserFromHousehold(userId);
+  return { data: { removed: true } };
+}
+
+@Get('household/members')
+@ApiOperation({ summary: 'List household members' })
+async listHouseholdMembers(@CurrentUser() currentUser: AuthTokenPayload) {
+  if (!currentUser.householdId) {
+    return { data: [] };
+  }
+  const members = await this.usersService.listHouseholdMembers(currentUser.householdId);
+  return { data: members };
+}
+```
+
+### `src/common/guards/household.guard.ts`
+
+Ensures the user belongs to a household (for household-scoped endpoints).
+
+```typescript
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
+import type { AuthTokenPayload } from '@moneypulse/shared';
+
+@Injectable()
+export class HouseholdGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    const user = request.user as AuthTokenPayload;
+
+    if (!user.householdId) {
+      throw new ForbiddenException(
+        'You must belong to a household to access this resource',
+      );
+    }
+
+    return true;
+  }
+}
+```
+
+---
+
+## A5. Unit Test — Users Service
+
+### `apps/api/src/users/users.service.spec.ts`
+
+```typescript
+import { Test, TestingModule } from '@nestjs/testing';
+import { ConflictException } from '@nestjs/common';
+import { UsersService } from './users.service';
+import { DATABASE_CONNECTION } from '../db/db.module';
+
+describe('UsersService', () => {
+  let service: UsersService;
+  let mockDb: any;
+
+  beforeEach(async () => {
+    mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([]),
+      insert: vi.fn().mockReturnThis(),
+      values: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([
+        {
+          id: 'user-1',
+          email: 'test@test.com',
+          displayName: 'Test',
+          role: 'admin',
+          passwordHash: 'hashed',
+          mustChangePassword: false,
+        },
+      ]),
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockResolvedValue([]),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: DATABASE_CONNECTION, useValue: mockDb },
+      ],
+    }).compile();
+
+    service = module.get<UsersService>(UsersService);
+  });
+
+  describe('getTotalUserCount', () => {
+    it('should return user count', async () => {
+      mockDb.select.mockReturnThis();
+      mockDb.from.mockResolvedValue([{ value: 3 }]);
+
+      const count = await service.getTotalUserCount();
+      expect(count).toBe(3);
+    });
+  });
+
+  describe('create', () => {
+    it('should create user with hashed password', async () => {
+      mockDb.limit.mockResolvedValue([]); // no existing user
+
+      const user = await service.create({
+        email: 'NEW@test.com',
+        password: 'a-secure-password-here',
+        displayName: 'New User',
+        role: 'admin',
+      });
+
+      expect(user.email).toBe('test@test.com'); // from mock
+      expect(mockDb.insert).toHaveBeenCalled();
+    });
+
+    it('should throw ConflictException for duplicate email', async () => {
+      mockDb.limit.mockResolvedValue([
+        { id: 'existing', email: 'dupe@test.com' },
+      ]);
+
+      await expect(
+        service.create({
+          email: 'dupe@test.com',
+          password: 'a-secure-password-here',
+          displayName: 'Dupe',
+          role: 'member',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('invite', () => {
+    it('should create user with mustChangePassword=true and return temp password', async () => {
+      mockDb.limit.mockResolvedValue([]); // no existing user
+
+      const result = await service.invite(
+        { email: 'invited@test.com', displayName: 'Invited', role: 'member' },
+        null,
+      );
+
+      expect(result.temporaryPassword).toBeDefined();
+      expect(result.temporaryPassword.length).toBeGreaterThanOrEqual(20);
+    });
+  });
+
+  describe('changePassword', () => {
+    it('should update password hash and clear mustChangePassword', async () => {
+      mockDb.where.mockReturnThis();
+
+      await service.changePassword('user-1', 'new-hash');
+
+      expect(mockDb.update).toHaveBeenCalled();
+      expect(mockDb.set).toHaveBeenCalledWith(
+        expect.objectContaining({ mustChangePassword: false }),
+      );
+    });
+  });
+});
+```
+
+---
+
+## A6. Unit Test — Audit Service
+
+### `apps/api/src/audit/audit.service.spec.ts`
+
+```typescript
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuditService } from './audit.service';
+import { DATABASE_CONNECTION } from '../db/db.module';
+
+describe('AuditService', () => {
+  let service: AuditService;
+  let mockDb: any;
+
+  beforeEach(async () => {
+    mockDb = {
+      insert: vi.fn().mockReturnThis(),
+      values: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuditService,
+        { provide: DATABASE_CONNECTION, useValue: mockDb },
+      ],
+    }).compile();
+
+    service = module.get<AuditService>(AuditService);
+  });
+
+  it('should insert an audit log entry', async () => {
+    await service.log({
+      userId: 'user-1',
+      action: 'login',
+      entityType: 'user',
+      entityId: 'user-1',
+      ipAddress: '127.0.0.1',
+    });
+
+    expect(mockDb.insert).toHaveBeenCalled();
+    expect(mockDb.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        action: 'login',
+        entityType: 'user',
+      }),
+    );
+  });
+
+  it('should handle null optional fields', async () => {
+    await service.log({
+      userId: null,
+      action: 'login_failed',
+      entityType: 'auth',
+    });
+
+    expect(mockDb.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: null,
+        entityId: null,
+        oldValue: null,
+        newValue: null,
+        ipAddress: null,
+      }),
+    );
+  });
+});
+```
+
+---
+
+## Updated File Inventory
+
+Additional files from this addendum:
+
+| #   | File                                        | Purpose                                 |
+| --- | ------------------------------------------- | --------------------------------------- |
+| 34  | `src/common/pipes/zod-validation.pipe.ts`   | Zod schema validation for NestJS        |
+| 35  | `src/common/guards/throttle-login.guard.ts` | Redis-based login rate limit (5/min/IP) |
+| 36  | `src/common/guards/household.guard.ts`      | Ensure user belongs to a household      |
+
+## Updated API Endpoints
+
+| Method   | Path                                   | Auth        | Description                |
+| -------- | -------------------------------------- | ----------- | -------------------------- |
+| `POST`   | `/api/users/household`                 | JWT + admin | Create household           |
+| `POST`   | `/api/users/household/members/:userId` | JWT + admin | Assign user to household   |
+| `DELETE` | `/api/users/household/members/:userId` | JWT + admin | Remove user from household |
+| `GET`    | `/api/users/household/members`         | JWT         | List household members     |
+
+## Updated Implementation Order
+
+Insert after Step 6 in the original order:
+
+```
+Step 5b: Create ZodValidationPipe
+Step 6b: Create ThrottleLoginGuard
+Step 6c: Create HouseholdGuard
+```
+
+Update Step 10 (Auth Service): include `logLoginFailed` method.
+Update Step 11 (Auth Controller): use manual validation instead of `AuthGuard('local')` for login, apply `ThrottleLoginGuard`.
+Update Step 7 (Users Service): include household CRUD methods.
+Update Step 7 (Users Controller): include household endpoints.
