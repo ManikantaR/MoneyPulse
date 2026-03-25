@@ -9,11 +9,15 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/web/package.json ./apps/web/
 RUN pnpm install --frozen-lockfile
 
-# Build
-FROM deps AS builder
+# Build shared package (required — web app imports types from @moneypulse/shared)
+FROM deps AS shared-build
 COPY packages/shared/ ./packages/shared/
-COPY apps/web/ ./apps/web/
 COPY tsconfig.base.json ./
+RUN pnpm --filter @moneypulse/shared build
+
+# Build web app
+FROM shared-build AS builder
+COPY apps/web/ ./apps/web/
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @moneypulse/web build
 

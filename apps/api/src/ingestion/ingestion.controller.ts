@@ -24,6 +24,16 @@ import type { AuthTokenPayload } from '@moneypulse/shared';
 export class IngestionController {
   constructor(private readonly ingestionService: IngestionService) {}
 
+  /**
+   * POST /uploads — Upload a bank statement file (CSV, XLSX, or PDF).
+   * Validates file type and size, enforces account ownership, deduplicates by SHA-256 hash,
+   * saves to disk, creates a `file_uploads` record, and enqueues a BullMQ parse job.
+   *
+   * @param file - Multipart file (memory buffer)
+   * @param accountId - Target account UUID (must be owned by the caller)
+   * @param user - JWT token payload
+   * @returns `{ data: FileUpload }` — the created upload record with status `pending`
+   */
   @Post()
   @HttpCode(201)
   @ApiOperation({ summary: 'Upload a bank statement file (CSV/Excel/PDF)' })
@@ -57,6 +67,14 @@ export class IngestionController {
     return { data: upload };
   }
 
+  /**
+   * GET /uploads/:id — Poll the processing status of an upload.
+   * Scoped to the authenticated user; returns 404 for uploads not owned by them.
+   *
+   * @param id - Upload UUID path parameter
+   * @param user - JWT token payload
+   * @returns `{ data: FileUpload }` — includes `status`, `rowsImported`, `errorLog`, etc.
+   */
   @Get(':id')
   @ApiOperation({ summary: 'Get upload status (polling)' })
   async getStatus(
@@ -67,6 +85,12 @@ export class IngestionController {
     return { data: upload };
   }
 
+  /**
+   * GET /uploads — List all upload records for the authenticated user, ordered by creation date.
+   *
+   * @param user - JWT token payload
+   * @returns `{ data: FileUpload[] }`
+   */
   @Get()
   @ApiOperation({ summary: 'List all uploads for current user' })
   async list(@CurrentUser() user: AuthTokenPayload) {

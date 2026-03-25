@@ -33,6 +33,13 @@ import type {
 export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
 
+  /**
+   * POST /accounts — Create a new bank account for the authenticated user.
+   *
+   * @param body - Validated account creation payload
+   * @param user - JWT token payload identifying the requesting user
+   * @returns `{ data: Account }` — the created account
+   */
   @Post()
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a bank account' })
@@ -44,6 +51,14 @@ export class AccountsController {
     return { data: account };
   }
 
+  /**
+   * GET /accounts — List bank accounts.
+   * Returns household accounts when the authenticated user belongs to a household;
+   * otherwise returns only accounts owned by that user.
+   *
+   * @param user - JWT token payload; `householdId` determines scope
+   * @returns `{ data: Account[] | HouseholdAccountView[] }`
+   */
   @Get()
   @ApiOperation({
     summary:
@@ -60,6 +75,14 @@ export class AccountsController {
     return { data: accounts };
   }
 
+  /**
+   * GET /accounts/:id — Retrieve a single account by ID.
+   * Returns 404 when the account does not exist or is not owned by the caller.
+   *
+   * @param id - Account UUID path parameter
+   * @param user - JWT token payload
+   * @returns `{ data: Account }`
+   */
   @Get(':id')
   @ApiOperation({ summary: 'Get account by ID' })
   async findOne(
@@ -73,6 +96,15 @@ export class AccountsController {
     return { data: account };
   }
 
+  /**
+   * PATCH /accounts/:id — Update mutable fields on an account.
+   * Ownership is enforced inside the service.
+   *
+   * @param id - Account UUID path parameter
+   * @param body - Validated partial update payload
+   * @param user - JWT token payload
+   * @returns `{ data: Account }` — the updated account
+   */
   @Patch(':id')
   @ApiOperation({ summary: 'Update account' })
   async update(
@@ -84,6 +116,14 @@ export class AccountsController {
     return { data: account };
   }
 
+  /**
+   * DELETE /accounts/:id — Soft-delete an account.
+   * Sets `deletedAt`; does not physically remove the row.
+   *
+   * @param id - Account UUID path parameter
+   * @param user - JWT token payload
+   * @returns `{ data: { deleted: true } }`
+   */
   @Delete(':id')
   @HttpCode(200)
   @ApiOperation({ summary: 'Soft delete account' })
@@ -92,6 +132,16 @@ export class AccountsController {
     return { data: { deleted: true } };
   }
 
+  /**
+   * PATCH /accounts/:id/csv-format — Store a validated `CsvFormatConfig` on an account.
+   * The body is validated against `csvFormatConfigSchema` before persisting.
+   * Ownership is verified before updating.
+   *
+   * @param id - Account UUID path parameter
+   * @param body - Zod-validated CSV format configuration
+   * @param user - JWT token payload
+   * @returns `{ data: { updated: true } }`
+   */
   @Patch(':id/csv-format')
   @ApiOperation({ summary: 'Set custom CSV format config for generic account' })
   async setCsvFormat(

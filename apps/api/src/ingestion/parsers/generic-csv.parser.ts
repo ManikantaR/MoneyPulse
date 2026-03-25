@@ -17,6 +17,15 @@ import { parse as parseDate, format as formatDate } from 'date-fns';
 export class GenericCsvParser {
   constructor(private config: CsvFormatConfig) {}
 
+  /**
+   * Parse an array of CSV row objects into `ParsedTransaction` records.
+   * Applies the configured date format, sign convention, and column mappings.
+   * Invalid rows are collected in the `errors` array rather than throwing.
+   *
+   * @param rows - Array of header-keyed string objects (one per CSV data row)
+   * @param rowOffset - 1-based file row number of the first data row (for error messages)
+   * @returns `ParseResult` containing `transactions` and `errors`
+   */
   parseRows(rows: Record<string, string>[], rowOffset: number): ParseResult {
     const transactions: ParsedTransaction[] = [];
     const errors: FileUploadError[] = [];

@@ -32,6 +32,11 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
       this.config.get<string>('WATCH_FOLDER_DIR') || WATCH_FOLDER_DIR;
   }
 
+  /**
+   * Initialize the Chokidar watcher on module startup.
+   * Watches `watchDir` one level deep (depth=1): `{slug}/file.csv`
+   * Skips `.archived` subdirectories. Waits for write-finish before processing.
+   */
   async onModuleInit() {
     try {
       this.watcher = chokidar.watch(this.watchDir, {
@@ -54,12 +59,23 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Gracefully close the Chokidar watcher on module teardown.
+   */
   async onModuleDestroy() {
     if (this.watcher) {
       await this.watcher.close();
     }
   }
 
+  /**
+   * Handle a newly detected file in the watch folder.
+   * Extracts the account slug from the parent directory name, looks up the matching
+   * account, deduplicates by SHA-256, creates a `file_uploads` record, and enqueues
+   * a BullMQ parse job.
+   *
+   * @param filePath - Absolute path to the file detected by Chokidar
+   */
   private async handleNewFile(filePath: string) {
     const ext = filePath.split('.').pop()?.toLowerCase();
     if (!['csv', 'xlsx', 'xls', 'pdf'].includes(ext || '')) {
@@ -135,6 +151,12 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Find an active (non-deleted) account whose generated slug matches the given string.
+   *
+   * @param slug - Slug string extracted from the watch-folder subdirectory name (e.g. `bofa-checking-1234`)
+   * @returns The matching account row or `null` if no match is found
+   */
   private async findAccountBySlug(slug: string) {
     const accounts = await this.db
       .select()
@@ -149,6 +171,14 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  /**
+   * Generate a URL-friendly slug from an account's nickname and last-four digits.
+   * Example: "BofA Checking" + "1234" → "bofa-checking-1234"
+   *
+   * @param nickname - Account display name
+   * @param lastFour - Last four digits of the account number
+   * @returns Lowercase hyphen-separated slug
+   */
   private generateSlug(nickname: string, lastFour: string): string {
     return (
       nickname

@@ -146,7 +146,10 @@ export class IngestionService {
   }
 
   /**
-   * List uploads for a user.
+   * List all file upload records for a user, ordered by creation date (most recent last).
+   *
+   * @param userId - The user whose uploads to list
+   * @returns Array of `FileUpload` rows
    */
   async listUploads(userId: string) {
     return this.db
@@ -157,7 +160,10 @@ export class IngestionService {
   }
 
   /**
-   * Update upload status (called by job processor).
+   * Patch status fields on a file upload record (called by the BullMQ job processor).
+   *
+   * @param uploadId - The upload UUID to update
+   * @param data - Partial update: status, row counts, error log, archived path
    */
   async updateUploadStatus(
     uploadId: string,
@@ -176,6 +182,15 @@ export class IngestionService {
       .where(eq(schema.fileUploads.id, uploadId));
   }
 
+  /**
+   * Map a file extension to its `FileType` discriminant.
+   * Throws `BadRequestException` for `.xls` (not supported by exceljs)
+   * and for any unrecognised extension.
+   *
+   * @param filename - The original filename (extension is case-insensitive)
+   * @returns `'csv' | 'excel' | 'pdf'`
+   * @throws BadRequestException for `.xls` or unknown extensions
+   */
   private detectFileType(filename: string): FileType {
     const ext = filename.toLowerCase().split('.').pop();
     if (ext === 'csv') return 'csv';

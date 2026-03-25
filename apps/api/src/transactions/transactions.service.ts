@@ -160,6 +160,13 @@ export class TransactionsService {
     };
   }
 
+  /**
+   * Fetch a transaction by ID without access control.
+   * For user-scoped access use `findByIdForUser()`.
+   *
+   * @param id - Transaction UUID
+   * @returns The transaction row or `null` if not found / soft-deleted
+   */
   async findById(id: string) {
     const rows = await this.db
       .select()
@@ -174,6 +181,15 @@ export class TransactionsService {
     return rows[0] ?? null;
   }
 
+  /**
+   * Fetch a transaction by ID and enforce ownership / household membership.
+   * Returns `null` (caller should throw 404) when the transaction is not accessible.
+   *
+   * @param id - Transaction UUID
+   * @param userId - The requesting user's ID
+   * @param householdId - Optional household ID; grants access to household-member transactions
+   * @returns The transaction row or `null` if not found or not accessible
+   */
   async findByIdForUser(
     id: string,
     userId: string,
@@ -202,6 +218,15 @@ export class TransactionsService {
     return null;
   }
 
+  /**
+   * Update mutable fields on a transaction after verifying ownership.
+   *
+   * @param id - Transaction UUID
+   * @param userId - Requesting user's ID (must own the transaction)
+   * @param input - Partial update payload (description, category, tags, etc.)
+   * @returns The updated transaction row
+   * @throws NotFoundException if the transaction does not exist or is not owned by `userId`
+   */
   async update(id: string, userId: string, input: UpdateTransactionInput) {
     const txn = await this.findById(id);
     if (!txn || txn.userId !== userId)
@@ -215,6 +240,14 @@ export class TransactionsService {
     return rows[0];
   }
 
+  /**
+   * Soft-delete a transaction by setting `deletedAt` to now.
+   * Verifies ownership before deleting.
+   *
+   * @param id - Transaction UUID
+   * @param userId - Requesting user's ID (must own the transaction)
+   * @throws NotFoundException if the transaction does not exist or is not owned by `userId`
+   */
   async softDelete(id: string, userId: string): Promise<void> {
     const txn = await this.findById(id);
     if (!txn || txn.userId !== userId)

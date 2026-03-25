@@ -37,6 +37,13 @@ export class IngestionProcessor extends WorkerHost {
     super();
   }
 
+  /**
+   * BullMQ job handler — processes a single file upload through the full pipeline:
+   * read → parse (CSV/Excel) → select parser → apply skipRows → dedup → batch-insert → archive.
+   * Updates the `file_uploads` record with status and row counts on completion or failure.
+   *
+   * @param job - BullMQ job containing `{ uploadId, userId, accountId, filePath, fileType }`
+   */
   async process(job: Job<IngestionJobData>): Promise<void> {
     const { uploadId, userId, accountId, filePath, fileType } = job.data;
     this.logger.log(`Processing upload ${uploadId}: ${filePath}`);
@@ -180,6 +187,12 @@ export class IngestionProcessor extends WorkerHost {
     }
   }
 
+  /**
+   * Fetch a single account row by its UUID.
+   *
+   * @param accountId - Account UUID
+   * @returns The account row or `null` if not found
+   */
   private async getAccount(accountId: string) {
     const rows = await this.db
       .select()
@@ -189,6 +202,15 @@ export class IngestionProcessor extends WorkerHost {
     return rows[0] ?? null;
   }
 
+  /**
+   * Batch-insert parsed transactions into the database in chunks of 100.
+   * Each transaction's `txnHash` is computed via `DedupService.computeHash()`.
+   *
+   * @param transactions - Parsed and deduped transactions to insert
+   * @param accountId - Account the transactions belong to
+   * @param userId - User who owns the account
+   * @param sourceFileId - Upload record UUID to link as the source file
+   */
   private async insertTransactions(
     transactions: ParsedTransaction[],
     accountId: string,
