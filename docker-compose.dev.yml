@@ -1,0 +1,25 @@
+# MoneyPulse — Docker Compose Dev Override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # In dev, only run infra services — apps run locally with hot reload
+  api:
+    profiles: ['production']
+
+  web:
+    profiles: ['production']
+
+  pdf-parser:
+    profiles: ['production']
+
+  backup:
+    profiles: ['production']
+
+  # Dev-friendly postgres with exposed port
+  postgres:
+    ports:
+      - '5432:5432'
+
+  redis:
+    ports:
+      - '6379:6379'

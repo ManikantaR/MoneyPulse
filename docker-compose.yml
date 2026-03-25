@@ -1,0 +1,142 @@
+# MoneyPulse — Docker Compose (Production)
+# Usage: docker compose up -d
+# With Ollama: docker compose --profile ai up -d
+
+services:
+  # ── PostgreSQL 16 ────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moneypulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-moneypulse}
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-moneypulse}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis 7 ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── NestJS API ───────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-moneypulse}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-moneypulse}
+      REDIS_URL: redis://redis:6379
+      PORT: '4000'
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    volumes:
+      - upload_data:/data/uploads
+      - watch_folder:/data/watch-folder
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:4000/api/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Next.js Frontend ─────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:4000/api
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ── PDF Parser (Python) ─────────────────────────────────
+  pdf-parser:
+    build:
+      context: .
+      dockerfile: services/pdf-parser/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '5000:5000'
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:5000/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Ollama (Optional — use --profile ai) ────────────────
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ['ai']
+    restart: unless-stopped
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama_data:/root/.ollama
+
+  # ── DB Backup ────────────────────────────────────────────
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-moneypulse}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-moneypulse}
+    volumes:
+      - backup_data:/backup
+      - ./config/backup/backup.sh:/usr/local/bin/backup.sh:ro
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        chmod +x /usr/local/bin/backup.sh
+        echo "0 2 * * * /usr/local/bin/backup.sh" | crontab -
+        crond -f -l 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  redis_data:
+  upload_data:
+  watch_folder:
+  ollama_data:
+  backup_data:
