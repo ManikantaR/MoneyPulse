@@ -332,7 +332,24 @@ moneypulse/
 
 ---
 
-## Phase 0: Project Scaffolding & Infrastructure
+## Progress Tracking
+
+| Phase | Status | Commit | Notes |
+|-------|--------|--------|-------|
+| **Phase 0** | ✅ DONE | `df4e101` | Monorepo, NestJS, Next.js, shared pkg, Docker Compose, DB schema, health checks |
+| **Phase 1** | ✅ DONE | `515556a` | Auth (JWT + cookies + Redis), users, audit, guards, login/register/settings UI, 13 unit tests pass |
+| **Phase 2** | ⬜ Not started | — | Bank accounts, CSV/Excel parsers, upload pipeline, dedup, watch folder |
+| **Phase 3** | ⬜ Not started | — | AI categorization (Ollama + rules engine) |
+| **Phase 4** | ⬜ Not started | — | PDF parser microservice (Python) |
+| **Phase 5** | ⬜ Not started | — | Dashboard & visualization (Recharts) |
+| **Phase 6** | ⬜ Not started | — | Budgets, alerts & notifications |
+| **Phase 7** | ⬜ Not started | — | MCP server |
+| **Phase 8** | ⬜ Not started | — | Investment account tracking |
+| **Phase 9** | 🔮 Future | — | Microsoft Agent Framework |
+
+---
+
+## Phase 0: Project Scaffolding & Infrastructure ✅
 
 **Dependencies: None**
 
@@ -359,7 +376,7 @@ moneypulse/
 
 ---
 
-## Phase 1: Authentication & User Management
+## Phase 1: Authentication & User Management ✅
 
 **Dependencies: Phase 0**
 
