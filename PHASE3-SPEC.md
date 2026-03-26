@@ -13,8 +13,23 @@
 | 1 | `categorization.service.ts` | `createAiRule()` missing userId in duplicate-check WHERE clause — different users' rules could conflict | Added `eq(schema.categorizationRules.userId, userId)` to WHERE clause |
 | 2 | `rules.controller.ts` | `findAll()` returned all users' rules (privacy leak) | Added `or(isNull(userId), eq(userId, user.sub))` filter to only return global + own rules |
 | 3 | `categories.service.ts` | `getDescendantIds()` used hardcoded `FROM categories` instead of schema reference | Changed to `FROM ${schema.categories}` for consistency |
-| 4 | `db/migrations/0001_deep_silver_surfer.sql` | Missing `startsWith` → `starts_with` enum rename | Added `ALTER TYPE rule_match_type RENAME VALUE` as first migration statement |
+| 4 | `db/migrations/0001_deep_silver_surfer.sql` | Missing `startsWith` → `starts_with` enum rename | Added conditional `DO` block that checks `pg_enum` before renaming (safe for fresh + upgraded DBs) |
 | 5 | `.env.local` / `.env` | DATABASE_URL password mismatch with actual postgres container credentials | Fixed to use correct `devpassword` matching container's `POSTGRES_PASSWORD` |
+
+## Second Review Fixes (addressing Copilot automated review)
+
+| # | File | Issue | Fix |
+|---|------|-------|-----|
+| 1 | `pii-sanitizer.ts` | Credit card regex only matched 16-digit (4×4); Amex 15-digit undetected. Generic account pattern overlapped with phone/routing. | Expanded regex for Amex (4-6-5 format). Reordered patterns: SSN → CARD → EMAIL → PHONE → ROUTING → ACCT. Raised ACCT minimum to 10 digits. |
+| 2 | `ai-categorizer.service.ts` | Ollama `fetch()` had no timeout; hung requests could block ingestion indefinitely | Added `AbortController`-based configurable timeout (default 30s via `OLLAMA_TIMEOUT_MS`) |
+| 3 | `categories.service.ts` | `findTree()` returned snake_case column names from raw SQL (`parent_id`, `sort_order`) | Added camelCase mapping for raw CTE results to match Drizzle-mapped findAll()/findById() |
+| 4 | `rule-engine.service.ts` | `new RegExp()` created on every evaluation per regex rule per transaction | Added `regexCache` Map to compile and reuse RegExp per pattern |
+| 5 | `categorization.service.ts` | N rule-match updates = N DB `UPDATE` calls (one per transaction) | Grouped updates by categoryId, batch-update via `inArray()` |
+| 6 | `categorization.service.ts` | `resolveCategoryName()` was unused dead code | Removed in favor of `getActiveCategoryMap()` |
+| 7 | `categories.controller.ts` | `POST /categories/reorder` accepted unvalidated body | Added `reorderCategoriesSchema` Zod validation in shared package |
+| 8 | `categories.controller.ts`, `rules.controller.ts` | Single-line comments instead of full JSDoc blocks | Converted to full JSDoc with `@param`/`@returns`/`@throws` matching codebase convention |
+| 9 | `seed-rules.ts` (shared) | Header comment only mentioned description field | Updated to mention both description and merchant fields |
+| 10 | `0001_deep_silver_surfer.sql` | Unconditional enum rename fails on fresh DB where `startsWith` doesn't exist | Added conditional `DO` block that checks `pg_enum` before renaming |
 
 ## Decisions Summary
 
@@ -83,16 +98,16 @@ No new dependencies required — Node 22 has native `fetch`.
 ```typescript
 /**
  * Default merchant-to-category rules.
- * Pattern matches against transaction description (case-insensitive).
+ * Pattern matches against transaction description or merchant name (case-insensitive).
  * Organized by category for readability.
  *
  * match_type: 'contains' | 'starts_with' | 'exact' | 'regex'
- * field: 'description' | 'merchant_name'
+ * field: 'description' | 'merchant' (where 'merchant' matches transactions.merchant_name)
  */
 export interface SeedRule {
   pattern: string;
   matchType: 'contains' | 'starts_with' | 'exact' | 'regex';
-  field: 'description' | 'merchant_name';
+  field: 'description' | 'merchant';
   categoryName: string;   // resolved to category_id at seed time
   priority: number;       // lower = higher priority
 }
@@ -1736,16 +1751,18 @@ Step 20: Git commit
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/api/categories` | JWT | List categories (flat) |
-| `GET` | `/api/categories/tree` | JWT | Get category tree |
+| `GET` | `/api/categories` | JWT | List categories (flat, excludes soft-deleted) |
+| `GET` | `/api/categories/tree` | JWT | Get category tree (recursive CTE, camelCase) |
 | `POST` | `/api/categories` | JWT | Create category |
+| `GET` | `/api/categories/:id` | JWT | Get single category by ID |
 | `PATCH` | `/api/categories/:id` | JWT | Update category |
-| `DELETE` | `/api/categories/:id` | JWT | Delete category |
+| `DELETE` | `/api/categories/:id` | JWT | Soft-delete category (+ descendants) |
 | `GET` | `/api/categories/:id/descendants` | JWT | Get descendant IDs |
-| `GET` | `/api/categorization-rules` | JWT | List rules |
-| `POST` | `/api/categorization-rules` | JWT | Create rule |
-| `PATCH` | `/api/categorization-rules/:id` | JWT | Update rule |
-| `DELETE` | `/api/categorization-rules/:id` | JWT | Soft delete rule |
+| `POST` | `/api/categories/reorder` | JWT | Reorder categories (Zod-validated) |
+| `GET` | `/api/categorization-rules` | JWT | List rules (user-scoped + global) |
+| `POST` | `/api/categorization-rules` | JWT | Create rule (Zod-validated) |
+| `PATCH` | `/api/categorization-rules/:id` | JWT | Update rule (allowlisted fields, ownership-checked) |
+| `DELETE` | `/api/categorization-rules/:id` | JWT | Soft delete rule (ownership-checked) |
 
 ---
 

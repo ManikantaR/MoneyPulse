@@ -18,6 +18,7 @@ interface MatchedRule {
 @Injectable()
 export class RuleEngineService {
   private readonly logger = new Logger(RuleEngineService.name);
+  private readonly regexCache = new Map<string, RegExp>();
 
   constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
 
@@ -142,7 +143,12 @@ export class RuleEngineService {
         return fieldValue === lowerPattern;
       case 'regex':
         try {
-          return new RegExp(pattern, 'i').test(fieldValue);
+          let compiled = this.regexCache.get(pattern);
+          if (!compiled) {
+            compiled = new RegExp(pattern, 'i');
+            this.regexCache.set(pattern, compiled);
+          }
+          return compiled.test(fieldValue);
         } catch {
           this.logger.warn(`Invalid regex pattern: ${pattern}`);
           return false;

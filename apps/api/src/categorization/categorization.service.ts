@@ -84,19 +84,33 @@ export class CategorizationService {
 
     const stillUncategorized: any[] = [];
 
+    // Group rule matches by categoryId for batched DB updates
+    const categorizedByCategoryId = new Map<string, string[]>();
+
     for (let i = 0; i < uncategorized.length; i++) {
       const match = ruleMatches.get(i);
       if (match) {
-        await this.db
-          .update(schema.transactions)
-          .set({
-            categoryId: match.categoryId,
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.transactions.id, uncategorized[i].id));
+        const txId = uncategorized[i].id as string;
+        const categoryId = match.categoryId as string;
+        const existing = categorizedByCategoryId.get(categoryId);
+        if (existing) {
+          existing.push(txId);
+        } else {
+          categorizedByCategoryId.set(categoryId, [txId]);
+        }
         stats.categorizedByRule++;
       } else {
         stillUncategorized.push(uncategorized[i]);
+      }
+    }
+
+    // Batch-update all rule-matched transactions (grouped by categoryId)
+    if (categorizedByCategoryId.size > 0) {
+      for (const [categoryId, ids] of categorizedByCategoryId.entries()) {
+        await this.db
+          .update(schema.transactions)
+          .set({ categoryId, updatedAt: new Date() })
+          .where(inArray(schema.transactions.id, ids));
       }
     }
 
@@ -204,26 +218,6 @@ export class CategorizationService {
       .from(schema.categories)
       .where(isNull(schema.categories.deletedAt));
     return new Map(categories.map((c: any) => [c.name, c.id]));
-  }
-
-  /**
-   * Resolve a category name to its UUID (excluding soft-deleted).
-   *
-   * @param name - The category name to look up
-   * @returns The category ID or `null` if not found
-   */
-  private async resolveCategoryName(name: string): Promise<string | null> {
-    const rows = await this.db
-      .select({ id: schema.categories.id })
-      .from(schema.categories)
-      .where(
-        and(
-          eq(schema.categories.name, name),
-          isNull(schema.categories.deletedAt),
-        ),
-      )
-      .limit(1);
-    return rows[0]?.id ?? null;
   }
 
   /**

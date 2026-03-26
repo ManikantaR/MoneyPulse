@@ -10,6 +10,11 @@ describe('PII Sanitizer', () => {
     expect(sanitizeText('CARD 4111-1111-1111-1111')).toBe('CARD [CARD]');
   });
 
+  it('should strip Amex credit card numbers (15-digit, 4-6-5)', () => {
+    expect(sanitizeText('AMEX 3782 822463 10005')).toBe('AMEX [CARD]');
+    expect(sanitizeText('AMEX 3782-822463-10005')).toBe('AMEX [CARD]');
+  });
+
   it('should strip email addresses', () => {
     expect(sanitizeText('FROM user@example.com')).toBe('FROM [EMAIL]');
   });

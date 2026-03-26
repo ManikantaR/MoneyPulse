@@ -39,7 +39,12 @@ import type {
 export class RulesController {
   constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
 
-  /** List all active (non-deleted) categorization rules, ordered by priority. */
+  /**
+   * GET /categorization-rules — List all active rules (user-scoped + global), ordered by priority.
+   *
+   * @param user - JWT token payload identifying the requesting user
+   * @returns `{ data: CategorizationRule[] }` — flat list of rules
+   */
   @Get()
   @ApiOperation({ summary: 'List all categorization rules' })
   async findAll(@CurrentUser() user: AuthTokenPayload) {
@@ -59,7 +64,13 @@ export class RulesController {
     return { data: rules };
   }
 
-  /** Create a new user-scoped categorization rule. */
+  /**
+   * POST /categorization-rules — Create a new user-scoped categorization rule.
+   *
+   * @param body - Validated rule creation payload (pattern, matchType, field, categoryId, priority)
+   * @param user - JWT token payload identifying the requesting user
+   * @returns `{ data: CategorizationRule }` — the created rule
+   */
   @Post()
   @HttpCode(201)
   @ApiOperation({ summary: 'Create categorization rule' })
@@ -84,7 +95,15 @@ export class RulesController {
     return { data: rows[0] };
   }
 
-  /** Update a categorization rule (partial update, allowlisted fields only). */
+  /**
+   * PATCH /categorization-rules/:id — Update a rule (partial, allowlisted fields only).
+   *
+   * @param id - Rule UUID
+   * @param body - Validated partial rule update payload
+   * @param user - JWT token payload identifying the requesting user
+   * @returns `{ data: CategorizationRule }` — the updated rule
+   * @throws {NotFoundException} If the rule does not exist or is not owned by the user
+   */
   @Patch(':id')
   @ApiOperation({ summary: 'Update rule' })
   async update(
@@ -128,7 +147,14 @@ export class RulesController {
     return { data: rows[0] };
   }
 
-  /** Soft-delete a rule by setting `deletedAt` to current timestamp. */
+  /**
+   * DELETE /categorization-rules/:id — Soft-delete a rule.
+   *
+   * @param id - Rule UUID
+   * @param user - JWT token payload identifying the requesting user
+   * @returns `{ data: { deleted: true } }`
+   * @throws {NotFoundException} If the rule does not exist or is not owned by the user
+   */
   @Delete(':id')
   @HttpCode(200)
   @ApiOperation({ summary: 'Soft delete rule' })

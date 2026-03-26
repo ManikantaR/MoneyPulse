@@ -1,10 +1,10 @@
 /**
  * Default merchant-to-category rules.
- * Pattern matches against transaction description (case-insensitive).
+ * Pattern matches against transaction description or merchant name (case-insensitive).
  * Organized by category for readability.
  *
  * match_type: 'contains' | 'starts_with' | 'exact' | 'regex'
- * field: 'description' | 'merchant'
+ * field: 'description' | 'merchant' (where 'merchant' matches transactions.merchant_name)
  */
 export interface SeedRule {
   pattern: string;

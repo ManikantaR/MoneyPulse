@@ -43,7 +43,7 @@ export class CategoriesService {
    * @returns Array of category rows with `depth` field
    */
   async findTree() {
-    const rows = await this.db.execute(sql`
+    const result = await this.db.execute(sql`
       WITH RECURSIVE cat_tree AS (
         SELECT id, name, icon, color, parent_id, sort_order, 0 AS depth
         FROM ${schema.categories}
@@ -57,7 +57,17 @@ export class CategoriesService {
       SELECT * FROM cat_tree
       ORDER BY depth, sort_order, name
     `);
-    return rows.rows ?? rows;
+    const rows = (result as any)?.rows ?? result;
+    if (!rows || (Array.isArray(rows) && rows.length === 0)) return [];
+    return (rows as any[]).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      icon: r.icon,
+      color: r.color,
+      parentId: r.parent_id ?? r.parentId ?? null,
+      sortOrder: r.sort_order ?? r.sortOrder ?? 0,
+      depth: r.depth,
+    }));
   }
 
   /**

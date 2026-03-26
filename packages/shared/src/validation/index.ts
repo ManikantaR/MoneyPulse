@@ -147,6 +147,12 @@ export const createCategorySchema = z.object({
 
 export const updateCategorySchema = createCategorySchema.partial();
 
+export const reorderCategoriesSchema = z.object({
+  items: z
+    .array(z.object({ id: z.uuid(), sortOrder: z.int().min(0) }))
+    .min(1),
+});
+
 // ── Categorization Rules ────────────────────────────────────
 
 export const createRuleSchema = z.object({
@@ -225,6 +231,7 @@ export type BulkCategorizeInput = z.infer<typeof bulkCategorizeSchema>;
 export type TransactionQuery = z.infer<typeof transactionQuerySchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+export type ReorderCategoriesInput = z.infer<typeof reorderCategoriesSchema>;
 export type CreateRuleInput = z.infer<typeof createRuleSchema>;
 export type UpdateRuleInput = z.infer<typeof updateRuleSchema>;
 export type CreateBudgetInput = z.infer<typeof createBudgetSchema>;

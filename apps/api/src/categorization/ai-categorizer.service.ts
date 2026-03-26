@@ -19,6 +19,7 @@ export class AiCategorizerService {
   private readonly ollamaUrl: string;
   private readonly ollamaModel: string;
   private readonly batchSize: number;
+  private readonly timeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     this.ollamaUrl =
@@ -27,6 +28,10 @@ export class AiCategorizerService {
       this.config.get<string>('OLLAMA_MODEL') || 'llama3.2:3b';
     this.batchSize = parseInt(
       this.config.get<string>('OLLAMA_BATCH_SIZE') || '20',
+      10,
+    );
+    this.timeoutMs = parseInt(
+      this.config.get<string>('OLLAMA_TIMEOUT_MS') || '30000',
       10,
     );
   }
@@ -80,9 +85,13 @@ export class AiCategorizerService {
     const prompt = this.buildPrompt(batch, categories);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           model: this.ollamaModel,
           prompt,
@@ -93,6 +102,8 @@ export class AiCategorizerService {
           },
         }),
       });
+
+      clearTimeout(timeout);
 
       if (!response.ok) {
         this.logger.warn(`Ollama request failed: ${response.status}`);
