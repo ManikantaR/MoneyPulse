@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, isNull, asc, sql } from 'drizzle-orm';
+import { eq, and, isNull, asc, sql } from 'drizzle-orm';
 import type {
   CreateCategoryInput,
   UpdateCategoryInput,
@@ -70,7 +70,9 @@ export class CategoriesService {
     const rows = await this.db
       .select()
       .from(schema.categories)
-      .where(eq(schema.categories.id, id))
+      .where(
+        and(eq(schema.categories.id, id), isNull(schema.categories.deletedAt)),
+      )
       .limit(1);
     return rows[0] ?? null;
   }
@@ -120,6 +122,9 @@ export class CategoriesService {
     }
 
     if (input.parentId) {
+      const parent = await this.findById(input.parentId);
+      if (!parent) throw new NotFoundException('Parent category not found');
+
       const descendants = await this.getDescendantIds(id);
       if (descendants.includes(input.parentId)) {
         throw new BadRequestException('Cannot set parent to a descendant');
@@ -189,6 +194,7 @@ export class CategoriesService {
       )
       SELECT id FROM descendants
     `);
-    return result.rows.map((r: any) => r.id);
+    const rows = result.rows ?? result;
+    return rows.map((r: any) => r.id);
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { isNull, asc } from 'drizzle-orm';
+import { isNull, asc, eq, or, and } from 'drizzle-orm';
 
 interface MatchedRule {
   ruleId: string;
@@ -37,16 +37,20 @@ export class RuleEngineService {
     const rules = await this.db
       .select()
       .from(schema.categorizationRules)
-      .where(isNull(schema.categorizationRules.deletedAt))
+      .where(
+        and(
+          isNull(schema.categorizationRules.deletedAt),
+          or(
+            isNull(schema.categorizationRules.userId),
+            eq(schema.categorizationRules.userId, userId),
+          ),
+        ),
+      )
       .orderBy(asc(schema.categorizationRules.priority));
 
-    const applicableRules = rules.filter(
-      (r: any) => r.userId === null || r.userId === userId,
-    );
-
-    for (const rule of applicableRules) {
+    for (const rule of rules) {
       const fieldValue =
-        rule.field === 'merchant_name'
+        rule.field === 'merchant'
           ? (merchantName || '').toLowerCase()
           : description.toLowerCase();
 
@@ -78,20 +82,24 @@ export class RuleEngineService {
     const rules = await this.db
       .select()
       .from(schema.categorizationRules)
-      .where(isNull(schema.categorizationRules.deletedAt))
+      .where(
+        and(
+          isNull(schema.categorizationRules.deletedAt),
+          or(
+            isNull(schema.categorizationRules.userId),
+            eq(schema.categorizationRules.userId, userId),
+          ),
+        ),
+      )
       .orderBy(asc(schema.categorizationRules.priority));
-
-    const applicableRules = rules.filter(
-      (r: any) => r.userId === null || r.userId === userId,
-    );
 
     const results = new Map<number, MatchedRule>();
 
     for (let i = 0; i < transactions.length; i++) {
       const txn = transactions[i];
-      for (const rule of applicableRules) {
+      for (const rule of rules) {
         const fieldValue =
-          rule.field === 'merchant_name'
+          rule.field === 'merchant'
             ? (txn.merchantName || '').toLowerCase()
             : txn.description.toLowerCase();
 

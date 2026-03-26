@@ -8,6 +8,7 @@ import {
   Param,
   UseGuards,
   HttpCode,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
@@ -97,5 +98,16 @@ export class CategoriesController {
   async descendants(@Param('id') id: string) {
     const ids = await this.categoriesService.getDescendantIds(id);
     return { data: ids };
+  }
+
+  /** Get a single category by ID. */
+  @Get(':id')
+  @ApiOperation({ summary: 'Get category by ID' })
+  async findById(@Param('id') id: string) {
+    const category = await this.categoriesService.findById(id);
+    if (!category) {
+      throw new NotFoundException('Category not found');
+    }
+    return { data: category };
   }
 }

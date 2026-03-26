@@ -3,6 +3,7 @@ import { SEED_RULES } from '@moneypulse/shared';
 /**
  * Seed default categorization rules.
  * Run after initial migration that creates categories.
+ * Idempotent: deletes existing global (userId IS NULL) rules before re-inserting.
  *
  * Usage: npx tsx db/seeds/seed-rules.ts
  */
@@ -24,6 +25,12 @@ export async function seedRules(db: any, schema: any) {
   }));
 
   if (rulesToInsert.length > 0) {
+    // Delete existing global rules (idempotent re-seed)
+    const { isNull } = await import('drizzle-orm');
+    await db
+      .delete(schema.categorizationRules)
+      .where(isNull(schema.categorizationRules.userId));
+
     await db.insert(schema.categorizationRules).values(rulesToInsert);
   }
 

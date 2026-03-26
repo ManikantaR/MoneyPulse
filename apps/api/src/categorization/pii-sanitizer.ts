@@ -11,29 +11,32 @@
  */
 
 const PII_PATTERNS: Array<{ regex: RegExp; replacement: string }> = [
-  // SSN: 123-45-6789
+  // SSN: 123-45-6789 (most specific dashed format)
   { regex: /\b\d{3}-\d{2}-\d{4}\b/g, replacement: '[SSN]' },
 
-  // Credit card: 4 groups of 4 digits
+  // Credit card: 4 groups of 4 digits (13-16 digits with optional separators)
   {
     regex: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
     replacement: '[CARD]',
   },
 
-  // Account numbers: 8-18 consecutive digits
+  // Routing number: exactly 9 digits (must come before generic account pattern)
+  { regex: /\b\d{9}\b/g, replacement: '[ROUTING]' },
+
+  // Account numbers: 8-18 consecutive digits (generic catch-all for digit sequences)
   { regex: /\b\d{8,18}\b/g, replacement: '[ACCT]' },
 
-  // Routing number: exactly 9 digits (common US format)
-  { regex: /\b\d{9}\b/g, replacement: '[ROUTING]' },
+  // US Phone: (123) 456-7890 or 123-456-7890 (requires at least one separator)
+  {
+    regex: /(?:\(\d{3}\)[\s.-]?\d{3}[\s.-]?\d{4}|\d{3}[\s.-]\d{3}[\s.-]\d{4})/g,
+    replacement: '[PHONE]',
+  },
 
   // Email
   {
     regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
     replacement: '[EMAIL]',
   },
-
-  // US Phone: (123) 456-7890 or 123-456-7890
-  { regex: /\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, replacement: '[PHONE]' },
 ];
 
 export interface SanitizedTransaction {

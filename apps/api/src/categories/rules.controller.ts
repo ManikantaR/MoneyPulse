@@ -9,14 +9,24 @@ import {
   UseGuards,
   HttpCode,
   Inject,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, isNull, asc, or } from 'drizzle-orm';
-import type { AuthTokenPayload } from '@moneypulse/shared';
+import {
+  createRuleSchema,
+  updateRuleSchema,
+} from '@moneypulse/shared';
+import type {
+  AuthTokenPayload,
+  CreateRuleInput,
+  UpdateRuleInput,
+} from '@moneypulse/shared';
 
 /**
  * REST controller for managing categorization rules.
@@ -54,14 +64,8 @@ export class RulesController {
   @HttpCode(201)
   @ApiOperation({ summary: 'Create categorization rule' })
   async create(
-    @Body()
-    body: {
-      pattern: string;
-      matchType: string;
-      field: string;
-      categoryId: string;
-      priority?: number;
-    },
+    @Body(new ZodValidationPipe(createRuleSchema))
+    body: CreateRuleInput,
     @CurrentUser() user: AuthTokenPayload,
   ) {
     const rows = await this.db
@@ -80,14 +84,46 @@ export class RulesController {
     return { data: rows[0] };
   }
 
-  /** Update a categorization rule (partial update). */
+  /** Update a categorization rule (partial update, allowlisted fields only). */
   @Patch(':id')
   @ApiOperation({ summary: 'Update rule' })
-  async update(@Param('id') id: string, @Body() body: any) {
+  async update(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateRuleSchema))
+    body: UpdateRuleInput,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const existing = await this.db
+      .select()
+      .from(schema.categorizationRules)
+      .where(
+        and(
+          eq(schema.categorizationRules.id, id),
+          eq(schema.categorizationRules.userId, user.sub),
+          isNull(schema.categorizationRules.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (existing.length === 0) {
+      throw new NotFoundException('Rule not found');
+    }
+
     const rows = await this.db
       .update(schema.categorizationRules)
-      .set({ ...body, updatedAt: new Date() })
-      .where(eq(schema.categorizationRules.id, id))
+      .set({
+        ...(body.pattern !== undefined && { pattern: body.pattern }),
+        ...(body.matchType !== undefined && { matchType: body.matchType }),
+        ...(body.field !== undefined && { field: body.field }),
+        ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
+        ...(body.priority !== undefined && { priority: body.priority }),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.categorizationRules.id, id),
+          eq(schema.categorizationRules.userId, user.sub),
+        ),
+      )
       .returning();
     return { data: rows[0] };
   }
@@ -96,11 +132,34 @@ export class RulesController {
   @Delete(':id')
   @HttpCode(200)
   @ApiOperation({ summary: 'Soft delete rule' })
-  async remove(@Param('id') id: string) {
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const existing = await this.db
+      .select()
+      .from(schema.categorizationRules)
+      .where(
+        and(
+          eq(schema.categorizationRules.id, id),
+          eq(schema.categorizationRules.userId, user.sub),
+          isNull(schema.categorizationRules.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (existing.length === 0) {
+      throw new NotFoundException('Rule not found');
+    }
+
     await this.db
       .update(schema.categorizationRules)
       .set({ deletedAt: new Date() })
-      .where(eq(schema.categorizationRules.id, id));
+      .where(
+        and(
+          eq(schema.categorizationRules.id, id),
+          eq(schema.categorizationRules.userId, user.sub),
+        ),
+      );
     return { data: { deleted: true } };
   }
 }

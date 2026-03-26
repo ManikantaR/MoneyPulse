@@ -4,12 +4,12 @@
  * Organized by category for readability.
  *
  * match_type: 'contains' | 'starts_with' | 'exact' | 'regex'
- * field: 'description' | 'merchant_name'
+ * field: 'description' | 'merchant'
  */
 export interface SeedRule {
   pattern: string;
   matchType: 'contains' | 'starts_with' | 'exact' | 'regex';
-  field: 'description' | 'merchant_name';
+  field: 'description' | 'merchant';
   categoryName: string; // resolved to category_id at seed time
   priority: number; // lower = higher priority
 }

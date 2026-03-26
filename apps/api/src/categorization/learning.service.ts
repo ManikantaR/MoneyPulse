@@ -31,7 +31,12 @@ export class LearningService {
     const [txn] = await this.db
       .select()
       .from(schema.transactions)
-      .where(eq(schema.transactions.id, transactionId))
+      .where(
+        and(
+          eq(schema.transactions.id, transactionId),
+          eq(schema.transactions.userId, userId),
+        ),
+      )
       .limit(1);
 
     if (!txn) return;

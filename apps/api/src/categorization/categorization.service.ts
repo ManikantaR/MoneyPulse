@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { RuleEngineService } from './rule-engine.service';
 import { AiCategorizerService } from './ai-categorizer.service';
 import { LearningService } from './learning.service';
@@ -59,7 +59,7 @@ export class CategorizationService {
 
     if (transactionIds.length === 0) return stats;
 
-    const transactions = await this.db
+    const uncategorized = await this.db
       .select()
       .from(schema.transactions)
       .where(
@@ -67,12 +67,9 @@ export class CategorizationService {
           eq(schema.transactions.userId, userId),
           isNull(schema.transactions.categoryId),
           isNull(schema.transactions.deletedAt),
+          inArray(schema.transactions.id, transactionIds),
         ),
       );
-
-    const uncategorized = transactions.filter(
-      (t: any) => transactionIds.includes(t.id) && !t.categoryId,
-    );
 
     if (uncategorized.length === 0) return stats;
 
@@ -107,7 +104,8 @@ export class CategorizationService {
 
     // ── Step 2: Ollama (Local AI) ──
     try {
-      const categories = await this.getActiveCategoryNames();
+      const categoryMap = await this.getActiveCategoryMap();
+      const categoryNames = Array.from(categoryMap.keys());
       const aiResults = await this.aiCategorizer.categorizeBatch(
         stillUncategorized.map((t: any) => ({
           date: t.date?.toISOString?.()?.split('T')[0] ?? t.date,
@@ -116,7 +114,7 @@ export class CategorizationService {
           isCredit: t.isCredit,
           merchantName: t.merchantName,
         })),
-        categories,
+        categoryNames,
       );
 
       const remainingAfterAi: any[] = [];
@@ -124,9 +122,7 @@ export class CategorizationService {
       for (let i = 0; i < stillUncategorized.length; i++) {
         const result = aiResults[i];
         if (result && result.confidence >= this.AI_AUTO_THRESHOLD) {
-          const categoryId = await this.resolveCategoryName(
-            result.categoryName,
-          );
+          const categoryId = categoryMap.get(result.categoryName) ?? null;
           if (categoryId) {
             await this.db
               .update(schema.transactions)
@@ -150,21 +146,9 @@ export class CategorizationService {
             remainingAfterAi.push(stillUncategorized[i]);
           }
         } else if (result) {
-          const categoryId = await this.resolveCategoryName(
-            result.categoryName,
-          );
-          if (categoryId) {
-            await this.db
-              .update(schema.transactions)
-              .set({
-                categoryId,
-                updatedAt: new Date(),
-              })
-              .where(eq(schema.transactions.id, stillUncategorized[i].id));
-            stats.suggested++;
-          } else {
-            remainingAfterAi.push(stillUncategorized[i]);
-          }
+          // Low-confidence: mark as suggested but do NOT update categoryId
+          stats.suggested++;
+          remainingAfterAi.push(stillUncategorized[i]);
         } else {
           remainingAfterAi.push(stillUncategorized[i]);
         }
@@ -195,7 +179,12 @@ export class CategorizationService {
     await this.db
       .update(schema.transactions)
       .set({ categoryId: newCategoryId, updatedAt: new Date() })
-      .where(eq(schema.transactions.id, transactionId));
+      .where(
+        and(
+          eq(schema.transactions.id, transactionId),
+          eq(schema.transactions.userId, userId),
+        ),
+      );
 
     await this.learningService.learnFromOverride(
       userId,
@@ -205,19 +194,20 @@ export class CategorizationService {
   }
 
   /**
-   * Get all active (non-deleted) category names.
+   * Get all active (non-deleted) categories as a name→id map.
    *
-   * @returns Array of category name strings
+   * @returns Map of category name → category ID
    */
-  private async getActiveCategoryNames(): Promise<string[]> {
+  private async getActiveCategoryMap(): Promise<Map<string, string>> {
     const categories = await this.db
-      .select({ name: schema.categories.name })
-      .from(schema.categories);
-    return categories.map((c: any) => c.name);
+      .select({ id: schema.categories.id, name: schema.categories.name })
+      .from(schema.categories)
+      .where(isNull(schema.categories.deletedAt));
+    return new Map(categories.map((c: any) => [c.name, c.id]));
   }
 
   /**
-   * Resolve a category name to its UUID.
+   * Resolve a category name to its UUID (excluding soft-deleted).
    *
    * @param name - The category name to look up
    * @returns The category ID or `null` if not found
@@ -226,7 +216,12 @@ export class CategorizationService {
     const rows = await this.db
       .select({ id: schema.categories.id })
       .from(schema.categories)
-      .where(eq(schema.categories.name, name))
+      .where(
+        and(
+          eq(schema.categories.name, name),
+          isNull(schema.categories.deletedAt),
+        ),
+      )
       .limit(1);
     return rows[0]?.id ?? null;
   }

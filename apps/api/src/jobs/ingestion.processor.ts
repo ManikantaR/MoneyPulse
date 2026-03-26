@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { selectParser } from '../ingestion/parsers/parser-registry';
 import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
@@ -147,6 +147,7 @@ export class IngestionProcessor extends WorkerHost {
           const insertedIds = await this.getInsertedTransactionIds(
             accountId,
             uploadId,
+            userId,
           );
           const categorizationStats =
             await this.categorizationService.categorizeBatch(
@@ -266,6 +267,7 @@ export class IngestionProcessor extends WorkerHost {
   private async getInsertedTransactionIds(
     accountId: string,
     sourceFileId: string,
+    userId: string,
   ): Promise<string[]> {
     const rows = await this.db
       .select({ id: schema.transactions.id })
@@ -274,6 +276,8 @@ export class IngestionProcessor extends WorkerHost {
         and(
           eq(schema.transactions.accountId, accountId),
           eq(schema.transactions.sourceFileId, sourceFileId),
+          eq(schema.transactions.userId, userId),
+          isNull(schema.transactions.deletedAt),
         ),
       );
     return rows.map((r: any) => r.id);

@@ -19,6 +19,10 @@ describe('PII Sanitizer', () => {
     expect(sanitizeText('CALL 555-123-4567')).toBe('CALL [PHONE]');
   });
 
+  it('should strip routing numbers (9 digits) as [ROUTING]', () => {
+    expect(sanitizeText('ROUTING 123456789')).toBe('ROUTING [ROUTING]');
+  });
+
   it('should strip long account numbers', () => {
     expect(sanitizeText('ACCT 123456789012')).toBe('ACCT [ACCT]');
   });
