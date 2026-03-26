@@ -147,6 +147,24 @@ export const createCategorySchema = z.object({
 
 export const updateCategorySchema = createCategorySchema.partial();
 
+export const reorderCategoriesSchema = z.object({
+  items: z
+    .array(z.object({ id: z.uuid(), sortOrder: z.int().min(0) }))
+    .min(1),
+});
+
+// ── Categorization Rules ────────────────────────────────────
+
+export const createRuleSchema = z.object({
+  pattern: z.string().min(1).max(500),
+  matchType: z.enum(['contains', 'starts_with', 'exact', 'regex']),
+  field: z.enum(['description', 'merchant']),
+  categoryId: z.uuid(),
+  priority: z.int().min(0).max(100).optional(),
+});
+
+export const updateRuleSchema = createRuleSchema.partial();
+
 // ── Budgets ─────────────────────────────────────────────────
 
 export const createBudgetSchema = z.object({
@@ -213,6 +231,9 @@ export type BulkCategorizeInput = z.infer<typeof bulkCategorizeSchema>;
 export type TransactionQuery = z.infer<typeof transactionQuerySchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+export type ReorderCategoriesInput = z.infer<typeof reorderCategoriesSchema>;
+export type CreateRuleInput = z.infer<typeof createRuleSchema>;
+export type UpdateRuleInput = z.infer<typeof updateRuleSchema>;
 export type CreateBudgetInput = z.infer<typeof createBudgetSchema>;
 export type UpdateBudgetInput = z.infer<typeof updateBudgetSchema>;
 export type CreateSavingsGoalInput = z.infer<typeof createSavingsGoalSchema>;

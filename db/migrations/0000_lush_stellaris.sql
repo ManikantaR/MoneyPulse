@@ -3,7 +3,7 @@ CREATE TYPE "public"."budget_period" AS ENUM('monthly', 'weekly');--> statement-
 CREATE TYPE "public"."file_type" AS ENUM('csv', 'excel', 'pdf');--> statement-breakpoint
 CREATE TYPE "public"."institution" AS ENUM('boa', 'chase', 'amex', 'citi', 'other');--> statement-breakpoint
 CREATE TYPE "public"."rule_field" AS ENUM('description', 'merchant');--> statement-breakpoint
-CREATE TYPE "public"."rule_match_type" AS ENUM('contains', 'startsWith', 'regex', 'exact');--> statement-breakpoint
+CREATE TYPE "public"."rule_match_type" AS ENUM('contains', 'starts_with', 'regex', 'exact');--> statement-breakpoint
 CREATE TYPE "public"."theme" AS ENUM('light', 'dark', 'system');--> statement-breakpoint
 CREATE TYPE "public"."upload_status" AS ENUM('pending', 'processing', 'completed', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('admin', 'member');--> statement-breakpoint

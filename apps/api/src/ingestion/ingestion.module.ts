@@ -8,11 +8,13 @@ import { ArchiverService } from './archiver.service';
 import { WatcherService } from './watcher.service';
 import { IngestionProcessor } from '../jobs/ingestion.processor';
 import { AuditModule } from '../audit/audit.module';
+import { CategorizationModule } from '../categorization/categorization.module';
 
 @Module({
   imports: [
     BullModule.registerQueue({ name: INGESTION_QUEUE }),
     AuditModule,
+    CategorizationModule,
   ],
   controllers: [IngestionController],
   providers: [

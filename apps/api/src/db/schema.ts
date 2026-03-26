@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   integer,
+  real,
   boolean,
   timestamp,
   jsonb,
@@ -39,7 +40,7 @@ export const uploadStatusEnum = pgEnum('upload_status', [
 export const budgetPeriodEnum = pgEnum('budget_period', ['monthly', 'weekly']);
 export const ruleMatchTypeEnum = pgEnum('rule_match_type', [
   'contains',
-  'startsWith',
+  'starts_with',
   'regex',
   'exact',
 ]);
@@ -223,9 +224,7 @@ export const transactions = pgTable(
 
 export const categorizationRules = pgTable('categorization_rules', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
+  userId: uuid('user_id').references(() => users.id),
   pattern: text('pattern').notNull(),
   matchType: ruleMatchTypeEnum('match_type').notNull(),
   field: ruleFieldEnum('field').notNull().default('description'),
@@ -234,13 +233,14 @@ export const categorizationRules = pgTable('categorization_rules', {
     .references(() => categories.id),
   priority: integer('priority').notNull().default(0),
   isAiGenerated: boolean('is_ai_generated').notNull().default(false),
-  confidence: integer('confidence'),
+  confidence: real('confidence'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
 // ── Budgets ─────────────────────────────────────────────────
