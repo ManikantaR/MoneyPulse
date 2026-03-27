@@ -1082,3 +1082,55 @@ PDF File Uploaded
 │ (Phase 3 rules)  │
 └──────────────────┘
 ```
+
+---
+
+## Implementation Notes (Completed)
+
+**Status: ✅ Phase 4 Complete**
+
+### Deviations from Original Spec
+
+1. **Routes consolidated into `main.py`** — Instead of a separate `routes.py`, all routes are defined in `main.py` to keep the service simple and avoid circular imports. The service has only 2 endpoints.
+
+2. **`institution` parameter requires `Form()` annotation** — FastAPI needs explicit `Form(default=None)` when mixing `File()` and form fields in multipart requests. A bare `str | None = None` receives `None` silently.
+
+3. **BofA auto-detection on all requests** — The cascade tries BofA parser first even without an institution hint (`institution is None`). BofA parser self-detects via "bank of america" header text and returns empty if not a match, so this is safe and provides better UX.
+
+4. **Ollama model changed to `mistral:7b`** — Per user preference, using `mistral:7b` instead of `llama3.2:3b` for better extraction quality.
+
+5. **Synthetic test fixtures via fpdf2** — Instead of manual PDF creation, tests use `fpdf2` to programmatically generate BofA statements and tabular PDFs. This makes tests fully self-contained with no external fixture files.
+
+6. **`python-multipart` dependency required** — FastAPI file uploads require this package at runtime even though it's not a direct import.
+
+### Test Coverage
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| Python (parsers + routes) | 57 | ✅ All pass |
+| NestJS (PdfProxyService) | 9 | ✅ All pass |
+| **Total** | **66** | ✅ |
+
+### Files Created/Modified
+
+| File | Action |
+|------|--------|
+| `services/pdf-parser/src/models.py` | Created |
+| `services/pdf-parser/src/main.py` | Modified (was stub) |
+| `services/pdf-parser/src/parsers/boa_pdf.py` | Created |
+| `services/pdf-parser/src/parsers/pdfplumber_parser.py` | Created |
+| `services/pdf-parser/src/parsers/ai_parser.py` | Created |
+| `services/pdf-parser/src/tests/fixtures.py` | Created |
+| `services/pdf-parser/src/tests/test_boa_pdf.py` | Created |
+| `services/pdf-parser/src/tests/test_pdfplumber_parser.py` | Created |
+| `services/pdf-parser/src/tests/test_ai_parser.py` | Created |
+| `services/pdf-parser/src/tests/test_routes.py` | Created |
+| `services/pdf-parser/pyproject.toml` | Modified |
+| `services/pdf-parser/Dockerfile` | Modified |
+| `apps/api/src/ingestion/parsers/pdf-proxy.service.ts` | Created |
+| `apps/api/src/ingestion/parsers/__tests__/pdf-proxy.service.spec.ts` | Created |
+| `apps/api/src/ingestion/ingestion.module.ts` | Modified |
+| `apps/api/src/jobs/ingestion.processor.ts` | Modified |
+| `.env.example` | Modified |
+| `docker-compose.yml` | Modified |
+| `.github/workflows/ci.yml` | Modified |

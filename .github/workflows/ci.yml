@@ -13,6 +13,7 @@ concurrency:
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.32.1'
+  PYTHON_VERSION: '3.12'
 
 jobs:
   # ── Build & Lint ──────────────────────────────────────────
@@ -140,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [build, test]
+    needs: [build, test, test-pdf-parser]
     steps:
       - uses: actions/checkout@v4
 
@@ -166,3 +167,34 @@ jobs:
           tags: moneypulse/web:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build PDF Parser image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/pdf-parser/Dockerfile
+          push: false
+          tags: moneypulse/pdf-parser:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── PDF Parser Tests (Python) ────────────────────────────
+  test-pdf-parser:
+    name: PDF Parser Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install PDF parser dependencies
+        working-directory: services/pdf-parser
+        run: pip install '.[dev]'
+
+      - name: Run PDF parser tests
+        working-directory: services/pdf-parser
+        run: python -m pytest src/tests/ -v
