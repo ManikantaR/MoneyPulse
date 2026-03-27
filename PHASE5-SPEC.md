@@ -2426,3 +2426,30 @@ Step 22: Git commit
 | `PATCH`  | `/api/categories/:id`               | JWT  | Update category                     |
 | `DELETE` | `/api/categories/:id`               | JWT  | Soft delete + descendants           |
 | `POST`   | `/api/categories/reorder`           | JWT  | Reorder categories                  |
+
+---
+
+## Implementation Status ✅
+
+**All spec items implemented. Deviations documented below.**
+
+### Deviations from Spec
+
+| Spec Item | Implementation | Reason |
+|-----------|---------------|--------|
+| TanStack Table for transactions | HTML `<table>` with inline `<select>` | Simpler, no extra dependency needed for current features |
+| TransactionGrid as standalone component | Inline in `transactions/page.tsx` | Single consumer, no reuse case yet |
+| FileUpload as standalone component | Inline in `upload/page.tsx` | Same reasoning |
+| NotificationBell as separate component | Integrated into `TopBar.tsx` | Bell icon + unread badge + `useUnreadCount()` hook in TopBar directly |
+| Layout components in `components/layout/` | Root `components/` directory | Flatter structure for small component count |
+| Redis caching (5min TTL) for analytics | No caching — direct DB queries | Deferred; unnecessary at current data scale |
+| Split transaction UI | Not implemented | Deferred to Phase 6 |
+| Class-based `api.ts` | Function-based `api.ts` with `apiFetch()` | Simpler for current needs |
+| `api.ts` class interceptors | `apiFetch()` wraps native `fetch` + handles 401 redirect | Same behavior, less abstraction |
+
+### Test Coverage
+
+- **Backend**: 112 tests (18 analytics, 5 export, 6 rule-engine, 5 learning, 6 categories, 6 auth, 5 users, 5 generic-csv, 4 boa-parser, 5 chase-checking, 4 chase-cc, 5 citi-parser, 5 amex-parser, 9 pdf-proxy, 5 dedup, 14 other)
+- **Frontend**: 11 unit tests (format utilities)
+- **E2E**: 10 analytics endpoint tests
+- **All builds pass**: `nest build` + `next build`

@@ -46,6 +46,9 @@ jobs:
       - name: Type-check API
         run: pnpm --filter @moneypulse/api exec tsc --noEmit
 
+      - name: Build Web
+        run: pnpm --filter @moneypulse/web build
+
   # ── Unit Tests ────────────────────────────────────────────
   test:
     name: Unit Tests
@@ -72,6 +75,9 @@ jobs:
 
       - name: Run API unit tests
         run: pnpm --filter @moneypulse/api test
+
+      - name: Run Web unit tests
+        run: pnpm --filter @moneypulse/web test
 
   # ── Integration / E2E Tests ───────────────────────────────
   test-e2e:

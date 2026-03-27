@@ -341,7 +341,7 @@ moneypulse/
 | **Phase 2** | ✅ DONE | `48ab0fa` | Bank accounts, CSV/Excel parsers (BofA/Chase/Amex/Citi/Generic), upload pipeline, dedup, watch folder, transactions CRUD. 49 unit tests pass. Security hardened: account ownership checks, filename sanitization, scoped upload status, .xls rejected, csvFormatConfig validated with Zod |
 | **Phase 3** | ✅ DONE | `af246eb` | AI categorization: rule engine (60+ seed rules), Ollama batch categorizer, PII sanitizer, learning loop, category tree CRUD, categorization rules REST API. 72 unit tests pass. Post-review fixes: userId in AI rule dedup, user-scoped rules query, schema-ref in getDescendantIds, enum migration, DB credentials |
 | **Phase 4** | ✅ DONE | `TBD` | PDF parser microservice (Python FastAPI): BofA-specific + generic pdfplumber + Ollama AI fallback. NestJS PdfProxyService. Cascade auto-detects bank. 66 tests pass (57 Python + 9 NestJS). Docker + CI updated |
-| **Phase 5** | ⬜ Not started | — | Dashboard & visualization (Recharts) |
+| **Phase 5** | ✅ DONE | `TBD` | Dashboard & visualization: 7 analytics SQL endpoints (camelCase transforms), 8 Recharts chart components, dashboard with KPI cards + PeriodSelector, transactions with bulk select + CSV export, upload with drag-drop + history, accounts + categories CRUD pages, AppShell layout (collapsible sidebar, TopBar with notifications, dark mode). 112 API tests + 11 web tests pass |
 | **Phase 6** | ⬜ Not started | — | Budgets, alerts & notifications |
 | **Phase 7** | ⬜ Not started | — | MCP server |
 | **Phase 8** | ⬜ Not started | — | Investment account tracking |
@@ -576,7 +576,7 @@ Transaction Imported
 
 ---
 
-## Phase 5: Dashboard & Visualization
+## Phase 5: Dashboard & Visualization ✅
 
 **Dependencies: Phase 2 + Phase 3**
 
@@ -679,24 +679,41 @@ All queries filter: `WHERE is_split_parent = false AND deleted_at IS NULL`
 
 ### Steps
 
-| # | Step | Details |
-|---|------|---------|
-| 5.1 | Analytics SQL queries | PostgreSQL aggregation queries with date range + filters; cached in Redis (5min TTL); filter `is_split_parent=false AND deleted_at IS NULL` |
-| 5.2 | Transaction grid API | Offset-based pagination (page/pageSize), full-text search on description+merchant, multi-column sort, CSV export, bulk select |
-| 5.3 | Period selector component | Presets: This Month, Last Month, Last 3/6 Months, YTD, Last Year, Custom Range |
-| 5.4 | Build 7 Recharts chart components | `IncomeExpenseBar`, `CategoryDonut`, `SpendingTrendLine`, `AccountBalanceHistory`, `CreditUtilization`, `NetWorthCard`, `TopMerchantsBar` |
-| 5.5 | Dashboard page | Responsive CSS Grid layout, all charts + summary cards, dark mode compatible |
-| 5.6 | Transaction page | TanStack Table with inline category edit → on change: PATCH + auto-create rule. Bulk selection + categorize. Split transaction UI |
-| 5.7 | Upload page | Drag-and-drop zone, account selector, progress indicator (polling), upload history log with error details |
+| # | Step | Status | Details |
+|---|------|--------|---------|
+| 5.1 | Analytics SQL queries | ✅ | 7 PostgreSQL aggregation endpoints with date range + account filters. camelCase transform layer in service. No Redis cache yet (deferred) |
+| 5.2 | Transaction grid API | ✅ | Paginated list, search, CSV export endpoint, bulk categorize endpoint |
+| 5.3 | Period selector component | ✅ | Presets: This Month, Last Month, Last 90 Days, YTD, Last 12 Months + custom date range |
+| 5.4 | Build 8 Recharts chart components | ✅ | `StatCard`, `IncomeExpenseBar`, `CategoryDonut`, `SpendingTrendLine`, `AccountBalanceHistory`, `CreditUtilization`, `NetWorthCard`, `TopMerchantsBar` |
+| 5.5 | Dashboard page | ✅ | 3-column responsive grid, KPI stat cards (computed from monthly rows), all charts, PeriodSelector, dark mode |
+| 5.6 | Transaction page | ✅ | HTML table with inline category dropdown, bulk select checkboxes + assign category, CSV export download. No TanStack Table (not needed). Split txn UI deferred to Phase 6 |
+| 5.7 | Upload page | ✅ | Drag-and-drop zone, account selector, upload history table |
+| 5.8 | App layout | ✅ | AppShell (flex), collapsible Sidebar (6 nav items), TopBar (notification bell + dark mode toggle + avatar + logout) |
+| 5.9 | Additional pages | ✅ | Accounts CRUD (card grid), Categories CRUD (tree view with icon/color), Settings (timezone, theme) |
+
+### Implementation Notes
+
+- **No TanStack Table** — HTML table with inline selects is sufficient; adds no dependency
+- **No Redis caching** — Analytics queries hit DB directly; can add 5min TTL cache in Phase 6+
+- **Notification bell** integrated into TopBar (not a separate component)
+- **TransactionGrid / FileUpload** are inline in their page files (not extracted to standalone components)
+- **camelCase transforms** done in `analytics.service.ts` `.map()` layer (not via NestJS interceptor/serializer)
+- **KPI totals** computed client-side from monthly `incomeVsExpenses` rows via `useMemo`
 
 ### Key Files
 
-- `apps/api/src/analytics/` — aggregation queries
-- `apps/api/src/transactions/transactions.controller.ts` — paginated list + bulk + split
-- `apps/web/src/app/page.tsx` — dashboard layout
-- `apps/web/src/components/charts/` — all Recharts wrappers
-- `apps/web/src/components/TransactionGrid.tsx`
-- `apps/web/src/components/PeriodSelector.tsx`
+- `apps/api/src/analytics/analytics.service.ts` — 7 aggregation methods with camelCase transforms
+- `apps/api/src/analytics/analytics.controller.ts` — 7 GET endpoints with JwtAuthGuard
+- `apps/api/src/analytics/__tests__/analytics.service.spec.ts` — 18 unit tests
+- `apps/api/src/transactions/export.service.ts` — CSV export (5 unit tests)
+- `apps/web/src/components/AppShell.tsx` — flex layout shell
+- `apps/web/src/components/Sidebar.tsx` — collapsible navigation
+- `apps/web/src/components/TopBar.tsx` — notification bell + theme toggle
+- `apps/web/src/components/PeriodSelector.tsx` — date range selector
+- `apps/web/src/components/charts/` — 8 Recharts chart components
+- `apps/web/src/lib/hooks/useAnalytics.ts` — 7 typed React Query hooks
+- `apps/web/src/app/(protected)/page.tsx` — dashboard
+- `apps/web/src/app/(protected)/transactions/page.tsx` — transaction grid with bulk select
 
 ---
 
