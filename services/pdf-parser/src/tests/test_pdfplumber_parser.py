@@ -141,8 +141,7 @@ class TestPdfPlumberParserFullParse:
         result = self.parser.parse(content)
         assert result.method == "rule_based"
         assert result.pages_processed >= 1
-        # Should extract at least some transactions from the table
-        assert len(result.transactions) >= 0  # relaxed — tables may not always extract
+        assert len(result.transactions) > 0
 
     def test_parse_empty_pdf(self):
         """Empty PDF should return empty results."""

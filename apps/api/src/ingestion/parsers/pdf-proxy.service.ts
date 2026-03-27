@@ -30,10 +30,15 @@ interface PdfParseResponse {
 export class PdfProxyService {
   private readonly logger = new Logger(PdfProxyService.name);
   private readonly pdfServiceUrl: string;
+  private readonly timeoutMs: number;
 
   constructor(private readonly config: ConfigService) {
     this.pdfServiceUrl =
       this.config.get<string>('PDF_PARSER_URL') || 'http://localhost:5000';
+    this.timeoutMs = parseInt(
+      this.config.get<string>('PDF_PARSER_TIMEOUT_MS') || '30000',
+      10,
+    );
   }
 
   /**
@@ -44,6 +49,7 @@ export class PdfProxyService {
    * @param filename - Original filename for the multipart upload
    * @param institution - Optional institution hint (e.g., 'boa') for parser selection
    * @returns Parsed transactions and any errors from the PDF service
+   * @throws Never — all errors are caught and returned as FileUploadError entries
    */
   async parsePdf(
     buffer: Buffer,
@@ -61,10 +67,19 @@ export class PdfProxyService {
         formData.append('institution', institution);
       }
 
-      const response = await fetch(`${this.pdfServiceUrl}/parse`, {
-        method: 'POST',
-        body: formData,
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      let response: Response;
+      try {
+        response = await fetch(`${this.pdfServiceUrl}/parse`, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       if (!response.ok) {
         const errorText = await response.text();

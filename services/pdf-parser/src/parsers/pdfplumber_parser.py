@@ -22,9 +22,6 @@ class PdfPlumberParser:
     Amount/Debit/Credit) and parses individual rows into transactions.
     """
 
-    DATE_PATTERN = re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}")
-    AMOUNT_PATTERN = re.compile(r"-?\$?[\d,]+\.\d{2}")
-
     def parse(self, content: bytes) -> ParseResponse:
         """Parse a PDF file by extracting tables and identifying transaction rows.
 

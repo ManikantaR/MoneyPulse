@@ -78,18 +78,31 @@ async def parse_pdf(
 
     logger.info(f"Parsing PDF: {file.filename} ({len(content)} bytes), institution={institution}")
 
+    # Track the most informative fallback result across all strategies
+    best_fallback: ParseResponse | None = None
+
+    def _is_more_informative(candidate: ParseResponse, current: ParseResponse | None) -> bool:
+        """Return True if candidate has more diagnostic value than current best."""
+        if current is None:
+            return True
+        return candidate.pages_processed > current.pages_processed or len(candidate.errors) > len(current.errors)
+
     # Strategy 1: Bank-specific parser (BofA auto-detects via header text)
     if institution == "boa" or institution is None:
         result = boa_parser.parse(content)
         if result.transactions:
             logger.info(f"BofA parser extracted {len(result.transactions)} transactions")
             return result
+        if _is_more_informative(result, best_fallback):
+            best_fallback = result
 
     # Strategy 2: Generic pdfplumber table extraction
     result = generic_parser.parse(content)
     if result.transactions:
         logger.info(f"Generic parser extracted {len(result.transactions)} transactions")
         return result
+    if _is_more_informative(result, best_fallback):
+        best_fallback = result
 
     # Strategy 3: AI fallback
     logger.info("Rule-based parsing failed, trying AI extraction")
@@ -97,14 +110,18 @@ async def parse_pdf(
     if result.transactions:
         logger.info(f"AI parser extracted {len(result.transactions)} transactions")
         return result
+    if _is_more_informative(result, best_fallback):
+        best_fallback = result
 
-    # Nothing worked
+    # Nothing worked — return the most informative failure metadata collected
     logger.warning(f"All parsers failed for {file.filename}")
+    fallback_errors = list(best_fallback.errors) if best_fallback and best_fallback.errors else []
+    fallback_errors += [ParseError(page=0, error="Could not extract transactions from this PDF", raw="")]
     return ParseResponse(
         transactions=[],
-        errors=[ParseError(page=0, error="Could not extract transactions from this PDF", raw="")],
-        detected_bank=None,
-        pages_processed=0,
+        errors=fallback_errors,
+        detected_bank=best_fallback.detected_bank if best_fallback else None,
+        pages_processed=best_fallback.pages_processed if best_fallback else 0,
         method="none",
     )
 

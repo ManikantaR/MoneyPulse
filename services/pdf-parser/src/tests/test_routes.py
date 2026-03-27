@@ -64,7 +64,7 @@ class TestParseEndpoint:
         assert "method" in body
 
     def test_parse_with_institution_hint(self):
-        """Institution hint should be accepted as a query parameter."""
+        """Institution hint should be accepted as a multipart form field."""
         from src.tests.fixtures import create_simple_pdf
 
         content = create_simple_pdf("Bank of America statement")
