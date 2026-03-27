@@ -33,7 +33,7 @@ Full-stack expense/income tracking app with bank statement ingestion (CSV, PDF, 
 - **MCP Server** — TypeScript stdio server exposing transaction query tools for AI agents
 - **PostgreSQL 16** — Primary data store, named volume for persistence
 - **Redis 7** — BullMQ job queue for file processing + session cache
-- **Ollama** — Local LLM (`llama3.2:3b`) for categorization + PDF extraction (Docker Compose with optional profile; supports external URL override)
+- **Ollama** — Local LLM (`mistral:7b`) for categorization + PDF extraction (Docker Compose with optional profile; supports external URL override)
 
 ---
 
@@ -51,7 +51,7 @@ Full-stack expense/income tracking app with bank statement ingestion (CSV, PDF, 
 | **Charts** | Recharts | React-native, composable, responsive, well-maintained |
 | **Job queue** | BullMQ + Redis | Async file processing with retries, cron for budget checks |
 | **PDF parsing** | Python microservice | Best PDF libs (pdfplumber, tabula-py) are Python; isolated responsibility via HTTP |
-| **AI model** | Ollama primary (`llama3.2:3b`), cloud opt-in | Privacy first — data never leaves NAS; 3B model needs ~2GB RAM, excellent for classification |
+| **AI model** | Ollama primary (`mistral:7b`), cloud opt-in | Privacy first — data never leaves NAS; 7B model needs ~4GB RAM, excellent for classification + PDF extraction |
 | **Dedup** | Bank txn ID + SHA256 hash fallback | Covers banks with/without transaction IDs in CSV |
 | **Account numbers** | **Last 4 digits only, NEVER store full** | If DB compromised, no usable account numbers exposed |
 | **Balance tracking** | **Option B: Starting balance + computed** | User provides starting balance at account creation; running balance computed from there. Upgrade to snapshot (Option C) if slow |
@@ -72,7 +72,7 @@ Before ANY cloud LLM call, a sanitization pipeline runs:
 
 ### Ollama Deployment Strategy
 
-- **Default**: Ollama runs inside Docker Compose with `llama3.2:3b` model (2GB RAM)
+- **Default**: Ollama runs inside Docker Compose with `mistral:7b` model (4GB RAM)
 - **Optional profile**: `docker compose --profile ai up` to include Ollama
 - **External override**: Set `OLLAMA_URL=http://192.168.x.x:11434` to point at a separate PC/mini PC and disable the Compose Ollama service
 - Both NestJS API and PDF Parser read `OLLAMA_URL` from env
@@ -340,7 +340,7 @@ moneypulse/
 | **Phase 1** | ✅ DONE | `515556a` | Auth (JWT + cookies + Redis), users, audit, guards, login/register/settings UI, 13 unit tests pass |
 | **Phase 2** | ✅ DONE | `48ab0fa` | Bank accounts, CSV/Excel parsers (BofA/Chase/Amex/Citi/Generic), upload pipeline, dedup, watch folder, transactions CRUD. 49 unit tests pass. Security hardened: account ownership checks, filename sanitization, scoped upload status, .xls rejected, csvFormatConfig validated with Zod |
 | **Phase 3** | ✅ DONE | `af246eb` | AI categorization: rule engine (60+ seed rules), Ollama batch categorizer, PII sanitizer, learning loop, category tree CRUD, categorization rules REST API. 72 unit tests pass. Post-review fixes: userId in AI rule dedup, user-scoped rules query, schema-ref in getDescendantIds, enum migration, DB credentials |
-| **Phase 4** | ⬜ Not started | — | PDF parser microservice (Python) |
+| **Phase 4** | ✅ DONE | `TBD` | PDF parser microservice (Python FastAPI): BofA-specific + generic pdfplumber + Ollama AI fallback. NestJS PdfProxyService. Cascade auto-detects bank. 66 tests pass (57 Python + 9 NestJS). Docker + CI updated |
 | **Phase 5** | ⬜ Not started | — | Dashboard & visualization (Recharts) |
 | **Phase 6** | ⬜ Not started | — | Budgets, alerts & notifications |
 | **Phase 7** | ⬜ Not started | — | MCP server |
@@ -359,7 +359,7 @@ moneypulse/
 | 0.2 | Scaffold NestJS API | `nest new api`; install `@nestjs/config`, `@nestjs/swagger`, `@nestjs/passport`, `@nestjs/jwt`, `@nestjs/bullmq`, `@nestjs/throttler`, `drizzle-orm`, `pg`, `bcrypt`, `zod` |
 | 0.3 | Scaffold Next.js UI | `create-next-app` with TypeScript + Tailwind + App Router; install `recharts`, `@tanstack/react-query`, `@tanstack/react-table`, `shadcn/ui`, `date-fns`, `next-themes` (dark mode) |
 | 0.4 | Shared package | Zod schemas for all DTOs, TypeScript types, constants (institutions, default categories) |
-| 0.5 | Docker Compose | PostgreSQL 16, Redis 7, Ollama (profile: ai, model: llama3.2:3b), API, Web, PDF Parser; named volumes; `.env.example`; dev override with hot reload; health checks on all services |
+| 0.5 | Docker Compose | PostgreSQL 16, Redis 7, Ollama (profile: ai, model: mistral:7b), API, Web, PDF Parser; named volumes; `.env.example`; dev override with hot reload; health checks on all services |
 | 0.6 | Database migration | Drizzle schema → initial migration → seed: 15 default categories + 4 institution configs |
 | 0.7 | Health check endpoints | `GET /health` on API + PDF Parser; Docker HEALTHCHECK directives |
 | 0.8 | Backup container | Cron-based `pg_dump` to NAS shared folder, 30-day retention |
@@ -502,7 +502,7 @@ Cleared,03/10/2026,PAYMENT RECEIVED,,500.00
 | # | Step | Details |
 |---|------|---------|
 | 3.1 | Rule engine | Priority-ordered rules from `categorization_rules` table. Match types: `contains`, `starts_with`, `regex`, `exact` on description/merchant. First-match wins. Seed 60+ common rules (AMAZON→Shopping, STARBUCKS→Dining, SHELL→Gas, etc.) |
-| 3.2 | Ollama categorizer | Uncategorized txns → batch 20-50 per call to Ollama (`llama3.2:3b`). Prompt returns `{category, subcategory, confidence, merchant_name}`. Confidence > 0.85 → auto-assign + create rule. < 0.85 → "suggested" for user review |
+| 3.2 | Ollama categorizer | Uncategorized txns → batch 20-50 per call to Ollama (`mistral:7b`). Prompt returns `{category, subcategory, confidence, merchant_name}`. Confidence > 0.85 → auto-assign + create rule. < 0.85 → "suggested" for user review |
 | 3.3 | Cloud AI fallback | PII sanitizer strips all identifiers → only sends merchant+date+amount to OpenAI/Claude API. User setting: `enable_cloud_ai` (default OFF) |
 | 3.4 | Learning loop | User overrides category → auto-generate rule (e.g., "UBER EATS" manually → "Dining" → rule created). Track AI accuracy via `is_ai_generated` + `confidence` fields |
 | 3.5 | **Bulk categorization** | `POST /transactions/bulk-categorize` — body: `{transaction_ids: [...], category_id: "..."}`. Creates rule from common pattern if descriptions share a prefix. Audit logged |
@@ -522,7 +522,7 @@ Transaction Imported
          ▼
 ┌─────────────────┐     Confidence > 0.85
 │  Ollama (Local)  │────────────────► Auto-Assign + Create Rule ✓
-│  llama3.2:3b     │
+│  mistral:7b      │
 └────────┬────────┘
          │ Low Confidence
          ▼
@@ -552,24 +552,27 @@ Transaction Imported
 
 ---
 
-## Phase 4: PDF Parser Microservice
+## Phase 4: PDF Parser Microservice ✅
 
 **Dependencies: Phase 2 | Can run parallel with Phase 3**
 
 | # | Step | Details |
 |---|------|---------|
-| 4.1 | Python FastAPI service | `POST /parse` accepts PDF binary → returns JSON array of transactions. Deps: `pdfplumber`, `tabula-py`, `fastapi`, `uvicorn`. Health: `GET /health` |
-| 4.2 | Rule-based extraction | `pdfplumber` extracts text tables. Bank-specific extractors: BofA (table headers), Chase ("Account Activity" section), Amex ("New Charges"/"Payments"), Citi (itemized). `tabula-py` fallback for complex layouts |
-| 4.3 | AI extraction fallback | If table extraction fails → send page text to Ollama (`llama3.2:3b`). Prompt: "Extract transactions from this bank statement. Return JSON array with date, description, amount." PII sanitized for any cloud call |
-| 4.4 | NestJS integration | NestJS calls `http://pdf-parser:5000/parse` internally. File type = PDF → forward to Python service → receive JSON → continue ingestion pipeline |
+| 4.1 | Python FastAPI service | `POST /parse` accepts PDF binary + optional `institution` hint → returns JSON transactions. Deps: `pdfplumber`, `tabula-py`, `fastapi`, `uvicorn`, `httpx`, `pydantic`, `python-multipart`. Health: `GET /health` |
+| 4.2 | Rule-based extraction | BofA-specific parser (regex on pdfplumber text, section tracking for deposits/withdrawals). Generic pdfplumber table parser (header detection, single-amount and split debit/credit layouts). `tabula-py` available for complex layouts |
+| 4.3 | AI extraction fallback | If table extraction fails → send page text to Ollama (`mistral:7b`). Structured prompt requesting JSON array. PII sanitized for any cloud call. 60s timeout |
+| 4.4 | NestJS integration | `PdfProxyService` calls `http://pdf-parser:5000/parse` via native `fetch` + `FormData`. Snake→camelCase response mapping. Wired into `IngestionProcessor` PDF pipeline (parse → dedup → insert → categorize → archive → audit) |
+| 4.5 | Auto-detection cascade | BofA parser tried first on all requests (self-detects via header text) → generic table → AI fallback. Institution hint bypasses detection |
 
 ### Key Files
 
-- `services/pdf-parser/src/main.py`
-- `services/pdf-parser/src/parsers/pdfplumber_parser.py`
-- `services/pdf-parser/src/parsers/ai_parser.py`
-- `services/pdf-parser/src/tests/`
-- `apps/api/src/ingestion/parsers/pdf.proxy.ts` — HTTP client to Python service
+- `services/pdf-parser/src/main.py` — FastAPI app + routes
+- `services/pdf-parser/src/models.py` — Pydantic models (ParsedTransaction, ParseResponse)
+- `services/pdf-parser/src/parsers/boa_pdf.py` — BofA-specific parser
+- `services/pdf-parser/src/parsers/pdfplumber_parser.py` — Generic table parser
+- `services/pdf-parser/src/parsers/ai_parser.py` — Ollama AI fallback
+- `services/pdf-parser/src/tests/` — 57 Python tests + synthetic PDF fixtures (fpdf2)
+- `apps/api/src/ingestion/parsers/pdf-proxy.service.ts` — NestJS HTTP client (9 tests)
 
 ---
 
@@ -854,7 +857,7 @@ git pull && docker compose build && docker compose up -d
 | **Database** | PostgreSQL | 16 |
 | **Cache/Queue** | Redis + BullMQ | 7.x |
 | **PDF Parsing** | Python FastAPI + pdfplumber | 3.12 |
-| **AI (Local)** | Ollama + llama3.2:3b | latest |
+| **AI (Local)** | Ollama + mistral:7b | latest |
 | **AI (Cloud)** | OpenAI / Anthropic API | opt-in |
 | **MCP** | @modelcontextprotocol/sdk | latest |
 | **Monorepo** | pnpm + Turborepo | latest |
@@ -924,7 +927,7 @@ All decisions from the planning phase, for reference:
 | 11 | Category depth | Unlimited (recursive CTE) |
 | 12 | Default categories | 15: Income, Groceries, Dining, Gas/Auto, Shopping, Travel, Entertainment, Subscriptions, Utilities, Healthcare, Housing, Insurance, Education, Personal, Transfers |
 | 13 | Ollama hosting | Docker Compose (optional profile) + external URL override for separate PC |
-| 14 | Ollama model | `llama3.2:3b` (~2GB RAM, excellent for classification) |
+| 14 | Ollama model | `mistral:7b` (~4GB RAM, excellent for classification + PDF extraction) |
 | 15 | Audit log | Same DB, `audit_logs` table |
 | 16 | Data export | CSV per table + ANSI SQL DDL (SQL Server compatible) |
 | 17 | API versioning | `/api/` (no version prefix) |

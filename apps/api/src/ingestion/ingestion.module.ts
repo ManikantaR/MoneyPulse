@@ -7,6 +7,7 @@ import { DedupService } from './dedup.service';
 import { ArchiverService } from './archiver.service';
 import { WatcherService } from './watcher.service';
 import { IngestionProcessor } from '../jobs/ingestion.processor';
+import { PdfProxyService } from './parsers/pdf-proxy.service';
 import { AuditModule } from '../audit/audit.module';
 import { CategorizationModule } from '../categorization/categorization.module';
 
@@ -22,8 +23,9 @@ import { CategorizationModule } from '../categorization/categorization.module';
     DedupService,
     ArchiverService,
     WatcherService,
+    PdfProxyService,
     IngestionProcessor,
   ],
-  exports: [IngestionService, DedupService],
+  exports: [IngestionService, DedupService, PdfProxyService],
 })
 export class IngestionModule {}

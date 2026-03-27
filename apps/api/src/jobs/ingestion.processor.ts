@@ -12,6 +12,7 @@ import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
 import { DedupService } from '../ingestion/dedup.service';
 import { ArchiverService } from '../ingestion/archiver.service';
 import { IngestionService } from '../ingestion/ingestion.service';
+import { PdfProxyService } from '../ingestion/parsers/pdf-proxy.service';
 import { AuditService } from '../audit/audit.service';
 import { CategorizationService } from '../categorization/categorization.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
@@ -33,6 +34,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly dedupService: DedupService,
     private readonly archiverService: ArchiverService,
     private readonly ingestionService: IngestionService,
+    private readonly pdfProxyService: PdfProxyService,
     private readonly auditService: AuditService,
     private readonly categorizationService: CategorizationService,
   ) {
@@ -84,17 +86,95 @@ export class IngestionProcessor extends WorkerHost {
         headers = records.length > 0 ? Object.keys(records[0]) : [];
         rows = records;
       } else if (fileType === 'pdf') {
-        // PDF parsing is handled by the Python microservice (Phase 4)
+        // Forward PDF to the Python PDF parser microservice
+        const pdfResult = await this.pdfProxyService.parsePdf(
+          buffer,
+          filePath,
+          account.institution,
+        );
+
+        if (pdfResult.transactions.length === 0 && pdfResult.errors.length > 0) {
+          await this.ingestionService.updateUploadStatus(uploadId, {
+            status: 'failed',
+            errorLog: pdfResult.errors,
+          });
+          return;
+        }
+
+        // Continue with standard dedup + insert pipeline
+        const dedupResult = await this.dedupService.dedup(
+          accountId,
+          pdfResult.transactions,
+        );
+
+        if (dedupResult.newTransactions.length > 0) {
+          await this.insertTransactions(
+            dedupResult.newTransactions,
+            accountId,
+            userId,
+            uploadId,
+          );
+
+          // Categorize PDF transactions
+          try {
+            const insertedIds = await this.getInsertedTransactionIds(
+              accountId,
+              uploadId,
+              userId,
+            );
+            const categorizationStats =
+              await this.categorizationService.categorizeBatch(
+                insertedIds,
+                userId,
+              );
+            this.logger.log(
+              `PDF categorization: ${categorizationStats.categorizedByRule} by rules, ` +
+                `${categorizationStats.categorizedByAi} by AI, ` +
+                `${categorizationStats.uncategorized} uncategorized`,
+            );
+          } catch (err: any) {
+            this.logger.warn(
+              `PDF categorization failed (transactions still imported): ${err.message}`,
+            );
+          }
+        }
+
+        // Archive the PDF file
+        let archivedPath: string | null = null;
+        try {
+          archivedPath = await this.archiverService.archiveFile(filePath);
+        } catch (err) {
+          this.logger.warn(`Failed to archive PDF: ${err}`);
+        }
+
         await this.ingestionService.updateUploadStatus(uploadId, {
-          status: 'failed',
-          errorLog: [
-            {
-              row: 0,
-              error: 'PDF parsing requires the PDF parser service (Phase 4)',
-              raw: '',
-            },
-          ],
+          status: 'completed',
+          rowsImported: dedupResult.newTransactions.length,
+          rowsSkipped: dedupResult.skippedCount,
+          rowsErrored: pdfResult.errors.length,
+          errorLog: pdfResult.errors,
+          archivedPath: archivedPath ?? undefined,
         });
+
+        // Audit log for PDF import
+        await this.auditService.log({
+          userId,
+          action: 'file_imported',
+          entityType: 'file_upload',
+          entityId: uploadId,
+          newValue: {
+            filename: filePath,
+            fileType: 'pdf',
+            imported: dedupResult.newTransactions.length,
+            skipped: dedupResult.skippedCount,
+            errors: pdfResult.errors.length,
+          },
+        });
+
+        this.logger.log(
+          `PDF upload ${uploadId} complete: ${dedupResult.newTransactions.length} imported, ` +
+            `${dedupResult.skippedCount} skipped, ${pdfResult.errors.length} errors`,
+        );
         return;
       } else {
         throw new Error(`Unsupported file type: ${fileType}`);
