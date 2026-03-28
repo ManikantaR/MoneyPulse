@@ -1,5 +1,7 @@
 import { AnalyticsService } from '../analytics.service';
 
+const TEST_USER_ID = 'user-test-123';
+
 describe('AnalyticsService', () => {
   let service: AnalyticsService;
   let mockDb: any;
@@ -26,7 +28,7 @@ describe('AnalyticsService', () => {
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
-      const result = await service.incomeVsExpenses({
+      const result = await service.incomeVsExpenses(TEST_USER_ID, {
         from: '2026-01-01',
         to: '2026-02-28',
       });
@@ -41,14 +43,14 @@ describe('AnalyticsService', () => {
     it('should handle empty result set', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      const result = await service.incomeVsExpenses({});
+      const result = await service.incomeVsExpenses(TEST_USER_ID, {});
       expect(result).toEqual([]);
     });
 
     it('should apply account filter when provided', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      await service.incomeVsExpenses({
+      await service.incomeVsExpenses(TEST_USER_ID, {
         from: '2026-01-01',
         to: '2026-01-31',
         accountId: 'acc-123',
@@ -66,7 +68,7 @@ describe('AnalyticsService', () => {
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
-      const result = await service.categoryBreakdown({
+      const result = await service.categoryBreakdown(TEST_USER_ID, {
         from: '2026-01-01',
         to: '2026-01-31',
       });
@@ -88,7 +90,7 @@ describe('AnalyticsService', () => {
     it('should return empty array when no transactions', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      const result = await service.categoryBreakdown({});
+      const result = await service.categoryBreakdown(TEST_USER_ID, {});
       expect(result).toEqual([]);
     });
   });
@@ -101,7 +103,7 @@ describe('AnalyticsService', () => {
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
-      const result = await service.spendingTrend({
+      const result = await service.spendingTrend(TEST_USER_ID, {
         from: '2026-01-01',
         to: '2026-01-07',
         granularity: 'daily',
@@ -116,7 +118,7 @@ describe('AnalyticsService', () => {
     it('should support monthly granularity', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      const result = await service.spendingTrend({
+      const result = await service.spendingTrend(TEST_USER_ID, {
         granularity: 'monthly',
       });
 
@@ -127,7 +129,7 @@ describe('AnalyticsService', () => {
     it('should support weekly granularity', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      await service.spendingTrend({ granularity: 'weekly' });
+      await service.spendingTrend(TEST_USER_ID, { granularity: 'weekly' });
       expect(mockDb.execute).toHaveBeenCalledTimes(1);
     });
   });
@@ -148,7 +150,7 @@ describe('AnalyticsService', () => {
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
-      const result = await service.accountBalances({});
+      const result = await service.accountBalances(TEST_USER_ID, {});
 
       expect(result).toEqual([
         {
@@ -176,7 +178,7 @@ describe('AnalyticsService', () => {
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
-      const result = await service.accountBalances({});
+      const result = await service.accountBalances(TEST_USER_ID, {});
       expect(result[0].balanceCents).toBe(100000);
     });
   });
@@ -193,7 +195,7 @@ describe('AnalyticsService', () => {
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
-      const result = await service.creditUtilization();
+      const result = await service.creditUtilization(TEST_USER_ID, { household: false });
 
       expect(result).toEqual([
         {
@@ -209,7 +211,7 @@ describe('AnalyticsService', () => {
     it('should return empty when no credit cards', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      const result = await service.creditUtilization();
+      const result = await service.creditUtilization(TEST_USER_ID, { household: false });
       expect(result).toEqual([]);
     });
   });
@@ -224,7 +226,7 @@ describe('AnalyticsService', () => {
           rows: [{ investment_total_cents: '200000' }],
         });
 
-      const result = await service.netWorth();
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
 
       expect(result.assets).toBe(1000000); // 800000 + 200000
       expect(result.liabilities).toBe(150000);
@@ -237,7 +239,7 @@ describe('AnalyticsService', () => {
         .mockResolvedValueOnce({ rows: [{ assets_cents: '0', liabilities_cents: '0' }] })
         .mockResolvedValueOnce({ rows: [{ investment_total_cents: '0' }] });
 
-      const result = await service.netWorth();
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
 
       expect(result.assets).toBe(0);
       expect(result.liabilities).toBe(0);
@@ -251,7 +253,7 @@ describe('AnalyticsService', () => {
         })
         .mockResolvedValueOnce({ rows: [{}] });
 
-      const result = await service.netWorth();
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
 
       expect(result.investments).toBe(0);
       expect(result.netWorth).toBe(400000);
@@ -266,9 +268,10 @@ describe('AnalyticsService', () => {
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
-      const result = await service.topMerchants({
+      const result = await service.topMerchants(TEST_USER_ID, {
         from: '2026-01-01',
         to: '2026-03-31',
+        limit: 10,
       });
 
       expect(result).toEqual([
@@ -280,14 +283,14 @@ describe('AnalyticsService', () => {
     it('should use default limit of 10', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      await service.topMerchants({});
+      await service.topMerchants(TEST_USER_ID, { limit: 10 });
       expect(mockDb.execute).toHaveBeenCalledTimes(1);
     });
 
     it('should respect custom limit', async () => {
       mockDb.execute.mockResolvedValue({ rows: [] });
 
-      await service.topMerchants({ limit: 5 });
+      await service.topMerchants(TEST_USER_ID, { limit: 5 });
       expect(mockDb.execute).toHaveBeenCalledTimes(1);
     });
   });

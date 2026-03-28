@@ -3,6 +3,12 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, between, isNull, desc } from 'drizzle-orm';
 
+/** Escape a string value for safe inclusion in a CSV field. */
+function csvField(value: string | null | undefined): string {
+  const str = value ?? '';
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
 @Injectable()
 export class ExportService {
   constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
@@ -11,6 +17,12 @@ export class ExportService {
    * Exports user transactions as a CSV string.
    * Joins with categories and accounts for display names.
    * Optionally filters by date range.
+   *
+   * @param {string} userId - The ID of the user whose transactions will be exported.
+   * @param {string} [from] - Optional start date (inclusive) in ISO-8601 format.
+   * @param {string} [to] - Optional end date (inclusive) in ISO-8601 format.
+   * @returns {Promise<string>} A promise that resolves to the CSV-formatted transactions.
+   * @throws {Error} If the database query fails or if date parsing encounters an error.
    */
   async exportCsv(userId: string, from?: string, to?: string): Promise<string> {
     const conditions = [
@@ -47,13 +59,21 @@ export class ExportService {
       .where(and(...conditions))
       .orderBy(desc(schema.transactions.date));
 
-    // Build CSV with header row
+    // Build CSV with header row — all string fields are quoted and escaped
     const header = 'Date,Description,Amount,Type,Category,Merchant,Account\n';
     const lines = rows.map((r: any) => {
       const amount = (r.amountCents / 100).toFixed(2);
       const type = r.isCredit ? 'Credit' : 'Debit';
-      const descEscaped = `"${(r.description || '').replace(/"/g, '""')}"`;
-      return `${r.date.toISOString().slice(0, 10)},${descEscaped},${amount},${type},${r.categoryName || ''},${r.merchantName || ''},${r.accountNickname || ''}`;
+      const date = r.date.toISOString().slice(0, 10);
+      return [
+        date,
+        csvField(r.description),
+        amount,
+        type,
+        csvField(r.categoryName),
+        csvField(r.merchantName),
+        csvField(r.accountNickname),
+      ].join(',');
     });
 
     return header + lines.join('\n');

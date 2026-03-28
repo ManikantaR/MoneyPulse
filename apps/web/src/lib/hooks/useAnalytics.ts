@@ -1,10 +1,10 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api';
+import { api, type QueryParams } from '../api';
 
 /** Shared analytics query parameters for date range and account filtering. */
-export interface AnalyticsParams {
+export interface AnalyticsParams extends QueryParams {
   from?: string;
   to?: string;
   accountId?: string;

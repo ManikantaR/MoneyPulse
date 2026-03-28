@@ -65,7 +65,7 @@ export function PeriodSelector({
   const [open, setOpen] = useState(false);
 
   /** Format ISO date string for display. */
-  const displayLabel = `${format(new Date(from), 'MMM d, yyyy')} — ${format(new Date(to), 'MMM d, yyyy')}`;
+  const displayLabel = `${format(new Date(from + 'T00:00:00'), 'MMM d, yyyy')} — ${format(new Date(to + 'T00:00:00'), 'MMM d, yyyy')}`;
 
   return (
     <div className={cn('relative', className)}>

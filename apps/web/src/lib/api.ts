@@ -1,8 +1,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
+/** Allowed types for individual query parameter values. */
+export type QueryParamValue = string | number | boolean | undefined;
+
+/** Generic query parameter map accepted by api.get(). */
+export type QueryParams = Record<string, QueryParamValue>;
+
 interface FetchOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
-  params?: Record<string, string | number | boolean | undefined>;
+  params?: QueryParams;
 }
 
 class ApiError extends Error {
@@ -19,7 +25,7 @@ class ApiError extends Error {
 /** Build a URL with optional query parameters. */
 function buildUrl(
   path: string,
-  params?: Record<string, string | number | boolean | undefined>,
+  params?: QueryParams,
 ): string {
   const base = `${API_BASE}${path}`;
   if (!params) return base;
@@ -101,6 +107,36 @@ async function upload<T>(path: string, formData: FormData): Promise<T> {
     credentials: 'include',
   });
 
+  if (res.status === 401) {
+    // Try refresh
+    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+
+    if (refreshRes.ok) {
+      // Retry upload with refreshed token
+      const retryRes = await fetch(buildUrl(path), {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      if (!retryRes.ok) {
+        const err = await retryRes.json().catch(() => ({ message: retryRes.statusText }));
+        throw new ApiError(retryRes.status, err.message || retryRes.statusText, err.error);
+      }
+
+      return retryRes.json();
+    }
+
+    // Refresh also failed — redirect to login
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+    throw new ApiError(401, 'Session expired');
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new ApiError(res.status, err.message || res.statusText, err.error);
@@ -110,8 +146,8 @@ async function upload<T>(path: string, formData: FormData): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string, options?: { params?: Record<string, string | number | boolean | undefined> | object }) =>
-    request<T>(path, { method: 'GET', params: options?.params as Record<string, string | number | boolean | undefined> }),
+  get: <T>(path: string, options?: { params?: QueryParams }) =>
+    request<T>(path, { method: 'GET', params: options?.params }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body }),
   patch: <T>(path: string, body?: unknown) =>

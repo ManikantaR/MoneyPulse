@@ -7,7 +7,6 @@ import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { formatCents, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
 import type { TransactionQueryParams } from '@/lib/hooks/useTransactions';
 
 /** Transactions page — searchable, filterable, paginated transaction grid with bulk actions. */
@@ -89,7 +88,9 @@ export default function TransactionsPage() {
     a.href = URL.createObjectURL(blob);
     a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+    }, 0);
   }, [query]);
 
   return (

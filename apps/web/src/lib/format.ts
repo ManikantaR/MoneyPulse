@@ -25,9 +25,10 @@ export function formatCentsCompact(cents: number): string {
 
 /**
  * Format a date string for display: "2026-03-15" → "Mar 15, 2026"
+ * Supports both YYYY-MM-DD and full ISO-8601 datetime strings.
  */
 export function formatDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
+  const date = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -37,9 +38,10 @@ export function formatDate(dateStr: string): string {
 
 /**
  * Format a date for short display: "2026-03-15" → "3/15"
+ * Supports both YYYY-MM-DD and full ISO-8601 datetime strings.
  */
 export function formatDateShort(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
+  const date = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
   return new Intl.DateTimeFormat('en-US', {
     month: 'numeric',
     day: 'numeric',

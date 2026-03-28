@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api';
+import { api, type QueryParamValue } from '../api';
 import type {
   Transaction,
   UpdateTransactionInput,
@@ -20,6 +20,7 @@ export interface PaginatedTransactions {
 
 /** Query parameters for the transactions list endpoint. */
 export interface TransactionQueryParams {
+  [key: string]: QueryParamValue;
   page?: number;
   pageSize?: number;
   search?: string;

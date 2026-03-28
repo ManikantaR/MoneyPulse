@@ -2,7 +2,11 @@ import { Injectable, Inject } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { sql } from 'drizzle-orm';
-import type { AnalyticsQuery, SpendingTrendQuery } from '@moneypulse/shared';
+import type {
+  AnalyticsQuery,
+  SpendingTrendQuery,
+  TopMerchantsQuery,
+} from '@moneypulse/shared';
 
 @Injectable()
 export class AnalyticsService {
@@ -16,8 +20,25 @@ export class AnalyticsService {
   /**
    * Returns monthly income vs expense totals within the given date range.
    * Groups transactions by calendar month, summing credits (income) and debits (expenses) separately.
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {AnalyticsQuery} query - Date/account/category filters and household flag.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<Array<{ month: string; incomeCents: number; expenseCents: number }>>}
+   *   Array of monthly aggregates sorted by month ascending.
    */
-  async incomeVsExpenses(query: AnalyticsQuery) {
+  async incomeVsExpenses(
+    userId: string,
+    query: AnalyticsQuery,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`${schema.transactions.userId} IN (
+          SELECT id FROM ${schema.users} WHERE household_id = ${householdId}
+        )`
+      : sql`${schema.transactions.userId} = ${userId}`;
+
     const result = await this.db.execute(sql`
       SELECT
         to_char(date_trunc('month', ${schema.transactions.date}), 'YYYY-MM') AS month,
@@ -26,6 +47,7 @@ export class AnalyticsService {
       FROM ${schema.transactions}
       WHERE ${schema.transactions.isSplitParent} = false
         AND ${schema.transactions.deletedAt} IS NULL
+        AND ${userScope}
         ${query.from ? sql`AND ${schema.transactions.date} >= ${new Date(query.from)}` : sql``}
         ${query.to ? sql`AND ${schema.transactions.date} <= ${new Date(query.to)}` : sql``}
         ${query.accountId ? sql`AND ${schema.transactions.accountId} = ${query.accountId}` : sql``}
@@ -43,11 +65,28 @@ export class AnalyticsService {
    * Returns per-category spending totals (expenses only).
    * Joins transactions with categories to include name, icon, and color.
    * Computes percentage of total spending per category.
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {AnalyticsQuery} query - Date/account/category filters and household flag.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<Array<{ categoryId: string; categoryName: string; categoryIcon: string; categoryColor: string; totalCents: number; transactionCount: number; percentage: number }>>}
+   *   Array of category breakdowns sorted by total spend descending.
+   * @throws {Error} If the database query fails.
    */
-  async categoryBreakdown(query: AnalyticsQuery) {
+  async categoryBreakdown(
+    userId: string,
+    query: AnalyticsQuery,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`t.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`t.user_id = ${userId}`;
+
     const result = await this.db.execute(sql`
       SELECT
-        c.id AS category_id,
+        -- c.id is a UUID; 'uncategorized' is a safe sentinel that cannot clash with any UUID
+        COALESCE(c.id::text, 'uncategorized') AS category_id,
         c.name AS category_name,
         c.icon,
         c.color,
@@ -58,6 +97,7 @@ export class AnalyticsService {
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND t.is_credit = false
+        AND ${userScope}
         ${query.from ? sql`AND t.date >= ${new Date(query.from)}` : sql``}
         ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
@@ -85,8 +125,24 @@ export class AnalyticsService {
   /**
    * Returns time-series income and expense data at daily/weekly/monthly granularity.
    * Includes both income (credits) and expenses (debits) per period.
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {SpendingTrendQuery} query - Date/account/granularity filters and household flag.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<Array<{ period: string; income: number; expenses: number }>>}
+   *   Array of period aggregates sorted ascending.
+   * @throws {Error} If the database query fails.
    */
-  async spendingTrend(query: SpendingTrendQuery) {
+  async spendingTrend(
+    userId: string,
+    query: SpendingTrendQuery,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`t.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`t.user_id = ${userId}`;
+
     const truncFn = {
       daily: sql`date_trunc('day', t.date)`,
       weekly: sql`date_trunc('week', t.date)`,
@@ -101,6 +157,7 @@ export class AnalyticsService {
       FROM ${schema.transactions} t
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
+        AND ${userScope}
         ${query.from ? sql`AND t.date >= ${new Date(query.from)}` : sql``}
         ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
@@ -117,8 +174,24 @@ export class AnalyticsService {
   /**
    * Returns per-account current balances computed from starting balance + cumulative transactions.
    * Includes account metadata (nickname, institution, type, credit limit).
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {AnalyticsQuery} query - Date/account filters and household flag.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<Array<{ accountId: string; nickname: string; institution: string; accountType: string; balanceCents: number }>>}
+   *   Array of account balances sorted by nickname.
+   * @throws {Error} If the database query fails.
    */
-  async accountBalances(query: AnalyticsQuery) {
+  async accountBalances(
+    userId: string,
+    query: AnalyticsQuery,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`a.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`a.user_id = ${userId}`;
+
     const result = await this.db.execute(sql`
       SELECT
         a.id AS account_id,
@@ -140,6 +213,7 @@ export class AnalyticsService {
         AND t.deleted_at IS NULL
         ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
       WHERE a.deleted_at IS NULL
+        AND ${userScope}
         ${query.accountId ? sql`AND a.id = ${query.accountId}` : sql``}
       GROUP BY a.id, a.nickname, a.institution, a.account_type,
                a.starting_balance_cents, a.credit_limit_cents
@@ -155,10 +229,26 @@ export class AnalyticsService {
   }
 
   /**
-   * Returns credit utilization for all credit card accounts.
+   * Returns credit utilization for the authenticated user's credit card accounts.
    * Computes current balance as starting_balance + net transactions and utilization percentage.
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {AnalyticsQuery} query - Household flag for scoping.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<Array<{ accountId: string; nickname: string; balanceCents: number; limitCents: number; utilizationPercent: number }>>}
+   *   Array of credit utilization records.
+   * @throws {Error} If the database query fails.
    */
-  async creditUtilization() {
+  async creditUtilization(
+    userId: string,
+    query: Pick<AnalyticsQuery, 'household'>,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`a.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`a.user_id = ${userId}`;
+
     const result = await this.db.execute(sql`
       SELECT
         a.id AS account_id,
@@ -175,6 +265,7 @@ export class AnalyticsService {
       WHERE a.account_type = 'credit_card'
         AND a.deleted_at IS NULL
         AND a.credit_limit_cents IS NOT NULL
+        AND ${userScope}
       GROUP BY a.id, a.nickname, a.credit_limit_cents, a.starting_balance_cents
     `);
     return this.extractRows(result).map((r: any) => {
@@ -195,8 +286,28 @@ export class AnalyticsService {
    * Returns a net worth snapshot: assets minus liabilities plus investments.
    * Assets = checking + savings balances. Liabilities = credit card balances.
    * Investments = latest snapshot balance per investment account.
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {Pick<AnalyticsQuery, 'household'>} query - Household flag for scoping.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<{ assets: number; liabilities: number; investments: number; netWorth: number }>}
+   *   Net worth snapshot with assets, liabilities, investments, and net total.
+   * @throws {Error} If the database query fails.
    */
-  async netWorth() {
+  async netWorth(
+    userId: string,
+    query: Pick<AnalyticsQuery, 'household'>,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`a.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`a.user_id = ${userId}`;
+
+    const invUserScope = householdId && query.household
+      ? sql`ia.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`ia.user_id = ${userId}`;
+
     const rows = await this.db.execute(sql`
       SELECT
         SUM(CASE
@@ -220,6 +331,7 @@ export class AnalyticsService {
           AND t.deleted_at IS NULL
       ) sub ON true
       WHERE a.deleted_at IS NULL
+        AND ${userScope}
     `);
 
     const row = this.extractRows(rows)[0] || {
@@ -227,7 +339,7 @@ export class AnalyticsService {
       liabilities_cents: 0,
     };
 
-    // Add investment balances (latest snapshot per account)
+    // Add investment balances (latest snapshot per account) scoped to user
     const investmentRows = await this.db.execute(sql`
       SELECT COALESCE(SUM(latest.balance_cents), 0) AS investment_total_cents
       FROM (
@@ -235,6 +347,7 @@ export class AnalyticsService {
         FROM ${schema.investmentAccounts} ia
         JOIN ${schema.investmentSnapshots} is2 ON ia.id = is2.investment_account_id
         WHERE ia.deleted_at IS NULL
+          AND ${invUserScope}
         ORDER BY ia.id, is2.date DESC
       ) latest
     `);
@@ -256,9 +369,25 @@ export class AnalyticsService {
   /**
    * Returns top merchants by total spend amount.
    * Falls back to transaction description when merchant_name is null.
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {TopMerchantsQuery} query - Date/account filters, limit, and household flag.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<Array<{ merchantName: string; totalCents: number; transactionCount: number }>>}
+   *   Top merchants sorted by total spend descending.
+   * @throws {Error} If the database query fails.
    */
-  async topMerchants(query: AnalyticsQuery & { limit?: number }) {
-    const limit = query.limit || 10;
+  async topMerchants(
+    userId: string,
+    query: TopMerchantsQuery,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`t.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`t.user_id = ${userId}`;
+
+    const limit = query.limit ?? 10;
     const result = await this.db.execute(sql`
       SELECT
         COALESCE(t.merchant_name, t.description) AS merchant,
@@ -268,6 +397,7 @@ export class AnalyticsService {
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND t.is_credit = false
+        AND ${userScope}
         ${query.from ? sql`AND t.date >= ${new Date(query.from)}` : sql``}
         ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}

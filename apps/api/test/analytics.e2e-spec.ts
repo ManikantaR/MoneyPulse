@@ -45,16 +45,14 @@ describe('Analytics (e2e)', () => {
   });
 
   describe('GET /api/analytics/income-vs-expenses', () => {
-    it('should return income and expense totals', async () => {
+    it('should return monthly income and expense rows', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/analytics/income-vs-expenses')
         .set('Cookie', cookies)
         .expect(200);
 
       expect(res.body.data).toBeDefined();
-      expect(res.body.data).toHaveProperty('totalIncome');
-      expect(res.body.data).toHaveProperty('totalExpenses');
-      expect(res.body.data).toHaveProperty('net');
+      expect(Array.isArray(res.body.data)).toBe(true);
     });
 
     it('should reject unauthenticated requests', async () => {
