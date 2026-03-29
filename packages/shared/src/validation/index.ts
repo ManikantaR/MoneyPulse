@@ -217,6 +217,10 @@ export const spendingTrendQuerySchema = analyticsQuerySchema.extend({
   granularity: z.enum(['daily', 'weekly', 'monthly']).default('monthly'),
 });
 
+export const topMerchantsQuerySchema = analyticsQuerySchema.extend({
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
+
 // Export inferred types
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -242,3 +246,4 @@ export type UpdateUserSettingsInput = z.infer<typeof updateUserSettingsSchema>;
 export type UploadFileInput = z.infer<typeof uploadFileSchema>;
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type SpendingTrendQuery = z.infer<typeof spendingTrendQuerySchema>;
+export type TopMerchantsQuery = z.infer<typeof topMerchantsQuerySchema>;

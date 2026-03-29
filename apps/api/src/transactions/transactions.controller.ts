@@ -10,9 +10,12 @@ import {
   UseGuards,
   HttpCode,
   NotFoundException,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
+import { ExportService } from './export.service';
 import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -39,6 +42,7 @@ import type {
 export class TransactionsController {
   constructor(
     private readonly txnService: TransactionsService,
+    private readonly exportService: ExportService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -78,6 +82,32 @@ export class TransactionsController {
     @CurrentUser() user: AuthTokenPayload,
   ) {
     return this.txnService.findAll(user.sub, query, user.householdId);
+  }
+
+  /**
+   * GET /transactions/export — Download all transactions for the authenticated user as a CSV file.
+   * Optionally filtered by date range via `from` and `to` query parameters.
+   *
+   * @param from - Optional start date (inclusive) in ISO-8601 format.
+   * @param to - Optional end date (inclusive) in ISO-8601 format.
+   * @param user - JWT token payload.
+   * @param res - Express response object used to stream the CSV file.
+   * @returns CSV file as a downloadable attachment.
+   * @throws {UnauthorizedException} If the request is not authenticated.
+   */
+  @Get('export')
+  @ApiOperation({ summary: 'Export transactions as CSV' })
+  async exportCsv(
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @CurrentUser() user: AuthTokenPayload,
+    @Res() res: Response,
+  ) {
+    const csv = await this.exportService.exportCsv(user.sub, from, to);
+    const filename = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
   }
 
   /**

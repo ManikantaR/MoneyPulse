@@ -14,6 +14,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CategorizationModule } from './categorization/categorization.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { CategorizationModule } from './categorization/categorization.module';
     IngestionModule,
     CategoriesModule,
     CategorizationModule,
+    AnalyticsModule,
     HealthModule,
   ],
   providers: [
