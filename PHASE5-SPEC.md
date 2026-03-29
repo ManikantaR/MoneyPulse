@@ -42,18 +42,18 @@
 
 ### Frontend — Layout & Navigation (`apps/web/`)
 
-| #   | File                                 | Purpose                                 |
-| --- | ------------------------------------ | --------------------------------------- |
-| 8   | `src/components/layout/Sidebar.tsx`  | Collapsible sidebar navigation          |
-| 9   | `src/components/layout/AppShell.tsx` | Main layout wrapper (sidebar + content) |
-| 10  | `src/app/layout.tsx`                 | **MODIFY** — wrap with AppShell         |
+| #   | File                                          | Purpose                                                        |
+| --- | --------------------------------------------- | -------------------------------------------------------------- |
+| 8   | `src/components/Sidebar.tsx`                  | Collapsible sidebar navigation (no `layout/` subdirectory)     |
+| 9   | `src/components/AppShell.tsx`                 | Main layout wrapper (sidebar + content)                        |
+| 10  | `src/app/(protected)/layout.tsx`              | Protected route group layout — wraps with AuthProvider+AppShell |
 
 ### Frontend — Shared Components
 
 | #   | File                                  | Purpose                                   |
 | --- | ------------------------------------- | ----------------------------------------- |
-| 11  | `src/components/PeriodSelector.tsx`   | Date range presets + custom picker        |
-| 12  | `src/components/NotificationBell.tsx` | Unread notification count + dropdown      |
+| 11  | `src/components/PeriodSelector.tsx`   | Date range presets + custom picker (dropdown UI, not inline buttons) |
+| 12  | ~~`src/components/NotificationBell.tsx`~~ | **Integrated into `TopBar.tsx` directly** — not a separate file |
 | 13  | `src/lib/api.ts`                      | API client (fetch wrapper with cookies)   |
 | 14  | `src/lib/hooks/useAnalytics.ts`       | React Query hooks for analytics endpoints |
 | 15  | `src/lib/hooks/useTransactions.ts`    | React Query hooks for transaction CRUD    |
@@ -78,14 +78,14 @@
 
 | #   | File                                 | Purpose                                  |
 | --- | ------------------------------------ | ---------------------------------------- |
-| 27  | `src/app/page.tsx`                   | **MODIFY** — Dashboard with chart grid   |
-| 28  | `src/app/transactions/page.tsx`      | Transaction grid with filters            |
-| 29  | `src/components/TransactionGrid.tsx` | TanStack Table with inline category edit |
-| 30  | `src/app/upload/page.tsx`            | Drag-and-drop file upload                |
-| 31  | `src/components/FileUpload.tsx`      | Upload component with progress           |
-| 32  | `src/app/accounts/page.tsx`          | Account management                       |
-| 33  | `src/app/categories/page.tsx`        | Category tree management                 |
-| 34  | `src/app/settings/page.tsx`          | User settings                            |
+| 27  | `src/app/(protected)/page.tsx`                   | Dashboard with chart grid + KPI stat cards         |
+| 28  | `src/app/(protected)/transactions/page.tsx`      | Transaction grid — inline (no separate component)  |
+| 29  | ~~`src/components/TransactionGrid.tsx`~~          | **Inline in transactions page** — HTML table, no TanStack Table |
+| 30  | `src/app/(protected)/upload/page.tsx`            | Drag-and-drop file upload                          |
+| 31  | ~~`src/components/FileUpload.tsx`~~               | **Inline in upload page** — not a separate component |
+| 32  | `src/app/(protected)/accounts/page.tsx`          | Account management                                 |
+| 33  | `src/app/(protected)/categories/page.tsx`        | Category tree management                           |
+| 34  | `src/app/(protected)/settings/page.tsx`          | User settings                                      |
 
 ### Tests
 
@@ -537,11 +537,13 @@ export class AnalyticsService {
     const investmentCents =
       (investmentRows.rows ?? investmentRows)[0]?.investment_total_cents ?? 0;
 
+    // NOTE: Actual implementation returns short keys (assets/liabilities/investments/netWorth)
+    // not suffixed with Cents — these map directly to the NetWorthCard component props
     return {
-      assetsCents: Number(row.assets_cents) + Number(investmentCents),
-      liabilitiesCents: Number(row.liabilities_cents),
-      investmentCents: Number(investmentCents),
-      netWorthCents:
+      assets: Number(row.assets_cents) + Number(investmentCents),
+      liabilities: Number(row.liabilities_cents),
+      investments: Number(investmentCents),
+      netWorth:
         Number(row.assets_cents) +
         Number(investmentCents) -
         Number(row.liabilities_cents),
@@ -930,117 +932,127 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 ```tsx
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
+import { Calendar, ChevronDown } from 'lucide-react';
 import {
-  format,
-  subMonths,
   startOfMonth,
   endOfMonth,
+  subMonths,
   startOfYear,
+  subDays,
+  format,
 } from 'date-fns';
 
+/** Predefined date range option. */
+interface Preset {
+  label: string;
+  from: Date;
+  to: Date;
+}
+
+/** Props for the PeriodSelector component. */
 interface PeriodSelectorProps {
-  onChange: (range: { from: string; to: string }) => void;
-  defaultPreset?: string;
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+  className?: string;
 }
 
-const PRESETS = [
-  { label: 'This Month', key: 'this-month' },
-  { label: 'Last Month', key: 'last-month' },
-  { label: 'Last 3 Months', key: 'last-3' },
-  { label: 'Last 6 Months', key: 'last-6' },
-  { label: 'YTD', key: 'ytd' },
-  { label: 'Last Year', key: 'last-year' },
-  { label: 'Custom', key: 'custom' },
-] as const;
+const presets: Preset[] = [
+  {
+    label: 'This Month',
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date()),
+  },
+  {
+    label: 'Last Month',
+    from: startOfMonth(subMonths(new Date(), 1)),
+    to: endOfMonth(subMonths(new Date(), 1)),
+  },
+  {
+    label: 'Last 90 Days',
+    from: subDays(new Date(), 90),
+    to: new Date(),
+  },
+  {
+    label: 'Year to Date',
+    from: startOfYear(new Date()),
+    to: new Date(),
+  },
+  {
+    label: 'Last 12 Months',
+    from: subMonths(new Date(), 12),
+    to: new Date(),
+  },
+];
 
-function getPresetRange(key: string): { from: string; to: string } {
-  const now = new Date();
-  const fmt = (d: Date) => format(d, 'yyyy-MM-dd');
-
-  switch (key) {
-    case 'this-month':
-      return { from: fmt(startOfMonth(now)), to: fmt(now) };
-    case 'last-month': {
-      const prev = subMonths(now, 1);
-      return { from: fmt(startOfMonth(prev)), to: fmt(endOfMonth(prev)) };
-    }
-    case 'last-3':
-      return { from: fmt(startOfMonth(subMonths(now, 2))), to: fmt(now) };
-    case 'last-6':
-      return { from: fmt(startOfMonth(subMonths(now, 5))), to: fmt(now) };
-    case 'ytd':
-      return { from: fmt(startOfYear(now)), to: fmt(now) };
-    case 'last-year': {
-      const lastYear = new Date(now.getFullYear() - 1, 0, 1);
-      return {
-        from: fmt(lastYear),
-        to: fmt(new Date(now.getFullYear() - 1, 11, 31)),
-      };
-    }
-    default:
-      return { from: fmt(startOfMonth(subMonths(now, 5))), to: fmt(now) };
-  }
-}
-
+/** Date range selector with preset options and custom date inputs. */
 export function PeriodSelector({
+  from,
+  to,
   onChange,
-  defaultPreset = 'last-6',
+  className,
 }: PeriodSelectorProps) {
-  const [activePreset, setActivePreset] = useState(defaultPreset);
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  const [open, setOpen] = useState(false);
 
-  const handlePreset = (key: string) => {
-    setActivePreset(key);
-    if (key !== 'custom') {
-      onChange(getPresetRange(key));
-    }
-  };
-
-  const handleCustomApply = () => {
-    if (customFrom && customTo) {
-      onChange({ from: customFrom, to: customTo });
-    }
-  };
+  const displayLabel = `${format(new Date(from + 'T00:00:00'), 'MMM d, yyyy')} — ${format(new Date(to + 'T00:00:00'), 'MMM d, yyyy')}`;
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {PRESETS.map((preset) => (
-        <button
-          key={preset.key}
-          onClick={() => handlePreset(preset.key)}
-          className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-            activePreset === preset.key
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-accent'
-          }`}
-        >
-          {preset.label}
-        </button>
-      ))}
+    <div className={cn('relative', className)}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+      >
+        <Calendar className="h-4 w-4 text-[var(--muted-foreground)]" />
+        <span>{displayLabel}</span>
+        <ChevronDown className="h-4 w-4 text-[var(--muted-foreground)]" />
+      </button>
 
-      {activePreset === 'custom' && (
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={customFrom}
-            onChange={(e) => setCustomFrom(e.target.value)}
-            className="px-2 py-1 text-sm border border-border rounded-md bg-background"
-          />
-          <span className="text-muted-foreground">to</span>
-          <input
-            type="date"
-            value={customTo}
-            onChange={(e) => setCustomTo(e.target.value)}
-            className="px-2 py-1 text-sm border border-border rounded-md bg-background"
-          />
-          <button
-            onClick={handleCustomApply}
-            className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md"
-          >
-            Apply
-          </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 shadow-lg">
+          {/* Presets */}
+          <div className="space-y-1">
+            {presets.map((preset) => (
+              <button
+                key={preset.label}
+                onClick={() => {
+                  onChange(
+                    format(preset.from, 'yyyy-MM-dd'),
+                    format(preset.to, 'yyyy-MM-dd'),
+                  );
+                  setOpen(false);
+                }}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--muted)] transition-colors"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="my-2 border-t border-[var(--border)]" />
+
+          {/* Custom range — direct date inputs, changes fire immediately */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-[var(--muted-foreground)]">
+              Custom Range
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => onChange(e.target.value, to)}
+                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs"
+              />
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => onChange(from, e.target.value)}
+                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs"
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1058,84 +1070,136 @@ export function PeriodSelector({
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api';
+import { api, type QueryParams } from '../api';
 
-interface AnalyticsParams {
+/** Shared analytics query parameters for date range and account filtering. */
+export interface AnalyticsParams extends QueryParams {
   from?: string;
   to?: string;
   accountId?: string;
-  categoryId?: string;
   household?: boolean;
 }
 
-export function useIncomeVsExpenses(params: AnalyticsParams) {
+/** Single monthly income vs expense row returned by the API. */
+export interface IncomeExpenseRow {
+  month: string;
+  incomeCents: number;
+  expenseCents: number;
+}
+
+/** Single category breakdown row. */
+export interface CategoryBreakdownItem {
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string;
+  categoryIcon: string;
+  totalCents: number;
+  transactionCount: number;
+  percentage: number;
+}
+
+/** Single spending trend data point. */
+export interface SpendingTrendPoint {
+  period: string;
+  income: number;
+  expenses: number;
+}
+
+/** Account balance row. */
+export interface AccountBalanceItem {
+  accountId: string;
+  nickname: string;
+  institution: string;
+  accountType: string;
+  balanceCents: number;
+}
+
+/** Credit utilization row. */
+export interface CreditUtilizationItem {
+  accountId: string;
+  nickname: string;
+  balanceCents: number;
+  limitCents: number;
+  utilizationPercent: number;
+}
+
+/** Net worth aggregation — keys are short (no "Cents" suffix) since values are in cents. */
+export interface NetWorthData {
+  assets: number;
+  liabilities: number;
+  investments: number;
+  netWorth: number;
+}
+
+/** Top merchant row. */
+export interface TopMerchantItem {
+  merchantName: string;
+  totalCents: number;
+  transactionCount: number;
+}
+
+/** Fetch monthly income vs expenses for a date range. */
+export function useIncomeVsExpenses(params: AnalyticsParams = {}) {
   return useQuery({
     queryKey: ['analytics', 'income-vs-expenses', params],
     queryFn: () =>
-      api.get<{ data: any[] }>('/analytics/income-vs-expenses', { params }),
-    select: (res) => res.data,
+      api.get<{ data: IncomeExpenseRow[] }>('/analytics/income-vs-expenses', { params }),
   });
 }
 
-export function useCategoryBreakdown(params: AnalyticsParams) {
+/** Fetch category-level spending breakdown. */
+export function useCategoryBreakdown(params: AnalyticsParams = {}) {
   return useQuery({
     queryKey: ['analytics', 'category-breakdown', params],
     queryFn: () =>
-      api.get<{ data: any[] }>('/analytics/category-breakdown', { params }),
-    select: (res) => res.data,
+      api.get<{ data: CategoryBreakdownItem[] }>('/analytics/category-breakdown', { params }),
   });
 }
 
+/** Fetch spending trend over time (daily/weekly/monthly). */
 export function useSpendingTrend(
-  params: AnalyticsParams & { granularity?: string },
+  params: AnalyticsParams & { granularity?: 'daily' | 'weekly' | 'monthly' } = {},
 ) {
   return useQuery({
     queryKey: ['analytics', 'spending-trend', params],
     queryFn: () =>
-      api.get<{ data: any[] }>('/analytics/spending-trend', { params }),
-    select: (res) => res.data,
+      api.get<{ data: SpendingTrendPoint[] }>('/analytics/spending-trend', { params }),
   });
 }
 
-export function useAccountBalances(params: AnalyticsParams) {
+/** Fetch current balances for all accounts. */
+export function useAccountBalances(params: AnalyticsParams = {}) {
   return useQuery({
     queryKey: ['analytics', 'account-balances', params],
     queryFn: () =>
-      api.get<{ data: any[] }>('/analytics/account-balances', { params }),
-    select: (res) => res.data,
+      api.get<{ data: AccountBalanceItem[] }>('/analytics/account-balances', { params }),
   });
 }
 
-export function useCreditUtilization() {
+/** Fetch credit utilization by card account. */
+export function useCreditUtilization(params: AnalyticsParams = {}) {
   return useQuery({
-    queryKey: ['analytics', 'credit-utilization'],
-    queryFn: () => api.get<{ data: any[] }>('/analytics/credit-utilization'),
-    select: (res) => res.data,
-  });
-}
-
-export function useNetWorth() {
-  return useQuery({
-    queryKey: ['analytics', 'net-worth'],
+    queryKey: ['analytics', 'credit-utilization', params],
     queryFn: () =>
-      api.get<{
-        data: {
-          assetsCents: number;
-          liabilitiesCents: number;
-          investmentCents: number;
-          netWorthCents: number;
-        };
-      }>('/analytics/net-worth'),
-    select: (res) => res.data,
+      api.get<{ data: CreditUtilizationItem[] }>('/analytics/credit-utilization', { params }),
   });
 }
 
-export function useTopMerchants(params: AnalyticsParams & { limit?: number }) {
+/** Fetch net worth summary (assets - liabilities + investments). */
+export function useNetWorth(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'net-worth', params],
+    queryFn: () =>
+      api.get<{ data: NetWorthData }>('/analytics/net-worth', { params }),
+  });
+}
+
+/** Fetch top merchants by spend volume. */
+export function useTopMerchants(params: AnalyticsParams = {}) {
   return useQuery({
     queryKey: ['analytics', 'top-merchants', params],
     queryFn: () =>
-      api.get<{ data: any[] }>('/analytics/top-merchants', { params }),
-    select: (res) => res.data,
+      api.get<{ data: TopMerchantItem[] }>('/analytics/top-merchants', { params }),
   });
 }
 ```
@@ -1637,46 +1701,73 @@ export function CreditUtilization({ data }: Props) {
 'use client';
 
 import { formatCents } from '@/lib/format';
+import { TrendingUp, TrendingDown, Wallet, CreditCard, LineChart } from 'lucide-react';
 
-interface Props {
-  data: {
-    assetsCents: number;
-    liabilitiesCents: number;
-    investmentCents: number;
-    netWorthCents: number;
-  };
+interface NetWorthCardProps {
+  assets: number;
+  liabilities: number;
+  investments: number;
+  netWorth: number;
 }
 
-export function NetWorthCard({ data }: Props) {
+export function NetWorthCard({
+  assets,
+  liabilities,
+  investments,
+  netWorth,
+}: NetWorthCardProps) {
+  const isPositive = netWorth >= 0;
+
   return (
-    <div className="bg-card rounded-lg border border-border p-4">
-      <h3 className="text-sm font-medium text-muted-foreground mb-3">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+      <h3 className="mb-1 text-sm font-semibold text-[var(--foreground)]">
         Net Worth
       </h3>
-      <p
-        className={`text-3xl font-bold ${
-          data.netWorthCents >= 0 ? 'text-green-600' : 'text-red-600'
-        }`}
-      >
-        {formatCents(data.netWorthCents)}
-      </p>
-      <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
-        <div>
-          <p className="text-muted-foreground">Assets</p>
-          <p className="font-medium text-green-600">
-            {formatCents(data.assetsCents)}
+      <div className="flex items-center gap-2">
+        <span className="text-3xl font-bold tracking-tight">
+          {formatCents(Math.abs(netWorth))}
+        </span>
+        {isPositive ? (
+          <TrendingUp className="h-5 w-5 text-emerald-500" />
+        ) : (
+          <TrendingDown className="h-5 w-5 text-red-500" />
+        )}
+      </div>
+      {!isPositive && (
+        <p className="mt-0.5 text-xs text-red-500">Negative net worth</p>
+      )}
+
+      <div className="mt-4 grid grid-cols-3 gap-4">
+        {/* Assets */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+            <Wallet className="h-3.5 w-3.5" />
+            Assets
+          </div>
+          <p className="text-sm font-semibold text-emerald-500 tabular-nums">
+            {formatCents(assets)}
           </p>
         </div>
-        <div>
-          <p className="text-muted-foreground">Investments</p>
-          <p className="font-medium text-blue-600">
-            {formatCents(data.investmentCents)}
+
+        {/* Liabilities */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+            <CreditCard className="h-3.5 w-3.5" />
+            Liabilities
+          </div>
+          <p className="text-sm font-semibold text-red-500 tabular-nums">
+            {formatCents(liabilities)}
           </p>
         </div>
-        <div>
-          <p className="text-muted-foreground">Liabilities</p>
-          <p className="font-medium text-red-600">
-            {formatCents(data.liabilitiesCents)}
+
+        {/* Investments */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+            <LineChart className="h-3.5 w-3.5" />
+            Investments
+          </div>
+          <p className="text-sm font-semibold text-[var(--primary)] tabular-nums">
+            {formatCents(investments)}
           </p>
         </div>
       </div>
@@ -1695,52 +1786,67 @@ import {
   Bar,
   XAxis,
   YAxis,
+  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  CartesianGrid,
 } from 'recharts';
 
-interface Props {
-  data: { merchant: string; total_cents: number; txn_count: number }[];
+/** Top merchant data row. */
+interface TopMerchantData {
+  merchantName: string;
+  totalCents: number;
+  transactionCount: number;
 }
 
-export function TopMerchantsBar({ data }: Props) {
-  const chartData = data.map((d) => ({
-    merchant:
-      d.merchant?.length > 20 ? d.merchant.slice(0, 20) + '…' : d.merchant,
-    amount: Number(d.total_cents) / 100,
-    count: Number(d.txn_count),
+interface TopMerchantsBarProps {
+  data: TopMerchantData[];
+}
+
+export function TopMerchantsBar({ data }: TopMerchantsBarProps) {
+  const formatted = data.map((d) => ({
+    merchant: d.merchantName || 'Unknown',
+    total: d.totalCents / 100,
+    count: d.transactionCount,
   }));
 
   return (
-    <div className="bg-card rounded-lg border border-border p-4">
-      <h3 className="text-sm font-medium text-muted-foreground mb-4">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
+      <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">
         Top Merchants
       </h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={chartData} layout="vertical">
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis
-            type="number"
-            tickFormatter={(v) => `$${v}`}
-            className="text-xs"
-          />
-          <YAxis
-            type="category"
-            dataKey="merchant"
-            width={120}
-            className="text-xs"
-          />
-          <Tooltip
-            formatter={(value: number) => `$${value.toLocaleString()}`}
-          />
-          <Bar
-            dataKey="amount"
-            fill="hsl(var(--chart-4))"
-            radius={[0, 4, 4, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
+      {formatted.length === 0 ? (
+        <p className="text-sm text-[var(--muted-foreground)]">No merchant data</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={Math.max(200, formatted.length * 40)}>
+          <BarChart data={formatted} layout="vertical" barSize={16}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+            <XAxis
+              type="number"
+              tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
+              tickFormatter={(v) => `$${v.toLocaleString()}`}
+            />
+            <YAxis
+              type="category"
+              dataKey="merchant"
+              width={130}
+              tick={{ fontSize: 12, fill: 'var(--muted-foreground)' }}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'var(--card)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                fontSize: '12px',
+              }}
+              formatter={(v, _name, props) => [
+                `$${Number(v ?? 0).toLocaleString()} (${(props as any)?.payload?.count ?? 0} txns)`,
+                'Total',
+              ]}
+            />
+            <Bar dataKey="total" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
