@@ -73,7 +73,7 @@ cd MoneyPulse
 If you already have the repo:
 
 ```bash
-cd /path/to/MyMoney
+cd /path/to/MoneyPulse
 git checkout main
 git pull
 ```
@@ -103,7 +103,7 @@ JWT_SECRET=a_very_long_random_string_at_least_64_characters_long_change_this
 podman compose up -d --build
 ```
 
-This builds the API, web, and PDF parser images then starts all 5 services. First build takes **5–10 minutes** (downloads base images and compiles TypeScript). Subsequent starts are seconds.
+This builds the API, web, and PDF parser images, then starts all 6 compose services (postgres, redis, api, web, pdf-parser, and backup). First build takes **5–10 minutes** (downloads base images and compiles TypeScript). Subsequent starts are seconds.
 
 Watch the startup progress:
 
@@ -121,27 +121,17 @@ Press `Ctrl+C` to stop following logs (services keep running).
 
 ### Step 4 — Run database migrations
 
-Migrations are not run automatically. Run them once after the first start:
+Migrations are not run automatically. Run them once after the first start.
+
+The recommended approach requires Node.js + pnpm installed locally (see [Prerequisites](#prerequisites)):
 
 ```bash
-podman compose exec api node -e "
-const { drizzle } = require('drizzle-orm/node-postgres');
-const { migrate } = require('drizzle-orm/node-postgres/migrator');
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const db = drizzle(pool);
-migrate(db, { migrationsFolder: '/app/dist/db/migrations' })
-  .then(() => { console.log('Migrations done'); pool.end(); process.exit(0); })
-  .catch(e => { console.error(e); pool.end(); process.exit(1); });
-"
+# Point to the containerised Postgres
+DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse \
+  pnpm --filter @moneypulse/api run db:migrate
 ```
 
-> **Alternative** — if you have Node.js + pnpm installed locally:
-> ```bash
-> # Point to the containerised postgres
-> DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse \
->   pnpm --filter @moneypulse/api run db:migrate
-> ```
+> **No local pnpm?** The API container does not bundle the migration files or the `pg` client, so exec-based migration inside the container is not supported. Install Node.js 22 + pnpm 10 locally and run the command above, or use Option B (Dev Mode) which always runs migrations via the local toolchain.
 
 ### Step 5 — Seed default categories
 
