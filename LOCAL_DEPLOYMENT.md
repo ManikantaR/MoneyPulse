@@ -97,7 +97,24 @@ JWT_SECRET=a_very_long_random_string_at_least_64_characters_long_change_this
 >
 > Paste the full output as the value of `JWT_SECRET`. The default placeholder will cause startup to fail.
 
-### Step 3 — Build and start all services
+### Step 3 — Create the local data directories (one-time)
+
+All persistent data lives **outside the repo** at `~/moneypulse-data/` so it survives branch switches and is never accidentally committed.
+
+```bash
+mkdir -p ~/moneypulse-data/{pg,redis,uploads,watch-folder,ollama,backup}
+```
+
+| Folder                           | Mounted as inside container | Purpose                             |
+| -------------------------------- | --------------------------- | ----------------------------------- |
+| `~/moneypulse-data/pg`           | `/var/lib/postgresql/data`  | Postgres database files             |
+| `~/moneypulse-data/redis`        | `/data`                     | Redis snapshots                     |
+| `~/moneypulse-data/uploads`      | `/data/uploads`             | Files uploaded via the UI           |
+| `~/moneypulse-data/watch-folder` | `/data/watch-folder`        | Auto-import drop folder (see below) |
+| `~/moneypulse-data/ollama`       | `/root/.ollama`             | Ollama model weights                |
+| `~/moneypulse-data/backup`       | `/backup`                   | Nightly Postgres dumps              |
+
+### Step 4 — Build and start all services
 
 ```bash
 podman-compose up -d --build
@@ -122,7 +139,7 @@ Press `Ctrl+C` to stop following logs (services keep running).
 
 > **Note:** `podman-compose` starts postgres, redis, pdf-parser, backup, and api in sequence. The web container starts only after the API passes its health check (30 s window). If you see the web container not listed after `up`, wait ~45 s and run `podman-compose up -d web` to start it once the API is healthy.
 
-### Step 4 — Run database migrations
+### Step 5 — Run database migrations
 
 Migrations are not run automatically. Run them once after the first start:
 
@@ -133,6 +150,7 @@ DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypul
 ```
 
 > **Alternative — run migrations inside the container** (no local pnpm needed):
+>
 > ```bash
 > podman-compose exec api node --input-type=module -e "
 > import { drizzle } from 'drizzle-orm/postgres-js';
@@ -146,7 +164,7 @@ DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypul
 > "
 > ```
 
-### Step 5 — Seed default categories
+### Step 6 — Seed default categories
 
 ```bash
 # Replace the password with your POSTGRES_PASSWORD value
@@ -156,7 +174,7 @@ DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypul
 
 > If you don't have pnpm locally, skip seeding — the app works without seed data. Categories can be created manually in the UI.
 
-### Step 6 — Open the app
+### Step 7 — Open the app
 
 1. Navigate to **http://localhost:3000**
 2. Click **"Create admin account"** and register the first user (auto-assigned admin role)
@@ -473,6 +491,134 @@ curl -X POST http://localhost:5001/parse \
 
 ---
 
+---
+
+## Testing with Synthetic Bank Statements
+
+Sample files in every supported format live in `config/sample-data/`. Use them to exercise the parsers end-to-end.
+
+### Supported formats & parsers
+
+| File pattern           | Parser              | Format                                                                          |
+| ---------------------- | ------------------- | ------------------------------------------------------------------------------- |
+| `chase-checking-*.csv` | Chase Checking      | `Transaction Date, Posting Date, Description, Category, Debit, Credit, Balance` |
+| `chase-cc-*.csv`       | Chase Credit Card   | `Transaction Date, Post Date, Description, Category, Type, Amount`              |
+| `boa-checking-*.csv`   | Bank of America     | `Date, Reference Number, Description, Amount, Running Bal.`                     |
+| `amex-*.csv`           | American Express    | `Date, Description, Amount` (positive = charge)                                 |
+| `citi-*.csv`           | Citi                | `Status, Date, Description, Debit, Credit`                                      |
+| `*.xlsx`               | Generic Excel       | First sheet, same column structure as any CSV above                             |
+| `*.pdf`                | PDF parser (Python) | BofA rule-based; other banks use AI fallback                                    |
+
+### Option 1 — Upload via the UI
+
+1. Open **http://localhost:3000/accounts** and create a bank account (e.g. "Chase Checking", last four: `1234`)
+2. Go to **http://localhost:3000/upload**
+3. Select the account and drag-and-drop or choose a file from `config/sample-data/`
+4. The API parses the file, deduplicates rows, and enqueues AI categorization
+5. Check **http://localhost:3000/transactions** for the imported rows
+
+### Option 2 — Drop files into the watch folder (auto-import)
+
+The watch folder maps to `~/moneypulse-data/watch-folder/` on your Mac. The API watcher picks up new files automatically — no UI needed.
+
+Files must be placed inside a **subfolder named after the account slug** (`{nickname-slug}-{last-four}`):
+
+```
+~/moneypulse-data/watch-folder/
+  chase-checking-1234/          ← slug for "Chase Checking" account with last four 1234
+    march-2026.csv
+  boa-checking-5678/
+    april-2026.xlsx
+```
+
+The slug format is: lowercase nickname, non-alphanumeric chars replaced with `-`, then `-{lastFour}`. Examples:
+
+- "Chase Checking" + `1234` → `chase-checking-1234`
+- "BofA Savings" + `9012` → `bofa-savings-9012`
+- "Amex Platinum" + `0005` → `amex-platinum-0005`
+
+**Drop a sample file:**
+
+```bash
+# 1. Find your account slug (visible in the Accounts page or via API)
+curl -s http://localhost:4000/api/accounts \
+  -H "Cookie: access_token=<your-token>" | python3 -m json.tool
+
+# 2. Create the slug subfolder
+mkdir -p ~/moneypulse-data/watch-folder/chase-checking-1234
+
+# 3. Copy a sample file in
+cp config/sample-data/chase-checking.csv \
+   ~/moneypulse-data/watch-folder/chase-checking-1234/march-2026.csv
+```
+
+The API log will show:
+
+```
+[WatcherService] New file detected: /data/watch-folder/chase-checking-1234/march-2026.csv
+[WatcherService] Enqueued parse job for upload <uuid>
+```
+
+Successfully processed files are moved to `.archived/` inside the slug folder.
+
+---
+
+## Start Fresh — Purge All Data
+
+Use these commands to reset the app to a clean state.
+
+### Stop containers first
+
+```bash
+podman-compose down
+```
+
+### Wipe individual data stores
+
+```bash
+# Postgres — all tables, users, transactions, categories
+rm -rf ~/moneypulse-data/pg/*
+
+# Redis — all queues and cached tokens
+rm -rf ~/moneypulse-data/redis/*
+
+# Uploaded files
+rm -rf ~/moneypulse-data/uploads/*
+
+# Watch folder and any archived imports
+rm -rf ~/moneypulse-data/watch-folder/*
+
+# Ollama model weights (~4 GB) — only if you want to re-download
+rm -rf ~/moneypulse-data/ollama/*
+
+# Nightly backups
+rm -rf ~/moneypulse-data/backup/*
+```
+
+### Wipe everything at once (full reset)
+
+```bash
+podman-compose down
+rm -rf ~/moneypulse-data/{pg,redis,uploads,watch-folder,backup}/*
+```
+
+> **Note:** This does **not** remove `~/moneypulse-data/ollama` so you keep the downloaded model weights. Add it to the command if you also want to free that ~4 GB.
+
+### Restart and re-initialise
+
+```bash
+podman-compose up -d
+
+# Wait ~30 s for postgres to initialise the empty data dir, then:
+DATABASE_URL=postgresql://moneypulse:YOUR_PASSWORD@localhost:5432/moneypulse \
+  pnpm --filter @moneypulse/api run db:migrate
+
+DATABASE_URL=postgresql://moneypulse:YOUR_PASSWORD@localhost:5432/moneypulse \
+  pnpm --filter @moneypulse/api run db:seed
+```
+
+---
+
 ## Troubleshooting
 
 ### Port already in use
@@ -490,7 +636,7 @@ lsof -ti:5432 | xargs kill -9
 ### API container keeps restarting
 
 ```bash
-podman compose logs api
+podman-compose logs api
 ```
 
 Most common causes:
@@ -503,7 +649,7 @@ Most common causes:
 
 ```bash
 # Check postgres is healthy first
-podman compose ps postgres
+podman-compose ps postgres
 
 # Run migrations with explicit URL
 DATABASE_URL=postgresql://moneypulse:YOUR_PASSWORD@localhost:5432/moneypulse \

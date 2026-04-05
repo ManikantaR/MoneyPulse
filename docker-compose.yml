@@ -14,7 +14,7 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - ~/moneypulse-data/pg:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-moneypulse}']
       interval: 10s
@@ -28,7 +28,7 @@ services:
     ports:
       - '6379:6379'
     volumes:
-      - redis_data:/data
+      - ~/moneypulse-data/redis:/data
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
@@ -57,8 +57,8 @@ services:
       UPLOAD_DIR: /data/uploads
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     volumes:
-      - upload_data:/data/uploads
-      - watch_folder:/data/watch-folder
+      - ~/moneypulse-data/uploads:/data/uploads
+      - ~/moneypulse-data/watch-folder:/config/watch-folder
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,7 +112,7 @@ services:
     ports:
       - '11434:11434'
     volumes:
-      - ollama_data:/root/.ollama
+      - ~/moneypulse-data/ollama:/root/.ollama
 
   # ── DB Backup ────────────────────────────────────────────
   backup:
@@ -124,7 +124,7 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB:-moneypulse}
     volumes:
-      - backup_data:/backup
+      - ~/moneypulse-data/backup:/backup
       - ./config/backup/backup.sh:/usr/local/bin/backup.sh:ro
     entrypoint: ['/bin/sh', '-c']
     command:
@@ -136,10 +136,4 @@ services:
       postgres:
         condition: service_healthy
 
-volumes:
-  pg_data:
-  redis_data:
-  upload_data:
-  watch_folder:
-  ollama_data:
-  backup_data:
+# All data is stored in ~/moneypulse-data/* bind mounts (outside the repo) — no named volumes needed.
