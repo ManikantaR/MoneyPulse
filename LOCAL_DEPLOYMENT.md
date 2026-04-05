@@ -1,21 +1,21 @@
 # MoneyPulse — Local Deployment Guide
 
-Run the full stack locally using **Podman** and `podman compose`. No Node.js installation required for the containerised path.
+Run the full stack locally using **Podman** and `podman-compose`.
 
-> **Note:** All `docker` commands in the codebase and compose files work identically with Podman — the CLI is fully compatible.
+> **Important:** Use `podman-compose` (the standalone Python tool, installed via `brew install podman-compose`), **not** `podman compose`. Podman's built-in compose delegate picks up Docker's compose binary which fails on macOS without Docker Desktop running.
 
 ---
 
 ## What You'll Get
 
-| Service       | URL                                   | Description                        |
-|---------------|---------------------------------------|------------------------------------|
-| **Dashboard** | http://localhost:3000                 | Next.js frontend                   |
-| **API**       | http://localhost:4000/api             | NestJS REST API                    |
-| **Swagger**   | http://localhost:4000/api/docs        | Interactive API explorer           |
-| **PDF Parser**| http://localhost:5000/health          | Python microservice (healthcheck)  |
-| **PostgreSQL**| localhost:5432                        | Database (moneypulse)              |
-| **Redis**     | localhost:6379                        | Queue & cache                      |
+| Service        | URL                            | Description                       |
+| -------------- | ------------------------------ | --------------------------------- |
+| **Dashboard**  | http://localhost:3000          | Next.js frontend                  |
+| **API**        | http://localhost:4000/api      | NestJS REST API                   |
+| **Swagger**    | http://localhost:4000/api/docs | Interactive API explorer          |
+| **PDF Parser** | http://localhost:5001/health   | Python microservice (healthcheck) |
+| **PostgreSQL** | localhost:5432                 | Database (moneypulse)             |
+| **Redis**      | localhost:6379                 | Queue & cache                     |
 
 ---
 
@@ -23,39 +23,36 @@ Run the full stack locally using **Podman** and `podman compose`. No Node.js ins
 
 ### Required
 
-| Tool | Minimum Version | Install |
-|------|----------------|----------|
-| **Podman Desktop** | 1.x+ (bundles `podman` 5.x + compose support) | https://podman-desktop.io |
-| **Git** | any | https://git-scm.com |
+| Tool               | Minimum Version             | Install                       |
+| ------------------ | --------------------------- | ----------------------------- |
+| **Podman Desktop** | 1.x+ (bundles `podman` 5.x) | https://podman-desktop.io     |
+| **podman-compose** | 1.x+                        | `brew install podman-compose` |
+| **Git**            | any                         | https://git-scm.com           |
 
 > **macOS setup tip:** After installing Podman Desktop, open it and complete the onboarding wizard. It creates and starts a Podman machine (the Linux VM that runs containers) automatically. Wait until the status indicator is green before proceeding.
 
 #### Verify Podman is ready
 
 ```bash
-podman version          # should show Client + Server (machine)
-podman compose version  # should show compose version
+podman version        # should show Client + Server (machine)
+podman-compose --version  # should print podman-compose version
 ```
 
-If `podman compose` isn't found, install the standalone shim:
-
-```bash
-brew install podman-compose
-# then use 'podman-compose' instead of 'podman compose' in all commands below
-```
+> **Why `podman-compose` instead of `podman compose`?**
+> The `podman compose` sub-command on macOS delegates to whatever compose binary is found in PATH. If Docker Desktop is installed alongside Podman, its `docker-compose` binary gets picked up — and it fails with `docker-credential-desktop: executable file not found`. The standalone `podman-compose` avoids this entirely.
 
 ### Optional (AI categorization)
 
-| Tool | Notes |
-|------|-------|
+| Tool       | Notes                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Ollama** | Only needed if you want local AI categorization. Pull `mistral:7b` after installing. The compose `ai` profile runs it as a container — no separate install needed. |
 
 ### Required for Development Mode only (apps run locally, not in containers)
 
-| Tool | Version | Install |
-|------|---------|---------|
+| Tool        | Version  | Install                                      |
+| ----------- | -------- | -------------------------------------------- |
 | **Node.js** | 22.x LTS | https://nodejs.org or `brew install node@22` |
-| **pnpm** | 10.x | `npm install -g pnpm` |
+| **pnpm**    | 10.x     | `npm install -g pnpm`                        |
 
 ---
 
@@ -93,14 +90,17 @@ JWT_SECRET=a_very_long_random_string_at_least_64_characters_long_change_this
 ```
 
 > **Generate a strong JWT secret:**
+>
 > ```bash
-> openssl rand -base64 64
+> openssl rand -base64 64 | tr -d '\n'
 > ```
+>
+> Paste the full output as the value of `JWT_SECRET`. The default placeholder will cause startup to fail.
 
 ### Step 3 — Build and start all services
 
 ```bash
-podman compose up -d --build
+podman-compose up -d --build
 ```
 
 This builds the API, web, and PDF parser images, then starts all 6 compose services (postgres, redis, api, web, pdf-parser, and backup). First build takes **5–10 minutes** (downloads base images and compiles TypeScript). Subsequent starts are seconds.
@@ -108,10 +108,11 @@ This builds the API, web, and PDF parser images, then starts all 6 compose servi
 Watch the startup progress:
 
 ```bash
-podman compose logs -f
+podman-compose logs -f
 ```
 
 Wait until you see:
+
 ```
 api  | MoneyPulse API running on http://localhost:4000
 api  | Swagger docs at http://localhost:4000/api/docs
@@ -119,28 +120,30 @@ api  | Swagger docs at http://localhost:4000/api/docs
 
 Press `Ctrl+C` to stop following logs (services keep running).
 
+> **Note:** `podman-compose` starts postgres, redis, pdf-parser, backup, and api in sequence. The web container starts only after the API passes its health check (30 s window). If you see the web container not listed after `up`, wait ~45 s and run `podman-compose up -d web` to start it once the API is healthy.
+
 ### Step 4 — Run database migrations
 
 Migrations are not run automatically. Run them once after the first start:
 
 ```bash
-podman compose exec api node --input-type=module -e "
-import { drizzle } from 'drizzle-orm/postgres-js';
-import { migrate } from 'drizzle-orm/migrator';
-import postgres from 'postgres';
-const sql = postgres(process.env.DATABASE_URL, { max: 1 });
-await migrate(drizzle(sql), { migrationsFolder: '/app/db/migrations' });
-console.log('Migrations done');
-await sql.end();
-process.exit(0);
-"
+# Replace mysecurepassword123 with your POSTGRES_PASSWORD value
+DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse \
+  pnpm --filter @moneypulse/api run db:migrate
 ```
 
-> **Alternative** — if you have Node.js + pnpm installed locally:
+> **Alternative — run migrations inside the container** (no local pnpm needed):
 > ```bash
-> # Point to the containerised Postgres
-> DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse \
->   pnpm --filter @moneypulse/api run db:migrate
+> podman-compose exec api node --input-type=module -e "
+> import { drizzle } from 'drizzle-orm/postgres-js';
+> import { migrate } from 'drizzle-orm/migrator';
+> import postgres from 'postgres';
+> const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+> await migrate(drizzle(sql), { migrationsFolder: '/app/db/migrations' });
+> console.log('Migrations done');
+> await sql.end();
+> process.exit(0);
+> "
 > ```
 
 ### Step 5 — Seed default categories
@@ -175,7 +178,7 @@ pnpm install
 ### Step 2 — Start infrastructure only
 
 ```bash
-podman compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+podman-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
 This starts only PostgreSQL and Redis in containers (API, web, pdf-parser are excluded in dev mode).
@@ -219,16 +222,17 @@ This starts both the NestJS API (port 4000) and Next.js frontend (port 3000) wit
 
 ```bash
 # All containers running?
-podman compose ps
+podman-compose ps
 
 # API health (returns JSON with db/redis/ollama status)
 curl http://localhost:4000/api/health | python3 -m json.tool
 
-# PDF parser health
-curl http://localhost:5000/health
+# PDF parser health (port 5001 on host — mapped to 5000 inside container)
+curl http://localhost:5001/health
 ```
 
 Expected API health response:
+
 ```json
 {
   "status": "ok",
@@ -245,13 +249,13 @@ Expected API health response:
 ### Check logs for a specific service
 
 ```bash
-podman compose logs api        # NestJS API logs
-podman compose logs web        # Next.js logs
-podman compose logs pdf-parser # Python service logs
-podman compose logs postgres   # Database logs
+podman-compose logs api        # NestJS API logs
+podman-compose logs web        # Next.js logs
+podman-compose logs pdf-parser # Python service logs
+podman-compose logs postgres   # Database logs
 
 # Follow logs live (Ctrl+C to stop)
-podman compose logs -f api
+podman-compose logs -f api
 ```
 
 ---
@@ -261,13 +265,13 @@ podman compose logs -f api
 Start the stack with the `ai` profile to include the Ollama container:
 
 ```bash
-podman compose --profile ai up -d --build
+podman-compose --profile ai up -d --build
 ```
 
 Then pull the model (one-time — ~4 GB download):
 
 ```bash
-podman compose exec ollama ollama pull mistral:7b
+podman-compose exec ollama ollama pull mistral:7b
 ```
 
 After first pull, Ollama will be ready automatically on subsequent starts. The AI health check in `/api/health` will show `"ollama": "available"`.
@@ -278,10 +282,10 @@ After first pull, Ollama will be ready automatically on subsequent starts. The A
 
 ```bash
 # Stop all containers (keeps data volumes)
-podman compose down
+podman-compose down
 
 # Stop and delete ALL data (database, uploads, etc.) — destructive!
-podman compose down -v
+podman-compose down -v
 
 # Stop the Podman machine entirely (frees RAM)
 podman machine stop
@@ -310,6 +314,7 @@ uvicorn src.main:app --host 0.0.0.0 --port 5000
 ```
 
 Then set in your `.env`:
+
 ```env
 PDF_PARSER_URL=http://localhost:5000
 ```
@@ -320,28 +325,28 @@ PDF_PARSER_URL=http://localhost:5000
 
 The app is at **Phase 5** of 8 planned phases. Here's what you can test:
 
-| Feature | Status | Where |
-|---------|--------|-------|
-| Register / Login / JWT auth | ✅ | `/login`, `/register` |
-| Add bank accounts | ✅ | `/accounts` |
-| Import transactions (CSV / Excel) | ✅ | `/upload` — supports BofA, Chase, Citi, Amex, generic CSV |
-| Import transactions (PDF) | ✅ | `/upload` — requires PDF parser service running |
-| Transaction grid with search/filter | ✅ | `/transactions` |
-| Bulk categorize transactions | ✅ | `/transactions` — select rows → Categorize |
-| Export transactions to CSV | ✅ | `/transactions` → Export button |
-| Category management (tree view) | ✅ | `/categories` |
-| AI auto-categorization | ✅ | Runs automatically on import (requires Ollama) |
-| Dashboard — 7 charts + KPI cards | ✅ | `/` (home) |
-| — Income vs Expenses bar chart | ✅ | Dashboard |
-| — Spending by Category donut | ✅ | Dashboard |
-| — Net Worth card | ✅ | Dashboard |
-| — Top Merchants bar chart | ✅ | Dashboard |
-| — Spending Trend line chart | ✅ | Dashboard |
-| — Account Balances chart | ✅ | Dashboard |
-| — Credit Utilization bars | ✅ | Dashboard |
-| Budget alerts | ⏳ | Phase 6 |
-| Savings goals | ⏳ | Phase 6 |
-| Investments tracking | ⏳ | Phase 8 |
+| Feature                             | Status | Where                                                     |
+| ----------------------------------- | ------ | --------------------------------------------------------- |
+| Register / Login / JWT auth         | ✅     | `/login`, `/register`                                     |
+| Add bank accounts                   | ✅     | `/accounts`                                               |
+| Import transactions (CSV / Excel)   | ✅     | `/upload` — supports BofA, Chase, Citi, Amex, generic CSV |
+| Import transactions (PDF)           | ✅     | `/upload` — requires PDF parser service running           |
+| Transaction grid with search/filter | ✅     | `/transactions`                                           |
+| Bulk categorize transactions        | ✅     | `/transactions` — select rows → Categorize                |
+| Export transactions to CSV          | ✅     | `/transactions` → Export button                           |
+| Category management (tree view)     | ✅     | `/categories`                                             |
+| AI auto-categorization              | ✅     | Runs automatically on import (requires Ollama)            |
+| Dashboard — 7 charts + KPI cards    | ✅     | `/` (home)                                                |
+| — Income vs Expenses bar chart      | ✅     | Dashboard                                                 |
+| — Spending by Category donut        | ✅     | Dashboard                                                 |
+| — Net Worth card                    | ✅     | Dashboard                                                 |
+| — Top Merchants bar chart           | ✅     | Dashboard                                                 |
+| — Spending Trend line chart         | ✅     | Dashboard                                                 |
+| — Account Balances chart            | ✅     | Dashboard                                                 |
+| — Credit Utilization bars           | ✅     | Dashboard                                                 |
+| Budget alerts                       | ⏳     | Phase 6                                                   |
+| Savings goals                       | ⏳     | Phase 6                                                   |
+| Investments tracking                | ⏳     | Phase 8                                                   |
 
 ---
 
@@ -351,7 +356,7 @@ The app is at **Phase 5** of 8 planned phases. Here's what you can test:
 
 ```bash
 # List all running containers with status and ports
-podman compose ps
+podman-compose ps
 podman ps                           # all containers (any compose project)
 
 # See resource usage (CPU/RAM)
@@ -362,13 +367,13 @@ podman stats --no-stream
 
 ```bash
 # API container
-podman compose exec api sh
+podman-compose exec api sh
 
 # Postgres container — run psql directly
-podman compose exec postgres psql -U moneypulse moneypulse
+podman-compose exec postgres psql -U moneypulse moneypulse
 
 # Redis container — run redis-cli
-podman compose exec redis redis-cli
+podman-compose exec redis redis-cli
   > KEYS *            # list all keys
   > DBSIZE           # count keys
   > FLUSHALL         # clear queue (useful to unstick failed jobs)
@@ -377,9 +382,11 @@ podman compose exec redis redis-cli
 ### Inspect the database
 
 ```bash
-podman compose exec postgres psql -U moneypulse moneypulse
+podman-compose exec postgres psql -U moneypulse moneypulse
 ```
+
 Useful SQL once inside:
+
 ```sql
 -- Check tables exist
 \dt
@@ -439,7 +446,7 @@ Add this to `.vscode/launch.json` (create the file if it doesn't exist):
 
 Then press **F5** in VS Code with the API package open. Breakpoints set in `apps/api/src/**` will hit.
 
-> Prerequisite: infra must be running (`podman compose -f docker-compose.yml -f docker-compose.dev.yml up -d`).
+> Prerequisite: infra must be running (`podman-compose -f docker-compose.yml -f docker-compose.dev.yml up -d`).
 
 ### Explore the API interactively (Swagger)
 
@@ -453,13 +460,13 @@ Open **http://localhost:4000/api/docs** in a browser while the API is running.
 
 ```bash
 # Container logs
-podman compose logs -f pdf-parser
+podman-compose logs -f pdf-parser
 
-# Health check
-curl http://localhost:5000/health
+# Health check (port 5001 on host)
+curl http://localhost:5001/health
 
 # Test a parse request manually
-curl -X POST http://localhost:5000/parse \
+curl -X POST http://localhost:5001/parse \
   -F 'file=@/path/to/statement.pdf' \
   -F 'institution=generic'
 ```
@@ -487,6 +494,7 @@ podman compose logs api
 ```
 
 Most common causes:
+
 - `POSTGRES_PASSWORD` not set in `.env`
 - `JWT_SECRET` not set in `.env`
 - Database not ready yet (wait 30 s and try `podman compose restart api`)
@@ -510,11 +518,20 @@ The Podman machine is not running. Open Podman Desktop and wait for it to go gre
 podman machine start
 ```
 
-### `podman compose` command not found
+### `podman-compose` command not found
 
 ```bash
 brew install podman-compose
-# then substitute 'podman-compose' for 'podman compose' in all commands above
+```
+
+### `podman compose` fails with `docker-credential-desktop` error
+
+This happens when Docker Desktop is also installed — Podman delegates to Docker's compose binary which requires Docker Desktop to be running.
+
+**Fix:** Always use `podman-compose` (the standalone tool) instead of `podman compose`:
+
+```bash
+brew install podman-compose
 ```
 
 ### Next.js shows blank page or login loop
@@ -524,10 +541,17 @@ Clear browser cookies for `localhost:3000` and reload.
 ### PDF uploads fail silently
 
 The PDF parser service is not running or not healthy. Check:
+
 ```bash
-curl http://localhost:5000/health
-podman compose logs pdf-parser
+curl http://localhost:5001/health
+podman-compose logs pdf-parser
 ```
+
+### Port 5000 in use (macOS AirPlay Receiver)
+
+macOS Control Center reserves port 5000 for the AirPlay Receiver. The pdf-parser container is mapped to host port **5001** (→ internal 5000) to avoid this conflict. This is already handled in `docker-compose.yml`.
+
+If you see `bind: address already in use` for port 5000, AirPlay Receiver is still the culprit. Disable it in **System Settings → General → AirDrop & Handoff → AirPlay Receiver**, or keep using port 5001 (the default).
 
 ### Rootless networking — service can't reach another service
 
@@ -535,5 +559,19 @@ Podman runs rootless by default. If containers can't reach each other, ensure th
 
 ```bash
 podman network ls
-podman compose down && podman compose up -d
+podman-compose down && podman-compose up -d
+```
+
+### Web container fails to start / exits immediately
+
+The web container depends on the API being healthy. `podman-compose` does not wait for health conditions before starting dependents — if the API is still initialising, the web container may fail to start.
+
+**Fix:** Wait ~45 s for the API to become healthy, then start the web container manually:
+
+```bash
+# Check API is healthy first
+curl http://localhost:4000/api/health
+
+# Then start web
+podman-compose up -d web
 ```

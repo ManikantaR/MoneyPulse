@@ -30,11 +30,14 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/apps/web/public ./public
+# Copy standalone output (preserves pnpm symlinks relative to the .pnpm store)
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/static
+# Copy static assets and public to app subdirectory (where server.js lives)
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 
 USER nextjs
+WORKDIR /app/apps/web
 EXPOSE 3000
 ENV PORT=3000
 CMD ["node", "server.js"]

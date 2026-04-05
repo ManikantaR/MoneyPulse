@@ -18,17 +18,17 @@ RUN pnpm --filter @moneypulse/shared build
 # Build API
 FROM shared-build AS api-build
 COPY apps/api/ ./apps/api/
-RUN pnpm --filter @moneypulse/api build
+RUN pnpm --filter @moneypulse/api build && \
+    pnpm --filter @moneypulse/api deploy --prod --legacy /deploy && \
+    cp -r /app/apps/api/dist /deploy/dist
 
 # Production
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk add --no-cache curl
 
-COPY --from=api-build /app/apps/api/dist ./dist
-COPY --from=api-build /app/apps/api/package.json ./
-COPY --from=api-build /app/node_modules ./node_modules
-COPY --from=api-build /app/packages ./packages
+COPY --from=api-build /deploy ./
 COPY db/migrations ./db/migrations
 
 EXPOSE 4000

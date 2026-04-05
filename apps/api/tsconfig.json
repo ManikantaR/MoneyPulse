@@ -11,6 +11,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "sourceMap": true,
+    "isolatedModules": false,
     "incremental": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false
