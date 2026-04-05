@@ -121,17 +121,27 @@ Press `Ctrl+C` to stop following logs (services keep running).
 
 ### Step 4 — Run database migrations
 
-Migrations are not run automatically. Run them once after the first start.
-
-The recommended approach requires Node.js + pnpm installed locally (see [Prerequisites](#prerequisites)):
+Migrations are not run automatically. Run them once after the first start:
 
 ```bash
-# Point to the containerised Postgres
-DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse \
-  pnpm --filter @moneypulse/api run db:migrate
+podman compose exec api node --input-type=module -e "
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/migrator';
+import postgres from 'postgres';
+const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+await migrate(drizzle(sql), { migrationsFolder: '/app/db/migrations' });
+console.log('Migrations done');
+await sql.end();
+process.exit(0);
+"
 ```
 
-> **No local pnpm?** The API container does not bundle the migration files or the `pg` client, so exec-based migration inside the container is not supported. Install Node.js 22 + pnpm 10 locally and run the command above, or use Option B (Dev Mode) which always runs migrations via the local toolchain.
+> **Alternative** — if you have Node.js + pnpm installed locally:
+> ```bash
+> # Point to the containerised Postgres
+> DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse \
+>   pnpm --filter @moneypulse/api run db:migrate
+> ```
 
 ### Step 5 — Seed default categories
 

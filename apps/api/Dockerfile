@@ -29,6 +29,7 @@ COPY --from=api-build /app/apps/api/dist ./dist
 COPY --from=api-build /app/apps/api/package.json ./
 COPY --from=api-build /app/node_modules ./node_modules
 COPY --from=api-build /app/packages ./packages
+COPY db/migrations ./db/migrations
 
 EXPOSE 4000
 CMD ["node", "dist/main.js"]
