@@ -388,10 +388,10 @@ erDiagram
 | **Phase 0** | Project scaffolding & infrastructure | ✅ Done |
 | **Phase 1** | Authentication & user management | ✅ Done |
 | **Phase 2** | Bank accounts & CSV/Excel ingestion | ✅ Done — 49 tests, security hardened |
-| **Phase 3** | AI-powered categorization | 🔲 Up next |
-| **Phase 4** | PDF parser microservice | 🔲 Planned |
-| **Phase 5** | Dashboard & visualization | 🔲 Planned |
-| **Phase 6** | Budgets, alerts & notifications | 🔲 Planned |
+| **Phase 3** | AI-powered categorization | ✅ Done — 60+ seed rules, Ollama batch categorizer, PII sanitizer, learning loop, 112 API tests |
+| **Phase 4** | PDF parser microservice | ✅ Done — Python/pdfplumber service, BofA rule-based + AI fallback, 66 tests |
+| **Phase 5** | Dashboard & visualization | ✅ Done — income/expense charts, spending by category, trend lines, CSV export |
+| **Phase 6** | Budgets, alerts & notifications | 🔲 Up next |
 | **Phase 7** | MCP server for AI agents | 🔲 Planned |
 | **Phase 8** | Investment account tracking | 🔲 Planned |
 
