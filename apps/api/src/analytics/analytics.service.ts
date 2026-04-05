@@ -48,8 +48,8 @@ export class AnalyticsService {
       WHERE ${schema.transactions.isSplitParent} = false
         AND ${schema.transactions.deletedAt} IS NULL
         AND ${userScope}
-        ${query.from ? sql`AND ${schema.transactions.date} >= ${new Date(query.from)}` : sql``}
-        ${query.to ? sql`AND ${schema.transactions.date} <= ${new Date(query.to)}` : sql``}
+        ${query.from ? sql`AND ${schema.transactions.date} >= ${query.from}::date` : sql``}
+        ${query.to ? sql`AND ${schema.transactions.date} <= ${query.to}::date` : sql``}
         ${query.accountId ? sql`AND ${schema.transactions.accountId} = ${query.accountId}` : sql``}
       GROUP BY date_trunc('month', ${schema.transactions.date})
       ORDER BY month ASC
@@ -98,8 +98,8 @@ export class AnalyticsService {
         AND t.deleted_at IS NULL
         AND t.is_credit = false
         AND ${userScope}
-        ${query.from ? sql`AND t.date >= ${new Date(query.from)}` : sql``}
-        ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
+        ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
+        ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
       GROUP BY c.id, c.name, c.icon, c.color
       ORDER BY total_cents DESC
@@ -158,8 +158,8 @@ export class AnalyticsService {
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND ${userScope}
-        ${query.from ? sql`AND t.date >= ${new Date(query.from)}` : sql``}
-        ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
+        ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
+        ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
       GROUP BY ${truncFn}
       ORDER BY period ASC
@@ -211,7 +211,7 @@ export class AnalyticsService {
         ON a.id = t.account_id
         AND t.is_split_parent = false
         AND t.deleted_at IS NULL
-        ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
+        ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
       WHERE a.deleted_at IS NULL
         AND ${userScope}
         ${query.accountId ? sql`AND a.id = ${query.accountId}` : sql``}
@@ -398,8 +398,8 @@ export class AnalyticsService {
         AND t.deleted_at IS NULL
         AND t.is_credit = false
         AND ${userScope}
-        ${query.from ? sql`AND t.date >= ${new Date(query.from)}` : sql``}
-        ${query.to ? sql`AND t.date <= ${new Date(query.to)}` : sql``}
+        ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
+        ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
       GROUP BY COALESCE(t.merchant_name, t.description)
       ORDER BY total_cents DESC

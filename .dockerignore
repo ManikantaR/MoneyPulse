@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+**/.turbo
+**/coverage
+**/.env
+**/.env.local
+tmp/uploads/*
+config/watch-folder/*

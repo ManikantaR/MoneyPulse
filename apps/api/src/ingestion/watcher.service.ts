@@ -39,11 +39,18 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
    */
   async onModuleInit() {
     try {
+      // usePolling=true is required when the watch folder is a bind mount
+      // on macOS/Podman — inotify events are not delivered across the VM boundary.
+      const usePolling =
+        this.config.get<string>('WATCH_FOLDER_POLLING') !== 'false';
+
       this.watcher = chokidar.watch(this.watchDir, {
         persistent: true,
         ignoreInitial: true,
         depth: 1, // {slug}/file.csv — one level deep
         ignored: /(^|[/\\])\.archived/,
+        usePolling,
+        interval: 3000,
         awaitWriteFinish: {
           stabilityThreshold: 2000,
           pollInterval: 500,

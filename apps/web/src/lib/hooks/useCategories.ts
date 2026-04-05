@@ -21,11 +21,34 @@ export function useCategories() {
   });
 }
 
+/** Build a nested tree from the flat depth-annotated list returned by the API. */
+function buildTree(
+  flat: (Category & { depth?: number })[],
+): CategoryTreeNode[] {
+  const map = new Map<string, CategoryTreeNode>();
+  const roots: CategoryTreeNode[] = [];
+  for (const item of flat) {
+    map.set(item.id, { ...item, children: [] });
+  }
+  for (const node of map.values()) {
+    if (node.parentId) {
+      const parent = map.get(node.parentId);
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  return roots;
+}
+
 /** Fetch category tree (parent → children hierarchy). */
 export function useCategoryTree() {
   return useQuery({
     queryKey: ['categories', 'tree'],
-    queryFn: () => api.get<{ data: CategoryTreeNode[] }>('/categories/tree'),
+    queryFn: () =>
+      api.get<{ data: (Category & { depth?: number })[] }>('/categories/tree'),
+    select: (res) => ({ data: buildTree(res.data) }),
   });
 }
 
