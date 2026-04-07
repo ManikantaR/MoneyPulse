@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfYear } from 'date-fns';
 import { TrendingUp, TrendingDown, ArrowDownUp, BarChart3 } from 'lucide-react';
 import { PeriodSelector } from '@/components/PeriodSelector';
 import { StatCard } from '@/components/charts/StatCard';
@@ -26,10 +26,10 @@ import { formatCents } from '@/lib/format';
 /** Dashboard page — main financial overview with KPI cards and charts. */
 export default function DashboardPage() {
   const [from, setFrom] = useState(
-    format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    format(startOfYear(new Date()), 'yyyy-MM-dd'),
   );
   const [to, setTo] = useState(
-    format(endOfMonth(new Date()), 'yyyy-MM-dd'),
+    format(new Date(), 'yyyy-MM-dd'),
   );
 
   const params = { from, to };
