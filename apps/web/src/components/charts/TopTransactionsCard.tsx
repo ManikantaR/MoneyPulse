@@ -41,7 +41,7 @@ export function TopTransactionsCard({ transactions }: TopTransactionsCardProps) 
                   {tx.merchantName || tx.description}
                 </p>
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  {format(new Date(tx.date + 'T00:00:00'), 'MMM d, yyyy')}
+                  {format(new Date(tx.date), 'MMM d, yyyy')}
                 </p>
               </div>
               <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--destructive)]">
