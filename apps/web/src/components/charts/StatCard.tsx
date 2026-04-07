@@ -8,7 +8,7 @@ interface StatCardProps {
   subtitle?: string;
   icon?: LucideIcon;
   trend?: { value: number; label: string };
-  accentColor?: 'primary' | 'secondary' | 'tertiary';
+  accentColor?: 'primary' | 'secondary' | 'danger';
   className?: string;
 }
 
@@ -25,13 +25,13 @@ export function StatCard({
   const accentStyles = {
     primary: 'from-[var(--primary)]/50 text-[var(--primary)]',
     secondary: 'from-[var(--secondary)]/50 text-[var(--secondary)]',
-    tertiary: 'from-[var(--destructive)]/50 text-[var(--destructive)]',
+    danger: 'from-[var(--destructive)]/50 text-[var(--destructive)]',
   };
 
   const badgeStyles = {
     primary: 'text-[var(--primary)] bg-[var(--accent)]',
     secondary: 'text-[var(--secondary)] bg-[var(--secondary)]/10',
-    tertiary: 'text-[var(--destructive)] bg-[var(--destructive)]/10',
+    danger: 'text-[var(--destructive)] bg-[var(--destructive)]/10',
   };
 
   return (

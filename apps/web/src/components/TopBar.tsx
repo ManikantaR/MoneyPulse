@@ -49,7 +49,7 @@ export function TopBar() {
             <p className="text-sm font-semibold leading-none">
               {user?.displayName}
             </p>
-            <p className="text-[10px] font-medium uppercase tracking-widest text-[var(--muted-foreground)]">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted-foreground)]">
               {user?.role ?? 'Member'}
             </p>
           </div>

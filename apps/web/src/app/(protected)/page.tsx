@@ -96,10 +96,10 @@ export default function DashboardPage() {
           title="Total Expenses"
           value={kpi ? formatCents(kpi.totalExpenses) : '—'}
           icon={TrendingDown}
-          accentColor="tertiary"
+          accentColor="danger"
         />
         <StatCard
-          title="Monthly Net"
+          title="Net"
           value={kpi ? formatCents(kpi.net) : '—'}
           icon={ArrowDownUp}
           accentColor="primary"

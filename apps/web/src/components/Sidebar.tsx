@@ -59,7 +59,7 @@ export function Sidebar() {
             <span className="block text-base font-extrabold tracking-tight text-[var(--primary)]">
               MoneyPulse
             </span>
-            <span className="block text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)] opacity-70">
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)] opacity-70">
               Wealth Management
             </span>
           </div>
