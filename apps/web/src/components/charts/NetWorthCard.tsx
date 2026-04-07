@@ -19,58 +19,63 @@ export function NetWorthCard({
   const isPositive = netWorth >= 0;
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-      <h3 className="mb-1 text-sm font-semibold text-[var(--foreground)]">
-        Net Worth
-      </h3>
-      <div className="flex items-center gap-2">
-        <span className="text-3xl font-bold tracking-tight">
-          {formatCents(Math.abs(netWorth))}
-        </span>
+    <div className="relative overflow-hidden rounded-2xl bg-[var(--surface-container-low)] p-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+          Net Worth
+        </h3>
         {isPositive ? (
-          <TrendingUp className="h-5 w-5 text-emerald-500" />
+          <TrendingUp className="h-5 w-5 text-[var(--secondary)]" />
         ) : (
-          <TrendingDown className="h-5 w-5 text-red-500" />
+          <TrendingDown className="h-5 w-5 text-[var(--destructive)]" />
         )}
       </div>
-      {!isPositive && (
-        <p className="mt-0.5 text-xs text-red-500">Negative net worth</p>
-      )}
+      <div className="mt-2">
+        <span className="text-4xl font-extrabold tracking-tight">
+          {formatCents(Math.abs(netWorth))}
+        </span>
+        {!isPositive && (
+          <p className="mt-1 text-xs text-[var(--destructive)]">Negative net worth</p>
+        )}
+      </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-3 gap-4 border-t border-[var(--border)] pt-6">
         {/* Assets */}
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
             <Wallet className="h-3.5 w-3.5" />
             Assets
           </div>
-          <p className="text-sm font-semibold text-emerald-500 tabular-nums">
+          <p className="text-lg font-bold text-[var(--secondary)] tabular-nums">
             {formatCents(assets)}
           </p>
         </div>
 
         {/* Liabilities */}
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
             <CreditCard className="h-3.5 w-3.5" />
             Liabilities
           </div>
-          <p className="text-sm font-semibold text-red-500 tabular-nums">
+          <p className="text-lg font-bold text-[var(--destructive)] tabular-nums">
             {formatCents(liabilities)}
           </p>
         </div>
 
         {/* Investments */}
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
             <LineChart className="h-3.5 w-3.5" />
             Investments
           </div>
-          <p className="text-sm font-semibold text-[var(--primary)] tabular-nums">
+          <p className="text-lg font-bold text-[var(--primary)] tabular-nums">
             {formatCents(investments)}
           </p>
         </div>
       </div>
+
+      {/* Bottom accent bar */}
+      <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-[var(--primary)]/50 to-transparent" />
     </div>
   );
 }

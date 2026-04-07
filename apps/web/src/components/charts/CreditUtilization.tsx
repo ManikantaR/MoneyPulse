@@ -27,18 +27,19 @@ export function CreditUtilization({ data }: CreditUtilizationProps) {
   }
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-      <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">
+    <div className="rounded-2xl bg-[var(--surface-container-low)] p-6">
+      <h3 className="mb-1 text-xl font-bold tracking-tight">
         Credit Utilization
       </h3>
+      <p className="mb-6 text-sm text-[var(--muted-foreground)]">Balance vs limit per card</p>
       {data.length === 0 ? (
         <p className="text-sm text-[var(--muted-foreground)]">No credit cards found</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {data.map((card) => (
             <div key={card.accountId} className="space-y-1.5">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">{card.nickname}</span>
+                <span className="font-semibold">{card.nickname}</span>
                 <span className="text-[var(--muted-foreground)] tabular-nums">
                   {formatCents(card.balanceCents)} / {formatCents(card.limitCents)}
                 </span>
@@ -49,7 +50,7 @@ export function CreditUtilization({ data }: CreditUtilizationProps) {
                   style={{ width: `${Math.min(card.utilizationPercent, 100)}%` }}
                 />
               </div>
-              <p className="text-right text-xs text-[var(--muted-foreground)]">
+              <p className="text-right text-xs font-semibold text-[var(--muted-foreground)]">
                 {card.utilizationPercent.toFixed(1)}%
               </p>
             </div>

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
-import { DollarSign, TrendingUp, CreditCard, ArrowDownUp } from 'lucide-react';
+import { TrendingUp, TrendingDown, ArrowDownUp, BarChart3 } from 'lucide-react';
 import { PeriodSelector } from '@/components/PeriodSelector';
 import { StatCard } from '@/components/charts/StatCard';
 import { IncomeExpenseBar } from '@/components/charts/IncomeExpenseBar';
@@ -65,12 +65,12 @@ export default function DashboardPage() {
   }, [incomeExpense]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-extrabold tracking-tight">Dashboard</h1>
+          <p className="text-[var(--muted-foreground)]">
             Your financial overview at a glance
           </p>
         </div>
@@ -85,26 +85,30 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Income"
           value={kpi ? formatCents(kpi.totalIncome) : '—'}
           icon={TrendingUp}
+          accentColor="secondary"
         />
         <StatCard
           title="Total Expenses"
           value={kpi ? formatCents(kpi.totalExpenses) : '—'}
-          icon={DollarSign}
+          icon={TrendingDown}
+          accentColor="tertiary"
         />
         <StatCard
-          title="Net"
+          title="Monthly Net"
           value={kpi ? formatCents(kpi.net) : '—'}
           icon={ArrowDownUp}
+          accentColor="primary"
         />
         <StatCard
           title="Net Worth"
           value={nw ? formatCents(nw.netWorth) : '—'}
-          icon={CreditCard}
+          icon={BarChart3}
+          accentColor="primary"
         />
       </div>
 

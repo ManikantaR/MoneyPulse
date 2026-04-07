@@ -96,16 +96,16 @@ export default function TransactionsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-extrabold tracking-tight">Transactions</h1>
+          <p className="text-[var(--muted-foreground)]">
             {data?.total ?? 0} total transactions
           </p>
         </div>
         <button
           onClick={handleExport}
-          className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm hover:bg-[var(--muted)] transition-colors"
+          className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors"
         >
           <Download className="h-4 w-4" />
           Export CSV
@@ -113,47 +113,62 @@ export default function TransactionsPage() {
       </div>
 
       {/* Search & Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
-          <input
-            type="text"
-            placeholder="Search transactions..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 pl-9 pr-3 text-sm placeholder:text-[var(--muted-foreground)]"
-          />
+      <div className="grid grid-cols-1 gap-4 rounded-2xl bg-[var(--surface-container-low)] p-4 md:grid-cols-4">
+        <div className="flex flex-col gap-1.5 md:col-span-2">
+          <label className="px-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+            Search
+          </label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+            <input
+              type="text"
+              placeholder="Search transactions..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 pl-9 pr-3 text-sm placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+            />
+          </div>
         </div>
-        <select
-          value={query.accountId ?? ''}
-          onChange={(e) => setQuery({ ...query, accountId: e.target.value || undefined, page: 1 })}
-          className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm"
-        >
-          <option value="">All Accounts</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.nickname}</option>
-          ))}
-        </select>
-        <select
-          value={query.categoryId ?? ''}
-          onChange={(e) => setQuery({ ...query, categoryId: e.target.value || undefined, page: 1 })}
-          className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm"
-        >
-          <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        <div className="flex flex-col gap-1.5">
+          <label className="px-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+            Account
+          </label>
+          <select
+            value={query.accountId ?? ''}
+            onChange={(e) => setQuery({ ...query, accountId: e.target.value || undefined, page: 1 })}
+            className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+          >
+            <option value="">All Accounts</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.nickname}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="px-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+            Category
+          </label>
+          <select
+            value={query.categoryId ?? ''}
+            onChange={(e) => setQuery({ ...query, categoryId: e.target.value || undefined, page: 1 })}
+            className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+          >
+            <option value="">All Categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Bulk Actions Bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-[var(--primary)] bg-[var(--accent)] px-4 py-2.5">
-          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+        <div className="flex items-center gap-3 rounded-2xl border border-[var(--primary)]/30 bg-[var(--accent)] px-5 py-3">
+          <span className="text-sm font-bold">{selectedIds.size} selected</span>
           <select
             value={bulkCategoryId}
             onChange={(e) => setBulkCategoryId(e.target.value)}
-            className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm"
+            className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm"
           >
             <option value="">Assign category...</option>
             {categories.map((c) => (
@@ -163,13 +178,13 @@ export default function TransactionsPage() {
           <button
             onClick={handleBulkCategorize}
             disabled={!bulkCategoryId || bulkCategorize.isPending}
-            className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="rounded-full bg-[var(--primary)] px-4 py-1.5 text-sm font-bold text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
           >
             {bulkCategorize.isPending ? 'Applying...' : 'Apply'}
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="ml-auto text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            className="ml-auto text-sm font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
           >
             Clear
           </button>
@@ -177,11 +192,11 @@ export default function TransactionsPage() {
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--card)]">
+      <div className="overflow-x-auto rounded-2xl bg-[var(--card)] shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--border)] text-left">
-              <th className="w-10 px-3 py-3">
+            <tr className="border-b border-[var(--border)] bg-[var(--surface-container-low)]/50 text-left">
+              <th className="w-10 px-3 py-4">
                 <input
                   type="checkbox"
                   checked={transactions.length > 0 && selectedIds.size === transactions.length}
@@ -189,14 +204,14 @@ export default function TransactionsPage() {
                   className="rounded"
                 />
               </th>
-              <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">Date</th>
-              <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">Description</th>
-              <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">Account</th>
-              <th className="px-4 py-3 font-medium text-[var(--muted-foreground)]">Category</th>
-              <th className="px-4 py-3 font-medium text-[var(--muted-foreground)] text-right">Amount</th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Date</th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Description</th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Account</th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Category</th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)] text-right">Amount</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[var(--border)]">
             {isLoading ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-[var(--muted-foreground)]">
@@ -214,11 +229,11 @@ export default function TransactionsPage() {
                 <tr
                   key={txn.id}
                   className={cn(
-                    'border-b border-[var(--border)] last:border-0 hover:bg-[var(--muted)] transition-colors',
+                    'cursor-pointer hover:bg-[var(--surface-container-low)] transition-colors',
                     selectedIds.has(txn.id) && 'bg-[var(--accent)]',
                   )}
                 >
-                  <td className="w-10 px-3 py-3">
+                  <td className="w-10 px-3 py-4">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(txn.id)}
@@ -226,25 +241,25 @@ export default function TransactionsPage() {
                       className="rounded"
                     />
                   </td>
-                  <td className="px-4 py-3 tabular-nums whitespace-nowrap">
-                    {formatDate(txn.date)}
+                  <td className="px-6 py-5 tabular-nums whitespace-nowrap">
+                    <div className="text-sm font-semibold">{formatDate(txn.date)}</div>
                   </td>
-                  <td className="px-4 py-3 max-w-[300px] truncate">
-                    {txn.description}
+                  <td className="px-6 py-5 max-w-[300px] truncate">
+                    <span className="font-medium">{txn.description}</span>
                     {txn.merchantName && (
                       <span className="ml-2 text-xs text-[var(--muted-foreground)]">
                         {txn.merchantName}
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-6 py-5 whitespace-nowrap text-[var(--muted-foreground)]">
                     {accountMap[txn.accountId] ?? '—'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-6 py-5">
                     <select
                       value={txn.categoryId ?? ''}
                       onChange={(e) => handleCategoryChange(txn.id, e.target.value)}
-                      className="rounded border border-[var(--border)] bg-transparent px-2 py-1 text-xs"
+                      className="rounded-full border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-1 text-xs font-medium hover:border-[var(--primary)] transition-colors"
                     >
                       <option value="">Uncategorized</option>
                       {categories.map((c) => (
@@ -254,8 +269,8 @@ export default function TransactionsPage() {
                   </td>
                   <td
                     className={cn(
-                      'px-4 py-3 text-right font-medium tabular-nums whitespace-nowrap',
-                      txn.isCredit ? 'text-emerald-500' : 'text-[var(--foreground)]',
+                      'px-6 py-5 text-right font-extrabold tabular-nums whitespace-nowrap',
+                      txn.isCredit ? 'text-[var(--secondary)]' : 'text-[var(--foreground)]',
                     )}
                   >
                     {txn.isCredit ? '+' : '-'}{formatCents(txn.amountCents)}
@@ -268,22 +283,22 @@ export default function TransactionsPage() {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-[var(--muted-foreground)]">
+      <div className="flex items-center justify-between rounded-xl bg-[var(--surface-container-low)]/50 px-6 py-4">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
           Page {query.page} of {totalPages}
         </p>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setQuery({ ...query, page: Math.max(1, (query.page ?? 1) - 1) })}
             disabled={(query.page ?? 1) <= 1}
-            className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--muted)] disabled:opacity-50 transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-container)] disabled:opacity-50 transition-colors text-[var(--muted-foreground)]"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
             onClick={() => setQuery({ ...query, page: Math.min(totalPages, (query.page ?? 1) + 1) })}
             disabled={(query.page ?? 1) >= totalPages}
-            className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--muted)] disabled:opacity-50 transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-container)] disabled:opacity-50 transition-colors text-[var(--muted-foreground)]"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
