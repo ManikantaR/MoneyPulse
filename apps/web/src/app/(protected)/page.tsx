@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { format, startOfYear } from 'date-fns';
-import { TrendingUp, TrendingDown, ArrowDownUp, BarChart3 } from 'lucide-react';
+import { format, startOfMonth, subMonths } from 'date-fns';
+import { TrendingUp, TrendingDown, ArrowDownUp } from 'lucide-react';
 import { PeriodSelector } from '@/components/PeriodSelector';
 import { StatCard } from '@/components/charts/StatCard';
 import { IncomeExpenseBar } from '@/components/charts/IncomeExpenseBar';
@@ -12,6 +12,8 @@ import { AccountBalanceHistory } from '@/components/charts/AccountBalanceHistory
 import { CreditUtilization } from '@/components/charts/CreditUtilization';
 import { NetWorthCard } from '@/components/charts/NetWorthCard';
 import { TopMerchantsBar } from '@/components/charts/TopMerchantsBar';
+import { TopTransactionsCard } from '@/components/charts/TopTransactionsCard';
+import { NetWorthDrilldown } from '@/components/NetWorthDrilldown';
 import {
   useIncomeVsExpenses,
   useCategoryBreakdown,
@@ -21,26 +23,38 @@ import {
   useNetWorth,
   useTopMerchants,
 } from '@/lib/hooks/useAnalytics';
+import { useTransactions } from '@/lib/hooks/useTransactions';
 import { formatCents } from '@/lib/format';
 
 /** Dashboard page — main financial overview with KPI cards and charts. */
 export default function DashboardPage() {
-  const [from, setFrom] = useState(
-    format(startOfYear(new Date()), 'yyyy-MM-dd'),
-  );
-  const [to, setTo] = useState(
-    format(new Date(), 'yyyy-MM-dd'),
-  );
+  // Period selector: default = start of current month → today
+  const [from, setFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [to, setTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  // Trend always shows last 6 months regardless of period selector
+  const trendFrom = format(subMonths(new Date(), 6), 'yyyy-MM-dd');
+  const trendTo = format(new Date(), 'yyyy-MM-dd');
+
+  // Drilldown slide-over state
+  const [drilldown, setDrilldown] = useState<'assets' | 'liabilities' | null>(null);
 
   const params = { from, to };
 
   const { data: incomeExpense, isLoading: ieLoading } = useIncomeVsExpenses(params);
   const { data: breakdown, isLoading: catLoading } = useCategoryBreakdown(params);
-  const { data: trend, isLoading: trendLoading } = useSpendingTrend({ ...params, granularity: 'monthly' });
+  const { data: trend, isLoading: trendLoading } = useSpendingTrend({ from: trendFrom, to: trendTo, granularity: 'monthly' });
   const { data: balances, isLoading: balLoading } = useAccountBalances(params);
   const { data: credit, isLoading: creditLoading } = useCreditUtilization(params);
   const { data: netWorthData, isLoading: nwLoading } = useNetWorth(params);
   const { data: merchants, isLoading: merchLoading } = useTopMerchants(params);
+  const { data: topTxData, isLoading: topTxLoading } = useTransactions({
+    from,
+    to,
+    sortBy: 'amount',
+    sortOrder: 'asc',
+    pageSize: 10,
+  });
 
   const nw = netWorthData?.data;
 
@@ -64,28 +78,39 @@ export default function DashboardPage() {
     }));
   }, [incomeExpense]);
 
+  const isLoading =
+    ieLoading || catLoading || trendLoading || balLoading ||
+    creditLoading || nwLoading || merchLoading || topTxLoading;
+
   return (
     <div className="space-y-8">
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <h1 className="text-4xl font-extrabold tracking-tight">Dashboard</h1>
-          <p className="text-[var(--muted-foreground)]">
-            Your financial overview at a glance
-          </p>
+          <p className="text-[var(--muted-foreground)]">Your financial overview at a glance</p>
         </div>
         <PeriodSelector
           from={from}
           to={to}
-          onChange={(f, t) => {
-            setFrom(f);
-            setTo(t);
-          }}
+          onChange={(f, t) => { setFrom(f); setTo(t); }}
         />
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Net Worth — hero metric, clickable Assets & Liabilities */}
+      {nw && (
+        <NetWorthCard
+          assets={nw.assets}
+          liabilities={nw.liabilities}
+          investments={nw.investments}
+          netWorth={nw.netWorth}
+          onClickAssets={() => setDrilldown('assets')}
+          onClickLiabilities={() => setDrilldown('liabilities')}
+        />
+      )}
+
+      {/* KPI Cards — 3 period-relative metrics (net worth is already above) */}
+      <div className="grid gap-5 sm:grid-cols-3">
         <StatCard
           title="Total Income"
           value={kpi ? formatCents(kpi.totalIncome) : '—'}
@@ -99,51 +124,56 @@ export default function DashboardPage() {
           accentColor="danger"
         />
         <StatCard
-          title="Net"
+          title="Net Cash Flow"
           value={kpi ? formatCents(kpi.net) : '—'}
           icon={ArrowDownUp}
           accentColor="primary"
         />
-        <StatCard
-          title="Net Worth"
-          value={nw ? formatCents(nw.netWorth) : '—'}
-          icon={BarChart3}
-          accentColor="primary"
-        />
       </div>
 
-      {/* Net Worth Card */}
-      {nw && (
-        <NetWorthCard
-          assets={nw.assets}
-          liabilities={nw.liabilities}
-          investments={nw.investments}
-          netWorth={nw.netWorth}
-        />
-      )}
-
-      {/* Main Charts */}
+      {/* Where is my money going — Category breakdown + Top Merchants */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {trend?.data && <SpendingTrendLine data={trend.data} />}
         {breakdown?.data && <CategoryDonut data={breakdown.data} />}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {barData.length > 0 && <IncomeExpenseBar data={barData} />}
         {merchants?.data && <TopMerchantsBar data={merchants.data} />}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {balances?.data && <AccountBalanceHistory data={balances.data} />}
-        {credit?.data && <CreditUtilization data={credit.data} />}
+      {/* Big Spends + Spending Trend (trend always shows last 6 months) */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <TopTransactionsCard transactions={topTxData?.data ?? []} />
+        </div>
+        <div className="lg:col-span-2">
+          {trend?.data && <SpendingTrendLine data={trend.data} />}
+        </div>
       </div>
 
-      {/* Loading states */}
-      {(ieLoading || catLoading || trendLoading || balLoading || creditLoading || nwLoading || merchLoading) && (
+      {/* Income vs Expenses bar + Account Balance History */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {barData.length > 0 && <IncomeExpenseBar data={barData} />}
+        {balances?.data && <AccountBalanceHistory data={balances.data} />}
+      </div>
+
+      {/* Credit Utilization */}
+      {credit?.data && credit.data.length > 0 && (
+        <CreditUtilization data={credit.data} />
+      )}
+
+      {/* Loading spinner */}
+      {isLoading && (
         <div className="flex items-center justify-center py-8">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" />
         </div>
       )}
+
+      {/* Assets / Liabilities drilldown slide-over */}
+      {drilldown && balances?.data && (
+        <NetWorthDrilldown
+          type={drilldown}
+          accounts={balances.data}
+          onClose={() => setDrilldown(null)}
+        />
+      )}
     </div>
   );
 }
+

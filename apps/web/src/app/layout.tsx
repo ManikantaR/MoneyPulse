@@ -5,6 +5,9 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'MoneyPulse',
   description: 'Personal Finance Tracker',
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
