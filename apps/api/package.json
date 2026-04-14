@@ -35,7 +35,7 @@
     "cookie-parser": "^1.4.7",
     "csv-parse": "^6.2.1",
     "date-fns": "^4.1.0",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "ioredis": "^5.10.1",
