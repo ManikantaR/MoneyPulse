@@ -81,16 +81,16 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Categories</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-extrabold tracking-tight">Categories</h1>
+          <p className="text-[var(--muted-foreground)]">
             Organize your transactions with categories
           </p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 transition-opacity"
+          className="flex items-center gap-2 rounded-full bg-[var(--primary)] px-5 py-2.5 text-sm font-bold text-[var(--primary-foreground)] shadow-lg shadow-[var(--primary)]/20 transition-all hover:opacity-90 active:scale-[0.98]"
         >
           <Plus className="h-4 w-4" />
           Add Category
@@ -101,26 +101,27 @@ export default function CategoriesPage() {
       {showForm && (
         <form
           onSubmit={handleCreate}
-          className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--card)] p-5"
+          className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm"
         >
+          <h2 className="text-lg font-bold">New Category</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Name</label>
+              <label className="mb-1.5 block text-sm font-semibold">Name</label>
               <input
                 type="text"
                 required
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Groceries"
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Parent Category</label>
+              <label className="mb-1.5 block text-sm font-semibold">Parent Category</label>
               <select
                 value={form.parentId ?? ''}
                 onChange={(e) => setForm({ ...form, parentId: e.target.value || null })}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
               >
                 <option value="">None (top-level)</option>
                 {tree.map((c) => (
@@ -134,7 +135,7 @@ export default function CategoriesPage() {
 
           {/* Icon picker */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Icon</label>
+            <label className="mb-1.5 block text-sm font-semibold">Icon</label>
             <div className="flex flex-wrap gap-2">
               {PRESET_ICONS.map((icon) => (
                 <button
@@ -142,7 +143,7 @@ export default function CategoriesPage() {
                   type="button"
                   onClick={() => setForm({ ...form, icon })}
                   className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-lg border text-lg transition-colors',
+                    'flex h-9 w-9 items-center justify-center rounded-xl border text-lg transition-colors',
                     form.icon === icon
                       ? 'border-[var(--primary)] bg-[var(--accent)]'
                       : 'border-[var(--border)] hover:bg-[var(--muted)]',
@@ -156,7 +157,7 @@ export default function CategoriesPage() {
 
           {/* Color picker */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Color</label>
+            <label className="mb-1.5 block text-sm font-semibold">Color</label>
             <div className="flex flex-wrap gap-2">
               {PRESET_COLORS.map((color) => (
                 <button
@@ -175,18 +176,18 @@ export default function CategoriesPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <button
               type="submit"
               disabled={createCategory.isPending}
-              className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="rounded-full bg-[var(--primary)] px-5 py-2.5 text-sm font-bold text-[var(--primary-foreground)] shadow-lg shadow-[var(--primary)]/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
             >
               {createCategory.isPending ? 'Creating...' : 'Create Category'}
             </button>
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--muted)]"
+              className="rounded-full border border-[var(--border)] px-5 py-2.5 text-sm font-semibold hover:bg-[var(--muted)] transition-colors"
             >
               Cancel
             </button>
@@ -200,14 +201,14 @@ export default function CategoriesPage() {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" />
         </div>
       ) : tree.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] py-16">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--border)] py-16">
           <TagsIcon className="mb-3 h-10 w-10 text-[var(--muted-foreground)]" />
           <p className="text-sm text-[var(--muted-foreground)]">
             No categories yet. Add your first category to start organizing.
           </p>
         </div>
       ) : (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] py-2">
+        <div className="rounded-2xl bg-[var(--card)] py-2 shadow-sm">
           {tree.map((node) => renderCategory(node))}
         </div>
       )}

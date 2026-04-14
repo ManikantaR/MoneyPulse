@@ -22,10 +22,11 @@ export function CategoryDonut({ data }: CategoryDonutProps) {
   const total = data.reduce((sum, d) => sum + d.totalCents, 0);
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-      <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">
+    <div className="rounded-2xl bg-[var(--surface-container-low)] p-6">
+      <h3 className="mb-1 text-xl font-bold tracking-tight">
         Spending by Category
       </h3>
+      <p className="mb-6 text-sm text-[var(--muted-foreground)]">Current period allocation</p>
       <div className="flex items-center gap-6">
         {/* Donut */}
         <div className="h-[200px] w-[200px] shrink-0">

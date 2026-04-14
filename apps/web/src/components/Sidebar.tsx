@@ -13,7 +13,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Wallet,
+  TrendingUp,
 } from 'lucide-react';
 
 /** Navigation item definition for the sidebar. */
@@ -45,12 +45,24 @@ export function Sidebar() {
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-[var(--border)] px-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)] text-white">
-          <Wallet className="h-5 w-5" />
+      <div
+        className={cn(
+          'flex h-16 items-center gap-3 border-b border-[var(--border)] px-4',
+          collapsed && 'justify-center px-0',
+        )}
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] shadow-lg">
+          <TrendingUp className="h-5 w-5" />
         </div>
         {!collapsed && (
-          <span className="text-lg font-bold tracking-tight">MoneyPulse</span>
+          <div className="overflow-hidden">
+            <span className="block text-base font-extrabold tracking-tight text-[var(--primary)]">
+              MoneyPulse
+            </span>
+            <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)] opacity-70">
+              Wealth Management
+            </span>
+          </div>
         )}
       </div>
 
@@ -67,9 +79,9 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 isActive
-                  ? 'bg-[var(--primary)] text-white'
+                  ? 'bg-[var(--accent)] text-[var(--primary)] shadow-[0_0_12px_rgba(0,0,0,0.06)] dark:shadow-[0_0_15px_rgba(189,157,255,0.08)]'
                   : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]',
                 collapsed && 'justify-center px-0',
               )}

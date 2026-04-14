@@ -25,10 +25,11 @@ export function SpendingTrendLine({ data }: SpendingTrendLineProps) {
   }));
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-      <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">
+    <div className="rounded-2xl bg-[var(--surface-container-low)] p-6">
+      <h3 className="mb-1 text-xl font-bold tracking-tight">
         Spending Trend
       </h3>
+      <p className="mb-6 text-sm text-[var(--muted-foreground)]">Income vs expenses over time</p>
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={formatted}>
           <defs>

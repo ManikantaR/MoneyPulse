@@ -2,6 +2,7 @@
 
 import { useState, useEffect, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { TrendingUp } from 'lucide-react';
 import { api } from '@/lib/api';
 
 function LoginForm() {
@@ -45,18 +46,33 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-sm space-y-6 rounded-xl border border-border bg-card p-8 shadow-lg">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight">MoneyPulse</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--background)]">
+      {/* Atmospheric glows */}
+      <div className="pointer-events-none fixed right-0 top-0 h-[500px] w-[500px] rounded-full bg-[var(--primary)]/5 blur-[120px]" />
+      <div className="pointer-events-none fixed bottom-0 left-0 h-[400px] w-[400px] rounded-full bg-[var(--secondary)]/4 blur-[100px]" />
+
+      <div className="relative w-full max-w-sm space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 shadow-xl">
+        {/* Logo */}
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--primary)] text-[var(--primary-foreground)] shadow-lg">
+            <TrendingUp className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-[var(--primary)]">
+              MoneyPulse
+            </h1>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
+              Wealth Management
+            </p>
+          </div>
+          <p className="text-sm text-[var(--muted-foreground)]">
             Sign in to your account
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium">
+            <label htmlFor="email" className="block text-sm font-semibold">
               Email
             </label>
             <input
@@ -66,14 +82,12 @@ function LoginForm() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-input bg-background
-                         px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground
-                         focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-4 py-2.5 text-sm placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium">
+            <label htmlFor="password" className="block text-sm font-semibold">
               Password
             </label>
             <input
@@ -83,29 +97,32 @@ function LoginForm() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-input bg-background
-                         px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground
-                         focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-4 py-2.5 text-sm placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
             />
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && (
+            <p className="rounded-lg bg-[var(--destructive)]/10 px-3 py-2 text-sm text-[var(--destructive)]">
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium
-                       text-primary-foreground shadow hover:bg-primary/90
-                       disabled:opacity-50"
+            className="mt-2 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-[var(--primary-foreground)] shadow-lg shadow-[var(--primary)]/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
           >
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
         {registrationOpen && (
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-[var(--muted-foreground)]">
             No account yet?{' '}
-            <a href="/register" className="text-primary hover:underline">
+            <a
+              href="/register"
+              className="font-semibold text-[var(--primary)] hover:underline"
+            >
               Create admin account
             </a>
           </p>
@@ -117,7 +134,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-[var(--muted-foreground)]">Loading...</p>
+        </div>
+      }
+    >
       <LoginForm />
     </Suspense>
   );

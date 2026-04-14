@@ -26,10 +26,11 @@ export function IncomeExpenseBar({ data }: IncomeExpenseBarProps) {
   }));
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-      <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">
+    <div className="rounded-2xl bg-[var(--surface-container-low)] p-6">
+      <h3 className="mb-1 text-xl font-bold tracking-tight">
         Income vs Expenses
       </h3>
+      <p className="mb-6 text-sm text-[var(--muted-foreground)]">Monthly comparison</p>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={formatted} barGap={4}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />

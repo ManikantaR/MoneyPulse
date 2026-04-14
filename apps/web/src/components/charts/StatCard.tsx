@@ -8,6 +8,7 @@ interface StatCardProps {
   subtitle?: string;
   icon?: LucideIcon;
   trend?: { value: number; label: string };
+  accentColor?: 'primary' | 'secondary' | 'danger';
   className?: string;
 }
 
@@ -18,45 +19,62 @@ export function StatCard({
   subtitle,
   icon: Icon,
   trend,
+  accentColor = 'primary',
   className,
 }: StatCardProps) {
+  const accentStyles = {
+    primary: 'from-[var(--primary)]/50 text-[var(--primary)]',
+    secondary: 'from-[var(--secondary)]/50 text-[var(--secondary)]',
+    danger: 'from-[var(--destructive)]/50 text-[var(--destructive)]',
+  };
+
+  const badgeStyles = {
+    primary: 'text-[var(--primary)] bg-[var(--accent)]',
+    secondary: 'text-[var(--secondary)] bg-[var(--secondary)]/10',
+    danger: 'text-[var(--destructive)] bg-[var(--destructive)]/10',
+  };
+
   return (
     <div
       className={cn(
-        'rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 transition-shadow hover:shadow-md',
+        'relative overflow-hidden rounded-xl bg-[var(--surface-container-low)] p-6 transition-shadow hover:shadow-md',
         className,
       )}
     >
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-[var(--muted-foreground)]">
-            {title}
-          </p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
-          {subtitle && (
-            <p className="text-xs text-[var(--muted-foreground)]">{subtitle}</p>
-          )}
-        </div>
+      {/* Icon + trend badge row */}
+      <div className="mb-4 flex items-start justify-between">
         {Icon && (
-          <div className="rounded-lg bg-[var(--accent)] p-2.5">
-            <Icon className="h-5 w-5 text-[var(--primary)]" />
-          </div>
+          <Icon className={cn('h-5 w-5 opacity-80', accentStyles[accentColor])} />
         )}
-      </div>
-      {trend && (
-        <div className="mt-3 flex items-center gap-1 text-xs">
+        {trend && (
           <span
             className={cn(
-              'font-semibold',
-              trend.value >= 0 ? 'text-emerald-500' : 'text-red-500',
+              'rounded px-2 py-1 text-xs font-bold',
+              badgeStyles[accentColor],
             )}
           >
             {trend.value >= 0 ? '+' : ''}
             {trend.value.toFixed(1)}%
           </span>
-          <span className="text-[var(--muted-foreground)]">{trend.label}</span>
-        </div>
+        )}
+      </div>
+
+      {/* Label + value */}
+      <p className="mb-1 text-sm font-medium text-[var(--muted-foreground)]">
+        {title}
+      </p>
+      <p className="text-3xl font-extrabold tracking-tight">{value}</p>
+      {subtitle && (
+        <p className="mt-1 text-xs text-[var(--muted-foreground)]">{subtitle}</p>
       )}
+
+      {/* Bottom accent bar */}
+      <div
+        className={cn(
+          'absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r to-transparent',
+          accentStyles[accentColor],
+        )}
+      />
     </div>
   );
 }

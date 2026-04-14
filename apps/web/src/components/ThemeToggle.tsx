@@ -12,16 +12,16 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)] p-1">
       {THEMES.map((t) => (
         <button
           key={t.value}
           onClick={() => setTheme(t.value)}
-          className={`rounded-lg border px-3 py-1.5 text-sm transition-colors
+          className={`rounded-full px-3 py-1 text-xs font-semibold transition-all
             ${
               theme === t.value
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-input hover:bg-accent'
+                ? 'bg-[var(--card)] text-[var(--foreground)] shadow-sm'
+                : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
             }`}
         >
           {t.label}
