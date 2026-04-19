@@ -16,6 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromExtractors([extractJwtFromCookie]),
       ignoreExpiration: false,
       secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
+      algorithms: ['HS256'],
     });
   }
 

@@ -17,6 +17,8 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 import { ExportService } from './export.service';
 import { AuditService } from '../audit/audit.service';
+import { CategorizationService } from '../categorization/categorization.service';
+import { LearningService } from '../categorization/learning.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -44,6 +46,8 @@ export class TransactionsController {
     private readonly txnService: TransactionsService,
     private readonly exportService: ExportService,
     private readonly auditService: AuditService,
+    private readonly categorizationService: CategorizationService,
+    private readonly learningService: LearningService,
   ) {}
 
   /**
@@ -105,6 +109,14 @@ export class TransactionsController {
   ) {
     const csv = await this.exportService.exportCsv(user.sub, from, to);
     const filename = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    await this.auditService.log({
+      userId: user.sub,
+      action: 'csv_exported',
+      entityType: 'transaction',
+      newValue: { from, to, filename },
+    });
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
@@ -151,6 +163,13 @@ export class TransactionsController {
     @CurrentUser() user: AuthTokenPayload,
   ) {
     const txn = await this.txnService.update(id, user.sub, body);
+
+    // Learn from manual category overrides to create auto-categorization rules
+    if (body.categoryId) {
+      this.learningService
+        .learnFromOverride(user.sub, id, body.categoryId)
+        .catch(() => {});
+    }
 
     await this.auditService.log({
       userId: user.sub,
@@ -230,6 +249,11 @@ export class TransactionsController {
   ) {
     const result = await this.txnService.bulkCategorize(user.sub, body);
 
+    // Learn from bulk categorization to create prefix-based rules
+    this.learningService
+      .learnFromBulk(user.sub, body.transactionIds, body.categoryId)
+      .catch(() => {});
+
     await this.auditService.log({
       userId: user.sub,
       action: 'bulk_categorized',
@@ -238,5 +262,51 @@ export class TransactionsController {
     });
 
     return { data: result };
+  }
+
+  /**
+   * POST /transactions/auto-categorize — Run AI categorization on all uncategorized transactions.
+   * Finds transactions with no category assigned and runs them through
+   * the rule engine + Ollama AI pipeline. Requires Ollama to be available
+   * for AI categorization; rule engine always runs.
+   *
+   * @param user - JWT token payload
+   * @returns `{ data: CategorizationStats }`
+   */
+  @Post('auto-categorize')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Auto-categorize uncategorized transactions via AI',
+  })
+  async autoCategorize(@CurrentUser() user: AuthTokenPayload) {
+    const uncategorizedIds = await this.txnService.findUncategorizedIds(
+      user.sub,
+    );
+
+    if (uncategorizedIds.length === 0) {
+      return {
+        data: {
+          total: 0,
+          categorizedByRule: 0,
+          categorizedByAi: 0,
+          suggested: 0,
+          uncategorized: 0,
+        },
+      };
+    }
+
+    const stats = await this.categorizationService.categorizeBatch(
+      uncategorizedIds,
+      user.sub,
+    );
+
+    await this.auditService.log({
+      userId: user.sub,
+      action: 'auto_categorize',
+      entityType: 'transaction',
+      newValue: stats as any,
+    });
+
+    return { data: stats };
   }
 }

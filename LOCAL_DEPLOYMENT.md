@@ -1,8 +1,74 @@
 # MoneyPulse — Local Deployment Guide
 
-Run the full stack locally using **Podman** and `podman-compose`.
+Run the full stack locally using **Podman** and `podman-compose`, **Docker**, or with the **one-click deploy script** for NAS/dedicated machines.
 
 > **Important:** Use `podman-compose` (the standalone Python tool, installed via `brew install podman-compose`), **not** `podman compose`. Podman's built-in compose delegate picks up Docker's compose binary which fails on macOS without Docker Desktop running.
+
+---
+
+## Quick Start
+
+### Option A — One-Click Deploy (NAS / Dedicated Machine)
+
+Perfect for deploying on a NAS, home server, or separate machine from your dev environment. This handles **everything** automatically: clones repo, generates secrets, creates containers, and prints the access URL.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ManikantaR/MoneyPulse/main/scripts/deploy.sh | bash
+# — or from cloned repo —
+bash scripts/deploy.sh [--with-ai] [--port 3000] [--api-port 4000]
+```
+
+✅ What it does:
+- Clones the latest repo (or updates existing clone)
+- Generates secure random passwords for PostgreSQL, Redis, JWT, encryption
+- Creates `~/moneypulse-data/` directory structure
+- Builds & starts all containers (postgres, redis, api, web, pdf-parser, backup)
+- Waits for services to be healthy
+- Optionally pulls Ollama model for AI categorization
+- Prints access URL + useful commands
+
+Flags:
+- `--with-ai` — Enable Ollama AI categorization (takes longer on first run)
+- `--port 3000` — Change web UI port (default: 3000)
+- `--api-port 4000` — Change API port (default: 4000)
+- `--data-dir /mnt/nas/moneypulse` — Store data on a different drive
+
+Then open **http://localhost:3000** and create your account.
+
+### Option B — Full Podman Compose (Laptop/Workstation)
+
+Everything runs in containers. Best for first-time users and demos.
+
+```bash
+git clone https://github.com/ManikantaR/MoneyPulse.git
+cd MoneyPulse
+./scripts/setup.sh          # generates secrets, creates .env files, data dirs
+podman-compose up -d --build
+# Open http://localhost:3000
+```
+
+> `setup.sh` only needs Node.js/pnpm for migrations. If you don't have them, it still generates all `.env` files and data directories — just run migrations inside the container (see Option B Step 5).
+
+### Option C — Dev Mode (hot reload, requires Node.js 22+)
+
+Infra in containers, apps run locally with hot reload. Best for active development.
+
+```bash
+git clone https://github.com/ManikantaR/MoneyPulse.git
+cd MoneyPulse
+pnpm install
+./scripts/setup.sh          # generates secrets, starts postgres+redis, runs migrations
+pnpm dev                    # starts API (port 4000) + web (port 3000)
+# Open http://localhost:3000
+```
+
+> Use `./scripts/setup.sh --defaults` for non-interactive mode (skips all prompts).
+
+### Reset everything (wipe DB, regenerate secrets)
+
+```bash
+./scripts/reset.sh
+```
 
 ---
 
@@ -12,10 +78,10 @@ Run the full stack locally using **Podman** and `podman-compose`.
 | -------------- | ------------------------------ | --------------------------------- |
 | **Dashboard**  | http://localhost:3000          | Next.js frontend                  |
 | **API**        | http://localhost:4000/api      | NestJS REST API                   |
-| **Swagger**    | http://localhost:4000/api/docs | Interactive API explorer          |
+| **Swagger**    | http://localhost:4000/api/docs | Interactive API explorer (dev only) |
 | **PDF Parser** | http://localhost:5001/health   | Python microservice (healthcheck) |
-| **PostgreSQL** | localhost:5432                 | Database (moneypulse)             |
-| **Redis**      | localhost:6379                 | Queue & cache                     |
+| **PostgreSQL** | 127.0.0.1:5432                | Database (password auth)          |
+| **Redis**      | 127.0.0.1:6379                | Queue & cache (password auth)     |
 
 ---
 
@@ -77,25 +143,73 @@ git pull
 
 ### Step 2 — Create your `.env` file
 
+The easiest way is to run the setup script:
+
+```bash
+./scripts/setup.sh --defaults
+```
+
+This generates all secrets automatically and creates `.env`, `apps/api/.env`, and `apps/api/.env.local`.
+
+**Manual setup** — if you prefer to configure manually:
+
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set these two **required** values (everything else has safe defaults):
+Open `.env` and set these **required** values:
 
 ```env
-# Required — choose any strong passwords/secrets
-POSTGRES_PASSWORD=mysecurepassword123
-JWT_SECRET=a_very_long_random_string_at_least_64_characters_long_change_this
+# Required — generate with the commands below
+POSTGRES_PASSWORD=<your-db-password>
+JWT_SECRET=<your-jwt-secret>
+ENCRYPTION_KEY=<your-encryption-key>
+REDIS_PASSWORD=<your-redis-password>
+
+# Update REDIS_URL to include the password
+REDIS_URL=redis://:<your-redis-password>@localhost:6379
+# Update DATABASE_URL to include the password
+DATABASE_URL=postgresql://moneypulse:<your-db-password>@localhost:5432/moneypulse
 ```
 
-> **Generate a strong JWT secret:**
+> **Generate secrets (copy-paste these commands):**
 >
 > ```bash
-> openssl rand -base64 64 | tr -d '\n'
-> ```
+> # JWT Secret (128 hex chars)
+> echo "JWT_SECRET=$(openssl rand -hex 64)"
 >
-> Paste the full output as the value of `JWT_SECRET`. The default placeholder will cause startup to fail.
+> # Encryption Key for AES-256-GCM (64 hex chars)
+> echo "ENCRYPTION_KEY=$(openssl rand -hex 32)"
+>
+> # Redis Password (32 hex chars)
+> echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
+>
+> # Postgres Password (32 hex chars)
+> echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+> ```
+
+Then copy the same `REDIS_URL`, `REDIS_PASSWORD`, `JWT_SECRET`, `ENCRYPTION_KEY`, and `DATABASE_URL` into `apps/api/.env` and `apps/api/.env.local` so the dev server picks them up:
+
+```bash
+# apps/api/.env
+DATABASE_URL=postgresql://moneypulse:<pw>@localhost:5432/moneypulse
+REDIS_URL=redis://:<redis-pw>@localhost:6379
+REDIS_PASSWORD=<redis-pw>
+JWT_SECRET=<jwt-secret>
+ENCRYPTION_KEY=<encryption-key>
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=mistral:7b
+OLLAMA_TIMEOUT_MS=120000
+WATCH_FOLDER_DIR=~/moneypulse-data/watch-folder
+UPLOAD_DIR=~/moneypulse-data/uploads
+```
+
+| Secret | Purpose | Generate |
+|--------|---------|----------|
+| `JWT_SECRET` | Signs authentication tokens | `openssl rand -hex 64` |
+| `ENCRYPTION_KEY` | AES-256-GCM encryption of PII at rest | `openssl rand -hex 32` |
+| `REDIS_PASSWORD` | Redis AUTH password | `openssl rand -hex 16` |
+| `POSTGRES_PASSWORD` | PostgreSQL password | `openssl rand -hex 16` |
 
 ### Step 3 — Create the local data directories (one-time)
 
@@ -196,31 +310,40 @@ pnpm install
 ### Step 2 — Start infrastructure only
 
 ```bash
-podman-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+podman-compose up -d postgres redis
 ```
 
-This starts only PostgreSQL and Redis in containers (API, web, pdf-parser are excluded in dev mode).
+This starts PostgreSQL and Redis in containers bound to `127.0.0.1` with password authentication.
 
 ### Step 3 — Configure `.env`
 
+The easiest approach:
+
 ```bash
-cp .env.example .env
+./scripts/setup.sh
 ```
 
-The dev `.env` already has correct `localhost` values. Only set the required secrets:
+This generates all secrets and creates all three `.env` files. If you prefer manual setup, ensure **all three** files are configured:
 
-```env
-POSTGRES_PASSWORD=mysecurepassword123
-JWT_SECRET=a_very_long_random_string_at_least_64_characters_long_change_this
-DATABASE_URL=postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse
-```
+| File | Purpose | Used by |
+|------|---------|---------|
+| `.env` | Root env for podman-compose | `podman-compose up` |
+| `apps/api/.env` | API env for dev mode | `pnpm dev` (NestJS) |
+| `apps/api/.env.local` | API overrides (loaded first) | `pnpm dev` (NestJS) |
+
+All three must have matching `REDIS_URL` (with password), `JWT_SECRET`, `ENCRYPTION_KEY`, and `DATABASE_URL` values. See [Step 2 of Option A](#step-2--create-your-env-file) for details.
 
 ### Step 4 — Run migrations and seed
 
 ```bash
-pnpm --filter @moneypulse/api run db:migrate
-pnpm --filter @moneypulse/api run db:seed
+# Push schema to database
+cd apps/api && DATABASE_URL=postgresql://moneypulse:<your-pw>@localhost:5432/moneypulse npx drizzle-kit push && cd ..
+
+# Seed categories (optional)
+DATABASE_URL=postgresql://moneypulse:<your-pw>@localhost:5432/moneypulse npx tsx db/seeds/seed-rules.ts
 ```
+
+> **Or** if you used `./scripts/setup.sh`, migrations and seeding ran automatically.
 
 ### Step 5 — Start the apps
 
@@ -296,6 +419,43 @@ After first pull, Ollama will be ready automatically on subsequent starts. The A
 
 ---
 
+## Security Notes
+
+MoneyPulse uses several security measures in local dev:
+
+| Feature | Details |
+|---------|---------|
+| **Password auth** | PostgreSQL and Redis require passwords (set in `.env`) |
+| **Localhost binding** | All containers bind to `127.0.0.1`, not `0.0.0.0` |
+| **AES-256-GCM encryption** | PII fields (account numbers, descriptions, emails) encrypted at rest |
+| **JWT HS256** | Access tokens pinned to HS256 algorithm, 15m expiry |
+| **Helmet** | API sets standard security headers |
+| **CSP** | Next.js middleware adds Content-Security-Policy |
+| **Swagger gated** | API docs only available when `NODE_ENV !== 'production'` |
+
+**Rotating secrets:** Re-run `./scripts/setup.sh` to generate fresh secrets. This overwrites all `.env` files. You'll need to reset the database (`./scripts/reset.sh`) after changing `POSTGRES_PASSWORD`.
+
+**Encrypting existing data:** If you change `ENCRYPTION_KEY` after importing data, run the migration script to re-encrypt:
+
+```bash
+cd apps/api
+DATABASE_URL="$DATABASE_URL" ENCRYPTION_KEY="$ENCRYPTION_KEY" npx tsx ../../db/scripts/encrypt-existing-data.ts
+```
+
+---
+
+## Helper Scripts
+
+| Script | Description |
+|--------|-------------|
+| `./scripts/setup.sh` | First-time setup: generates secrets, creates `.env` files, starts infra, runs migrations |
+| `./scripts/setup.sh --defaults` | Same as above but non-interactive (no prompts) |
+| `./scripts/reset.sh` | Wipes all data, restarts containers, re-runs migrations and seed |
+| `./scripts/reset.sh --force` | Non-interactive reset (skips confirmation) |
+| `./scripts/reset.sh --db-only` | Reset database only, keep uploaded files |
+
+---
+
 ## Stopping and Cleaning Up
 
 ```bash
@@ -339,9 +499,9 @@ PDF_PARSER_URL=http://localhost:5000
 
 ---
 
-## What's Currently Implemented (Phase 5)
+## What's Currently Implemented (Phase 6)
 
-The app is at **Phase 5** of 8 planned phases. Here's what you can test:
+The app is at **Phase 6** of 8 planned phases. Here's what you can test:
 
 | Feature                             | Status | Where                                                     |
 | ----------------------------------- | ------ | --------------------------------------------------------- |
@@ -362,8 +522,12 @@ The app is at **Phase 5** of 8 planned phases. Here's what you can test:
 | — Spending Trend line chart         | ✅     | Dashboard                                                 |
 | — Account Balances chart            | ✅     | Dashboard                                                 |
 | — Credit Utilization bars           | ✅     | Dashboard                                                 |
-| Budget alerts                       | ⏳     | Phase 6                                                   |
-| Savings goals                       | ⏳     | Phase 6                                                   |
+| Budget tracking                     | ✅     | `/budgets` — create/view/delete budgets per category      |
+| Budget alerts (80% + over)          | ✅     | Notifications — auto-checked daily + after imports        |
+| Savings goals                       | ✅     | `/budgets` — create goals, contribute, track progress     |
+| Notifications + bell                | ✅     | Top bar bell icon — unread badge, mark-all-read           |
+| Home Assistant webhooks             | ✅     | Settings — fires on budget alerts/reminders               |
+| Bank import reminders               | ✅     | Weekly/monthly auto-reminders for stale accounts          |
 | Investments tracking                | ⏳     | Phase 8                                                   |
 
 ---
@@ -390,8 +554,8 @@ podman-compose exec api sh
 # Postgres container — run psql directly
 podman-compose exec postgres psql -U moneypulse moneypulse
 
-# Redis container — run redis-cli
-podman-compose exec redis redis-cli
+# Redis container — run redis-cli (requires password)
+podman-compose exec redis redis-cli -a "$REDIS_PASSWORD"
   > KEYS *            # list all keys
   > DBSIZE           # count keys
   > FLUSHALL         # clear queue (useful to unstick failed jobs)
@@ -451,12 +615,7 @@ Add this to `.vscode/launch.json` (create the file if it doesn't exist):
       "runtimeArgs": ["--filter", "@moneypulse/api", "run", "start:debug"],
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"],
-      "env": {
-        "DATABASE_URL": "postgresql://moneypulse:mysecurepassword123@localhost:5432/moneypulse",
-        "REDIS_URL": "redis://localhost:6379",
-        "JWT_SECRET": "your_jwt_secret_here",
-        "NODE_ENV": "development"
-      }
+      "envFile": "${workspaceFolder}/apps/api/.env"
     }
   ]
 }
@@ -565,9 +724,36 @@ Successfully processed files are moved to `.archived/` inside the slug folder.
 
 ## Start Fresh — Purge All Data
 
-Use these commands to reset the app to a clean state.
+The quickest way to reset everything is the **reset script**:
 
-### Stop containers first
+```bash
+# Interactive — asks for confirmation before deleting
+./scripts/reset.sh
+
+# Non-interactive — skips confirmation (CI / automation)
+./scripts/reset.sh --force
+
+# Reset database + Redis only (keep uploads and watch-folder)
+./scripts/reset.sh --db-only
+```
+
+The script does all of the following automatically:
+
+1. Stops all containers (`podman-compose down`)
+2. Wipes `~/moneypulse-data/{pg,redis,uploads,watch-folder,backup}/*`
+3. Recreates the data directories
+4. Starts infrastructure containers
+5. Waits for PostgreSQL to be ready
+6. Runs database migrations
+7. Seeds default categories and rules
+
+After the script finishes, start the apps (`pnpm dev`) and register a new admin account.
+
+### Manual reset (step-by-step)
+
+If you prefer doing it manually:
+
+#### Stop containers first
 
 ```bash
 podman-compose down

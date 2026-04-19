@@ -15,6 +15,10 @@ import { IngestionModule } from './ingestion/ingestion.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CategorizationModule } from './categorization/categorization.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { BudgetsModule } from './budgets/budgets.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { JobsModule } from './jobs/jobs.module';
+import { AiLogsModule } from './ai-logs/ai-logs.module';
 
 @Module({
   imports: [
@@ -28,9 +32,17 @@ import { AnalyticsModule } from './analytics/analytics.module';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: { url: config.getOrThrow<string>('REDIS_URL') },
-      }),
+      useFactory: (config: ConfigService) => {
+        const url = new URL(config.getOrThrow<string>('REDIS_URL'));
+        return {
+          connection: {
+            host: url.hostname,
+            port: parseInt(url.port || '6379', 10),
+            password: url.password || undefined,
+            maxRetriesPerRequest: null,
+          },
+        };
+      },
     }),
     DbModule,
     RedisModule,
@@ -43,6 +55,10 @@ import { AnalyticsModule } from './analytics/analytics.module';
     CategoriesModule,
     CategorizationModule,
     AnalyticsModule,
+    BudgetsModule,
+    NotificationsModule,
+    JobsModule,
+    AiLogsModule,
     HealthModule,
   ],
   providers: [

@@ -44,6 +44,11 @@ export class LearningService {
     const pattern = this.extractPattern(txn.description);
     if (!pattern || pattern.length < 3) return;
 
+    // Also create a merchant-name rule for fuzzy matching (e.g. "Wm Supercenter")
+    const merchantPattern = txn.merchantName
+      ? txn.merchantName.toLowerCase().trim()
+      : null;
+
     const existingRules = await this.db
       .select()
       .from(schema.categorizationRules)
@@ -66,21 +71,51 @@ export class LearningService {
           `Updated rule: "${pattern}" → category ${newCategoryId}`,
         );
       }
-      return;
+    } else {
+      await this.db.insert(schema.categorizationRules).values({
+        userId,
+        pattern,
+        matchType: 'contains',
+        field: 'description',
+        categoryId: newCategoryId,
+        priority: 40,
+        isAiGenerated: false,
+        confidence: 1.0,
+      });
+      this.logger.log(`Created rule: "${pattern}" → category ${newCategoryId}`);
     }
 
-    await this.db.insert(schema.categorizationRules).values({
-      userId,
-      pattern,
-      matchType: 'contains',
-      field: 'description',
-      categoryId: newCategoryId,
-      priority: 40,
-      isAiGenerated: false,
-      confidence: 1.0,
-    });
+    // Create a separate merchant_name rule if different from description pattern
+    if (merchantPattern && merchantPattern.length >= 3 && merchantPattern !== pattern) {
+      const existingMerchantRule = await this.db
+        .select()
+        .from(schema.categorizationRules)
+        .where(
+          and(
+            eq(schema.categorizationRules.userId, userId),
+            eq(schema.categorizationRules.pattern, merchantPattern),
+            eq(schema.categorizationRules.field, 'merchant'),
+            isNull(schema.categorizationRules.deletedAt),
+          ),
+        )
+        .limit(1);
 
-    this.logger.log(`Created rule: "${pattern}" → category ${newCategoryId}`);
+      if (existingMerchantRule.length === 0) {
+        await this.db.insert(schema.categorizationRules).values({
+          userId,
+          pattern: merchantPattern,
+          matchType: 'contains',
+          field: 'merchant',
+          categoryId: newCategoryId,
+          priority: 45,
+          isAiGenerated: false,
+          confidence: 1.0,
+        });
+        this.logger.log(
+          `Created merchant rule: "${merchantPattern}" → category ${newCategoryId}`,
+        );
+      }
+    }
   }
 
   /**

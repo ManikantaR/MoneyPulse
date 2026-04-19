@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
   UseGuards,
   UseInterceptors,
@@ -96,5 +97,19 @@ export class IngestionController {
   async list(@CurrentUser() user: AuthTokenPayload) {
     const uploads = await this.ingestionService.listUploads(user.sub);
     return { data: uploads };
+  }
+
+  /**
+   * DELETE /uploads/:id — Delete an upload record and its associated transactions.
+   * Only allowed for completed or failed uploads (not in-progress).
+   */
+  @Delete(':id')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Delete an upload and its transactions' })
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    return this.ingestionService.deleteUpload(id, user.sub);
   }
 }

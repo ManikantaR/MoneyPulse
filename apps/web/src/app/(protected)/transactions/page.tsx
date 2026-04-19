@@ -1,8 +1,14 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useTransactions, useUpdateTransaction, useBulkCategorize } from '@/lib/hooks/useTransactions';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  useTransactions,
+  useUpdateTransaction,
+  useBulkCategorize,
+  useAutoCategorize,
+} from '@/lib/hooks/useTransactions';
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { formatCents, formatDate } from '@/lib/format';
@@ -11,36 +17,104 @@ import type { TransactionQueryParams } from '@/lib/hooks/useTransactions';
 
 /** Transactions page — searchable, filterable, paginated transaction grid with bulk actions. */
 export default function TransactionsPage() {
-  const [query, setQuery] = useState<TransactionQueryParams>({
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  /** Human-readable label for the active drill-down source (if any). */
+  const drillLabel = searchParams.get('drill');
+
+  /** Initialise query state from URL search params so dashboard drill-downs work. */
+  const [query, setQuery] = useState<TransactionQueryParams>(() => ({
     page: 1,
     pageSize: 25,
     sortBy: 'date',
     sortOrder: 'desc',
-  });
-  const [search, setSearch] = useState('');
+    accountId: searchParams.get('accountId') || undefined,
+    categoryId: searchParams.get('categoryId') || undefined,
+    from: searchParams.get('from') || undefined,
+    to: searchParams.get('to') || undefined,
+    isCredit: searchParams.get('isCredit') || undefined,
+  }));
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
+  const [autoCategResult, setAutoCategResult] = useState<string | null>(null);
+  const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
 
-  const { data, isLoading } = useTransactions({ ...query, search: search || undefined });
+  const { data, isLoading } = useTransactions({
+    ...query,
+    search: search || undefined,
+    ...(uncategorizedOnly ? { categoryId: '__uncategorized__' } : {}),
+  });
   const { data: accountsData } = useAccounts();
   const { data: categoriesData } = useCategories();
   const updateTxn = useUpdateTransaction();
   const bulkCategorize = useBulkCategorize();
+  const autoCategorize = useAutoCategorize();
 
   const accounts = accountsData?.data ?? [];
   const categories = categoriesData?.data ?? [];
   const transactions = data?.data ?? [];
   const totalPages = data?.totalPages ?? 1;
 
-  /** Build account ID → nickname lookup. */
+  /** Build account ID → display label lookup. */
   const accountMap = useMemo(
-    () => Object.fromEntries(accounts.map((a) => [a.id, a.nickname])),
+    () =>
+      Object.fromEntries(
+        accounts.map((a) => [
+          a.id,
+          `${a.nickname} (••${a.lastFour})`,
+        ]),
+      ),
     [accounts],
   );
 
-  /** Handle inline category change for a transaction. */
+  /** Build account ID → type lookup (credit_card, checking, savings). */
+  const accountTypeMap = useMemo(
+    () => Object.fromEntries(accounts.map((a) => [a.id, a.accountType])),
+    [accounts],
+  );
+
+  /** Build category ID → icon+name lookup. */
+  const categoryMap = useMemo(
+    () =>
+      Object.fromEntries(
+        categories.map((c) => [c.id, { icon: c.icon, name: c.name }]),
+      ),
+    [categories],
+  );
+
+  /** Group categories: parents with children for <optgroup> dropdowns. */
+  const categoryGroups = useMemo(() => {
+    const parents = categories.filter((c) => !c.parentId);
+    const childMap = new Map<string, typeof categories>();
+    for (const c of categories) {
+      if (c.parentId) {
+        const arr = childMap.get(c.parentId) ?? [];
+        arr.push(c);
+        childMap.set(c.parentId, arr);
+      }
+    }
+    return parents.map((p) => ({ ...p, children: childMap.get(p.id) ?? [] }));
+  }, [categories]);
+
+  const [learnToast, setLearnToast] = useState<string | null>(null);
+
+  /** Handle inline category change for a transaction — also triggers auto-learn rule creation. */
   function handleCategoryChange(txnId: string, categoryId: string) {
-    updateTxn.mutate({ id: txnId, categoryId: categoryId || null });
+    updateTxn.mutate(
+      { id: txnId, categoryId: categoryId || null },
+      {
+        onSuccess: () => {
+          if (categoryId) {
+            const cat = categoryMap[categoryId];
+            const label = cat ? `${cat.icon} ${cat.name}` : 'category';
+            setLearnToast(`Rule learned — future similar transactions will auto-assign to ${label}`);
+            setTimeout(() => setLearnToast(null), 4000);
+          }
+        },
+      },
+    );
   }
 
   /** Toggle a single row selection. */
@@ -67,7 +141,12 @@ export default function TransactionsPage() {
     if (selectedIds.size > 0 && bulkCategoryId) {
       bulkCategorize.mutate(
         { transactionIds: Array.from(selectedIds), categoryId: bulkCategoryId },
-        { onSuccess: () => { setSelectedIds(new Set()); setBulkCategoryId(''); } },
+        {
+          onSuccess: () => {
+            setSelectedIds(new Set());
+            setBulkCategoryId('');
+          },
+        },
       );
     }
   }
@@ -98,22 +177,97 @@ export default function TransactionsPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <h1 className="text-4xl font-extrabold tracking-tight">Transactions</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight">
+            Transactions
+          </h1>
           <p className="text-[var(--muted-foreground)]">
             {data?.total ?? 0} total transactions
           </p>
         </div>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors"
-        >
-          <Download className="h-4 w-4" />
-          Export CSV
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              setAutoCategResult(null);
+              autoCategorize.mutate(undefined, {
+                onSuccess: (res) => {
+                  const s = res.data;
+                  if (s.total === 0) {
+                    setAutoCategResult(
+                      'All transactions are already categorized.',
+                    );
+                  } else {
+                    setAutoCategResult(
+                      `Processed ${s.total}: ${s.categorizedByRule} by rules, ${s.categorizedByAi} by AI, ${s.uncategorized} still uncategorized.`,
+                    );
+                  }
+                  setTimeout(() => setAutoCategResult(null), 8000);
+                },
+                onError: () => {
+                  setAutoCategResult(
+                    'Auto-categorize failed. Is Ollama running?',
+                  );
+                  setTimeout(() => setAutoCategResult(null), 5000);
+                },
+              });
+            }}
+            disabled={autoCategorize.isPending}
+            className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
+            title="Run AI + rule engine on all uncategorized transactions"
+          >
+            {autoCategorize.isPending
+              ? 'Categorizing...'
+              : '✨ Auto-Categorize'}
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </button>
+        </div>
       </div>
 
+      {/* Auto-categorize result banner */}
+      {autoCategResult && (
+        <div className="rounded-xl border border-[var(--primary)]/30 bg-[var(--accent)] px-4 py-2.5 text-sm">
+          {autoCategResult}
+        </div>
+      )}
+
+      {/* Learning feedback toast */}
+      {learnToast && (
+        <div className="rounded-xl border border-[var(--secondary)]/30 bg-[var(--secondary)]/10 px-4 py-2.5 text-sm animate-in fade-in slide-in-from-top-2">
+          🧠 {learnToast}
+        </div>
+      )}
+
+      {/* Drill-down context banner — shown when navigating from dashboard */}
+      {drillLabel && (
+        <div className="flex items-center justify-between rounded-xl border border-[var(--primary)]/30 bg-[var(--accent)] px-4 py-2.5 text-sm">
+          <span>
+            <span className="font-bold">Showing:</span> {drillLabel}
+            {query.from && query.to && (
+              <span className="ml-1 text-[var(--muted-foreground)]">
+                ({query.from} – {query.to})
+              </span>
+            )}
+          </span>
+          <button
+            onClick={() => {
+              router.replace('/transactions');
+              setQuery({ page: 1, pageSize: 25, sortBy: 'date', sortOrder: 'desc' });
+              setSearch('');
+            }}
+            className="flex items-center gap-1 rounded-full bg-[var(--muted)] px-3 py-1 text-xs font-semibold hover:bg-[var(--border)] transition-colors"
+          >
+            <X className="h-3 w-3" /> Clear filters
+          </button>
+        </div>
+      )}
+
       {/* Search & Filters */}
-      <div className="grid grid-cols-1 gap-4 rounded-2xl bg-[var(--surface-container-low)] p-4 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 rounded-2xl bg-[var(--surface-container-low)] p-4 md:grid-cols-5">
         <div className="flex flex-col gap-1.5 md:col-span-2">
           <label className="px-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
             Search
@@ -135,12 +289,20 @@ export default function TransactionsPage() {
           </label>
           <select
             value={query.accountId ?? ''}
-            onChange={(e) => setQuery({ ...query, accountId: e.target.value || undefined, page: 1 })}
+            onChange={(e) =>
+              setQuery({
+                ...query,
+                accountId: e.target.value || undefined,
+                page: 1,
+              })
+            }
             className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
           >
             <option value="">All Accounts</option>
             {accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.nickname}</option>
+              <option key={a.id} value={a.id}>
+                {a.nickname}
+              </option>
             ))}
           </select>
         </div>
@@ -149,14 +311,52 @@ export default function TransactionsPage() {
             Category
           </label>
           <select
-            value={query.categoryId ?? ''}
-            onChange={(e) => setQuery({ ...query, categoryId: e.target.value || undefined, page: 1 })}
+            value={uncategorizedOnly ? '__uncategorized__' : (query.categoryId ?? '')}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === '__uncategorized__') {
+                setUncategorizedOnly(true);
+                setQuery({ ...query, categoryId: undefined, page: 1 });
+              } else {
+                setUncategorizedOnly(false);
+                setQuery({ ...query, categoryId: val || undefined, page: 1 });
+              }
+            }}
             className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
           >
             <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
+            <option value="__uncategorized__">⚠ Uncategorized</option>
+            {categoryGroups.map((g) =>
+              g.children.length > 0 ? (
+                <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
+                  {g.children.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.icon} {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                <option key={g.id} value={g.id}>
+                  {g.icon} {g.name}
+                </option>
+              ),
+            )}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="px-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+            Per page
+          </label>
+          <select
+            value={query.pageSize ?? 25}
+            onChange={(e) =>
+              setQuery({ ...query, pageSize: Number(e.target.value), page: 1 })
+            }
+            className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+          >
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
         </div>
       </div>
@@ -171,9 +371,21 @@ export default function TransactionsPage() {
             className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm"
           >
             <option value="">Assign category...</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
+            {categoryGroups.map((g) =>
+              g.children.length > 0 ? (
+                <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
+                  {g.children.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.icon} {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                <option key={g.id} value={g.id}>
+                  {g.icon} {g.name}
+                </option>
+              ),
+            )}
           </select>
           <button
             onClick={handleBulkCategorize}
@@ -199,28 +411,88 @@ export default function TransactionsPage() {
               <th className="w-10 px-3 py-4">
                 <input
                   type="checkbox"
-                  checked={transactions.length > 0 && selectedIds.size === transactions.length}
+                  checked={
+                    transactions.length > 0 &&
+                    selectedIds.size === transactions.length
+                  }
                   onChange={toggleAll}
                   className="rounded"
                 />
               </th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Date</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Description</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Account</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Category</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)] text-right">Amount</th>
+              <SortHeader
+                label="Date"
+                field="date"
+                current={query.sortBy}
+                order={query.sortOrder}
+                onSort={(field) => {
+                  const newOrder =
+                    query.sortBy === field && query.sortOrder === 'desc'
+                      ? 'asc'
+                      : 'desc';
+                  setQuery({ ...query, sortBy: field, sortOrder: newOrder, page: 1 });
+                }}
+              />
+              <SortHeader
+                label="Description"
+                field="description"
+                current={query.sortBy}
+                order={query.sortOrder}
+                onSort={(field) => {
+                  const newOrder =
+                    query.sortBy === field && query.sortOrder === 'asc'
+                      ? 'desc'
+                      : 'asc';
+                  setQuery({ ...query, sortBy: field, sortOrder: newOrder, page: 1 });
+                }}
+              />
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Account
+              </th>
+              <SortHeader
+                label="Category"
+                field="category"
+                current={query.sortBy}
+                order={query.sortOrder}
+                onSort={(field) => {
+                  const newOrder =
+                    query.sortBy === field && query.sortOrder === 'asc'
+                      ? 'desc'
+                      : 'asc';
+                  setQuery({ ...query, sortBy: field, sortOrder: newOrder, page: 1 });
+                }}
+              />
+              <SortHeader
+                label="Amount"
+                field="amount"
+                current={query.sortBy}
+                order={query.sortOrder}
+                onSort={(field) => {
+                  const newOrder =
+                    query.sortBy === field && query.sortOrder === 'desc'
+                      ? 'asc'
+                      : 'desc';
+                  setQuery({ ...query, sortBy: field, sortOrder: newOrder, page: 1 });
+                }}
+                align="right"
+              />
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-[var(--muted-foreground)]">
+                <td
+                  colSpan={6}
+                  className="px-4 py-12 text-center text-[var(--muted-foreground)]"
+                >
                   Loading...
                 </td>
               </tr>
             ) : transactions.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-[var(--muted-foreground)]">
+                <td
+                  colSpan={6}
+                  className="px-4 py-12 text-center text-[var(--muted-foreground)]"
+                >
                   No transactions found
                 </td>
               </tr>
@@ -242,7 +514,9 @@ export default function TransactionsPage() {
                     />
                   </td>
                   <td className="px-6 py-5 tabular-nums whitespace-nowrap">
-                    <div className="text-sm font-semibold">{formatDate(txn.date)}</div>
+                    <div className="text-sm font-semibold">
+                      {formatDate(txn.date)}
+                    </div>
                   </td>
                   <td className="px-6 py-5 max-w-[300px] truncate">
                     <span className="font-medium">{txn.description}</span>
@@ -258,22 +532,41 @@ export default function TransactionsPage() {
                   <td className="px-6 py-5">
                     <select
                       value={txn.categoryId ?? ''}
-                      onChange={(e) => handleCategoryChange(txn.id, e.target.value)}
+                      onChange={(e) =>
+                        handleCategoryChange(txn.id, e.target.value)
+                      }
                       className="rounded-full border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-1 text-xs font-medium hover:border-[var(--primary)] transition-colors"
                     >
                       <option value="">Uncategorized</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
+                      {categoryGroups.map((g) =>
+                        g.children.length > 0 ? (
+                          <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
+                            {g.children.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.icon} {c.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : (
+                          <option key={g.id} value={g.id}>
+                            {g.icon} {g.name}
+                          </option>
+                        ),
+                      )}
                     </select>
                   </td>
                   <td
                     className={cn(
                       'px-6 py-5 text-right font-extrabold tabular-nums whitespace-nowrap',
-                      txn.isCredit ? 'text-[var(--secondary)]' : 'text-[var(--foreground)]',
+                      txn.isCredit && accountTypeMap[txn.accountId] !== 'credit_card'
+                        ? 'text-[var(--secondary)]'
+                        : txn.isCredit && accountTypeMap[txn.accountId] === 'credit_card'
+                          ? 'text-[var(--muted-foreground)]'
+                          : 'text-[var(--foreground)]',
                     )}
                   >
-                    {txn.isCredit ? '+' : '-'}{formatCents(txn.amountCents)}
+                    {txn.isCredit ? '+' : '-'}
+                    {formatCents(txn.amountCents)}
                   </td>
                 </tr>
               ))
@@ -285,18 +578,43 @@ export default function TransactionsPage() {
       {/* Pagination */}
       <div className="flex items-center justify-between rounded-xl bg-[var(--surface-container-low)]/50 px-6 py-4">
         <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
-          Page {query.page} of {totalPages}
+          Page {query.page} of {totalPages} · {data?.total ?? 0} results
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setQuery({ ...query, page: Math.max(1, (query.page ?? 1) - 1) })}
+            onClick={() =>
+              setQuery({ ...query, page: Math.max(1, (query.page ?? 1) - 1) })
+            }
             disabled={(query.page ?? 1) <= 1}
             className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-container)] disabled:opacity-50 transition-colors text-[var(--muted-foreground)]"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
+          {pageNumbers(query.page ?? 1, totalPages).map((p, i) =>
+            p === '...' ? (
+              <span key={`ellipsis-${i}`} className="px-1 text-xs text-[var(--muted-foreground)]">…</span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => setQuery({ ...query, page: Number(p) })}
+                className={cn(
+                  'flex h-8 min-w-[2rem] items-center justify-center rounded-lg text-xs font-semibold transition-colors',
+                  Number(p) === (query.page ?? 1)
+                    ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                    : 'hover:bg-[var(--surface-container)] text-[var(--muted-foreground)]',
+                )}
+              >
+                {p}
+              </button>
+            ),
+          )}
           <button
-            onClick={() => setQuery({ ...query, page: Math.min(totalPages, (query.page ?? 1) + 1) })}
+            onClick={() =>
+              setQuery({
+                ...query,
+                page: Math.min(totalPages, (query.page ?? 1) + 1),
+              })
+            }
             disabled={(query.page ?? 1) >= totalPages}
             className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-container)] disabled:opacity-50 transition-colors text-[var(--muted-foreground)]"
           >
@@ -306,4 +624,58 @@ export default function TransactionsPage() {
       </div>
     </div>
   );
+}
+
+/** Sortable column header component. */
+function SortHeader({
+  label,
+  field,
+  current,
+  order,
+  onSort,
+  align,
+}: {
+  label: string;
+  field: 'date' | 'amount' | 'description' | 'category';
+  current?: string;
+  order?: string;
+  onSort: (field: 'date' | 'amount' | 'description' | 'category') => void;
+  align?: 'right';
+}) {
+  const active = current === field;
+  return (
+    <th
+      className={cn(
+        'px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)] cursor-pointer select-none hover:text-[var(--foreground)] transition-colors',
+        align === 'right' && 'text-right',
+      )}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (
+          order === 'asc' ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
+      </span>
+    </th>
+  );
+}
+
+/** Build an array of page numbers with ellipsis gaps. */
+function pageNumbers(current: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | '...')[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) pages.push('...');
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (end < total - 1) pages.push('...');
+  pages.push(total);
+  return pages;
 }

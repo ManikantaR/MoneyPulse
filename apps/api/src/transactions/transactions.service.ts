@@ -25,6 +25,7 @@ import type {
   BulkCategorizeInput,
 } from '@moneypulse/shared';
 import { createHash } from 'crypto';
+import { encryptField, decryptField } from '../common/crypto';
 
 @Injectable()
 export class TransactionsService {
@@ -66,7 +67,7 @@ export class TransactionsService {
         txnHash,
         date: new Date(input.date),
         description: input.description,
-        originalDescription: input.description,
+        originalDescription: encryptField(input.description),
         amountCents: input.amountCents,
         categoryId: input.categoryId ?? null,
         merchantName: input.merchantName ?? null,
@@ -75,7 +76,7 @@ export class TransactionsService {
         tags: input.tags ?? [],
       })
       .returning();
-    return rows[0];
+    return this.decryptTxn(rows[0]);
   }
 
   /**
@@ -96,7 +97,10 @@ export class TransactionsService {
       const memberIds = members.map((m: any) => m.id);
       if (memberIds.length > 0) {
         conditions.push(
-          sql`${schema.transactions.userId} = ANY(ARRAY[${sql.join(memberIds.map((id: string) => sql`${id}::uuid`), sql`, `)}])`,
+          sql`${schema.transactions.userId} = ANY(ARRAY[${sql.join(
+            memberIds.map((id: string) => sql`${id}::uuid`),
+            sql`, `,
+          )}])`,
         );
       }
     } else {
@@ -105,8 +109,13 @@ export class TransactionsService {
 
     if (query.accountId)
       conditions.push(eq(schema.transactions.accountId, query.accountId));
-    if (query.categoryId)
+    if (query.uploadId)
+      conditions.push(eq(schema.transactions.sourceFileId, query.uploadId));
+    if (query.categoryId === '__uncategorized__') {
+      conditions.push(isNull(schema.transactions.categoryId));
+    } else if (query.categoryId) {
       conditions.push(eq(schema.transactions.categoryId, query.categoryId));
+    }
     if (query.from && query.to) {
       conditions.push(
         between(
@@ -120,6 +129,9 @@ export class TransactionsService {
       conditions.push(
         ilike(schema.transactions.description, `%${query.search}%`),
       );
+    }
+    if (query.isCredit !== undefined) {
+      conditions.push(eq(schema.transactions.isCredit, query.isCredit));
     }
 
     // Exclude split parents from list
@@ -152,10 +164,11 @@ export class TransactionsService {
       .offset(offset);
 
     return {
-      data,
+      data: data.map((t: any) => this.decryptTxn(t)),
       total,
       page: query.page,
       pageSize: query.pageSize,
+      totalPages: Math.ceil(total / query.pageSize),
       hasMore: offset + data.length < total,
     };
   }
@@ -178,7 +191,7 @@ export class TransactionsService {
         ),
       )
       .limit(1);
-    return rows[0] ?? null;
+    return rows[0] ? this.decryptTxn(rows[0]) : null;
   }
 
   /**
@@ -237,7 +250,7 @@ export class TransactionsService {
       .set({ ...input, updatedAt: new Date() })
       .where(eq(schema.transactions.id, id))
       .returning();
-    return rows[0];
+    return this.decryptTxn(rows[0]);
   }
 
   /**
@@ -278,7 +291,10 @@ export class TransactionsService {
       );
     }
 
-    const splitTotal = input.splits.reduce((sum: number, s: any) => sum + s.amountCents, 0);
+    const splitTotal = input.splits.reduce(
+      (sum: number, s: any) => sum + s.amountCents,
+      0,
+    );
     if (splitTotal !== parent.amountCents) {
       throw new BadRequestException(
         `Split amounts (${splitTotal}) must equal parent amount (${parent.amountCents})`,
@@ -301,7 +317,7 @@ export class TransactionsService {
             .digest('hex'),
           date: parent.date,
           description: split.description || parent.description,
-          originalDescription: parent.originalDescription,
+          originalDescription: encryptField(parent.originalDescription),
           amountCents: split.amountCents,
           categoryId: split.categoryId,
           isCredit: parent.isCredit,
@@ -312,7 +328,7 @@ export class TransactionsService {
       )
       .returning();
 
-    return { parent: { ...parent, isSplitParent: true }, children };
+    return { parent: { ...parent, isSplitParent: true }, children: children.map((c: any) => this.decryptTxn(c)) };
   }
 
   /**
@@ -325,12 +341,41 @@ export class TransactionsService {
       .where(
         and(
           eq(schema.transactions.userId, userId),
-          sql`${schema.transactions.id} = ANY(ARRAY[${sql.join(input.transactionIds.map((id: string) => sql`${id}::uuid`), sql`, `)}])`,
+          sql`${schema.transactions.id} = ANY(ARRAY[${sql.join(
+            input.transactionIds.map((id: string) => sql`${id}::uuid`),
+            sql`, `,
+          )}])`,
           isNull(schema.transactions.deletedAt),
         ),
       )
       .returning({ id: schema.transactions.id });
 
     return { updatedCount: updated.length };
+  }
+
+  /**
+   * Find all uncategorized transaction IDs for a user.
+   * Returns transactions where categoryId is null and not soft-deleted.
+   */
+  async findUncategorizedIds(userId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: schema.transactions.id })
+      .from(schema.transactions)
+      .where(
+        and(
+          eq(schema.transactions.userId, userId),
+          isNull(schema.transactions.categoryId),
+          isNull(schema.transactions.deletedAt),
+        ),
+      );
+    return rows.map((r: any) => r.id);
+  }
+
+  private decryptTxn(txn: any) {
+    if (!txn) return txn;
+    return {
+      ...txn,
+      originalDescription: decryptField(txn.originalDescription),
+    };
   }
 }

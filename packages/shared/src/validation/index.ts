@@ -128,9 +128,11 @@ export const transactionQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   search: z.string().max(200).optional(),
   accountId: z.uuid().optional(),
-  categoryId: z.uuid().optional(),
+  categoryId: z.union([z.uuid(), z.literal('__uncategorized__')]).optional(),
+  uploadId: z.uuid().optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
+  isCredit: z.coerce.boolean().optional(),
   sortBy: z.enum(['date', 'amount', 'description', 'category']).default('date'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });

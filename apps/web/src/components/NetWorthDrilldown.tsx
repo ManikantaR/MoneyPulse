@@ -1,6 +1,7 @@
 'use client';
 
-import { X, Wallet, CreditCard, TrendingUp } from 'lucide-react';
+import { X, Wallet, CreditCard, TrendingUp, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { formatCents } from '@/lib/format';
 import type { AccountBalanceItem } from '@/lib/hooks/useAnalytics';
 
@@ -11,10 +12,13 @@ interface NetWorthDrilldownProps {
   type: 'assets' | 'liabilities';
   accounts: AccountBalanceItem[];
   onClose: () => void;
+  from?: string;
+  to?: string;
 }
 
 /** Slide-over panel showing per-account breakdown for assets or liabilities. */
-export function NetWorthDrilldown({ type, accounts, onClose }: NetWorthDrilldownProps) {
+export function NetWorthDrilldown({ type, accounts, onClose, from, to }: NetWorthDrilldownProps) {
+  const router = useRouter();
   const isAssets = type === 'assets';
   const filtered = accounts.filter((a) =>
     isAssets ? ASSET_TYPES.includes(a.accountType) : LIABILITY_TYPES.includes(a.accountType),
@@ -23,6 +27,13 @@ export function NetWorthDrilldown({ type, accounts, onClose }: NetWorthDrilldown
 
   function typeLabel(accountType: string) {
     return accountType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function viewTransactions(accountId: string, nickname: string) {
+    const params = new URLSearchParams({ accountId, drill: `${nickname} transactions` });
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    router.push(`/transactions?${params.toString()}`);
   }
 
   return (
@@ -95,21 +106,29 @@ export function NetWorthDrilldown({ type, accounts, onClose }: NetWorthDrilldown
               .map((acc) => (
                 <div
                   key={acc.accountId}
-                  className="flex items-center justify-between rounded-xl bg-[var(--surface-container-low)] px-4 py-3.5"
+                  className="rounded-xl bg-[var(--surface-container-low)] px-4 py-3.5"
                 >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{acc.nickname}</p>
-                    <p className="text-xs text-[var(--muted-foreground)] capitalize mt-0.5">
-                      {acc.institution} · {typeLabel(acc.accountType)}
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate">{acc.nickname}</p>
+                      <p className="text-xs text-[var(--muted-foreground)] capitalize mt-0.5">
+                        {acc.institution} · {typeLabel(acc.accountType)}
+                      </p>
+                    </div>
+                    <p
+                      className={`shrink-0 font-bold tabular-nums text-sm ml-4 ${
+                        isAssets ? 'text-[var(--secondary)]' : 'text-[var(--destructive)]'
+                      }`}
+                    >
+                      {formatCents(acc.balanceCents)}
                     </p>
                   </div>
-                  <p
-                    className={`shrink-0 font-bold tabular-nums text-sm ml-4 ${
-                      isAssets ? 'text-[var(--secondary)]' : 'text-[var(--destructive)]'
-                    }`}
+                  <button
+                    onClick={() => viewTransactions(acc.accountId, acc.nickname)}
+                    className="mt-2 flex items-center gap-1 text-xs font-semibold text-[var(--primary)] hover:underline"
                   >
-                    {formatCents(acc.balanceCents)}
-                  </p>
+                    View transactions <ExternalLink className="h-3 w-3" />
+                  </button>
                 </div>
               ))
           )}

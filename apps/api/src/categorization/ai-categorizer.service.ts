@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { sanitizeForCloudAI } from './pii-sanitizer';
+import { sanitizeForCloudAI, detectPiiTypes } from './pii-sanitizer';
+import { AiLogsService } from '../ai-logs/ai-logs.service';
 
 interface AiCategorizationResult {
   categoryName: string;
@@ -21,17 +22,20 @@ export class AiCategorizerService {
   private readonly batchSize: number;
   private readonly timeoutMs: number;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly aiLogs: AiLogsService,
+  ) {
     this.ollamaUrl =
       this.config.get<string>('OLLAMA_URL') || 'http://localhost:11434';
     this.ollamaModel =
       this.config.get<string>('OLLAMA_MODEL') || 'llama3.2:3b';
     this.batchSize = parseInt(
-      this.config.get<string>('OLLAMA_BATCH_SIZE') || '20',
+      this.config.get<string>('OLLAMA_BATCH_SIZE') || '10',
       10,
     );
     this.timeoutMs = parseInt(
-      this.config.get<string>('OLLAMA_TIMEOUT_MS') || '30000',
+      this.config.get<string>('OLLAMA_TIMEOUT_MS') || '120000',
       10,
     );
   }
@@ -82,7 +86,20 @@ export class AiCategorizerService {
     }>,
     categories: string[],
   ): Promise<Array<AiCategorizationResult | null>> {
-    const prompt = this.buildPrompt(batch, categories);
+    // Sanitize PII before sending to local LLM
+    const sanitizedBatch = batch.map(sanitizeForCloudAI);
+    const prompt = this.buildPrompt(sanitizedBatch, categories);
+
+    // Detect if original descriptions contained PII (for audit)
+    const allOriginalText = batch.map((t) => `${t.description} ${t.merchantName ?? ''}`).join(' ');
+    const piiTypesFound = detectPiiTypes(allOriginalText);
+    const piiDetected = piiTypesFound.length > 0;
+
+    this.logger.debug(
+      `Ollama prompt for ${sanitizedBatch.length} txns:\n${prompt}`,
+    );
+
+    const startMs = Date.now();
 
     try {
       const controller = new AbortController();
@@ -107,15 +124,61 @@ export class AiCategorizerService {
 
       if (!response.ok) {
         this.logger.warn(`Ollama request failed: ${response.status}`);
+        this.logPrompt(prompt, null, startMs, batch.length, 0, null, piiDetected, piiTypesFound);
         return batch.map(() => null);
       }
 
-      const data = (await response.json()) as { response: string };
-      return this.parseResponse(data.response, batch.length);
+      const data = (await response.json()) as { response: string; prompt_eval_count?: number; eval_count?: number };
+      const results = this.parseResponse(data.response, batch.length);
+
+      const categoriesAssigned = results.filter((r) => r !== null).length;
+      const avgConfidence = categoriesAssigned > 0
+        ? results.reduce((sum, r) => sum + (r?.confidence ?? 0), 0) / categoriesAssigned
+        : null;
+
+      this.logPrompt(
+        prompt, data.response, startMs, batch.length, categoriesAssigned,
+        avgConfidence, piiDetected, piiTypesFound,
+        data.prompt_eval_count, data.eval_count,
+      );
+
+      return results;
     } catch (err: any) {
       this.logger.error(`Ollama error: ${err.message}`);
+      this.logPrompt(prompt, null, startMs, batch.length, 0, null, piiDetected, piiTypesFound);
       return batch.map(() => null);
     }
+  }
+
+  /** Fire-and-forget: log AI prompt to the database for observability. */
+  private logPrompt(
+    inputText: string,
+    outputText: string | null,
+    startMs: number,
+    transactionsCount: number,
+    categoriesAssigned: number,
+    avgConfidence: number | null,
+    piiDetected: boolean,
+    piiTypesFound: string[],
+    tokenCountIn?: number,
+    tokenCountOut?: number,
+  ) {
+    this.aiLogs
+      .create({
+        promptType: 'categorization',
+        model: this.ollamaModel,
+        inputText,
+        outputText: outputText ?? undefined,
+        tokenCountIn,
+        tokenCountOut,
+        latencyMs: Date.now() - startMs,
+        transactionsCount,
+        categoriesAssigned,
+        avgConfidence: avgConfidence ?? undefined,
+        piiDetected,
+        piiTypesFound,
+      })
+      .catch((err) => this.logger.warn(`Failed to log AI prompt: ${err.message}`));
   }
 
   /**

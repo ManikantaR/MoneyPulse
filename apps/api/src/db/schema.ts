@@ -295,6 +295,7 @@ export const notifications = pgTable('notifications', {
   message: text('message').notNull(),
   isRead: boolean('is_read').notNull().default(false),
   webhookSent: boolean('webhook_sent').notNull().default(false),
+  metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -354,6 +355,41 @@ export const investmentSnapshots = pgTable('investment_snapshots', {
     .notNull()
     .defaultNow(),
 });
+
+// ── AI Prompt Logs ──────────────────────────────────────────
+
+export const aiPromptTypeEnum = pgEnum('ai_prompt_type', [
+  'categorization',
+  'pdf_parse',
+]);
+
+export const aiPromptLogs = pgTable(
+  'ai_prompt_logs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    userId: uuid('user_id').references(() => users.id),
+    promptType: aiPromptTypeEnum('prompt_type').notNull(),
+    model: varchar('model', { length: 100 }).notNull(),
+    inputText: text('input_text').notNull(),
+    outputText: text('output_text'),
+    tokenCountIn: integer('token_count_in'),
+    tokenCountOut: integer('token_count_out'),
+    latencyMs: integer('latency_ms'),
+    transactionsCount: integer('transactions_count'),
+    categoriesAssigned: integer('categories_assigned'),
+    avgConfidence: real('avg_confidence'),
+    piiDetected: boolean('pii_detected').notNull().default(false),
+    piiTypesFound: jsonb('pii_types_found').default([]),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_ai_log_user').on(table.userId),
+    index('idx_ai_log_type').on(table.promptType),
+    index('idx_ai_log_created').on(table.createdAt),
+  ],
+);
 
 // ── Relations ───────────────────────────────────────────────
 

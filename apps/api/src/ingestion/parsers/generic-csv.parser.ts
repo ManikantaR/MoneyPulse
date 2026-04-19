@@ -6,7 +6,7 @@ import type {
 import {
   type ParseResult,
   parseAmountToCents,
-  normalizeDescription,
+  extractMerchantName,
 } from './base.parser';
 import { parse as parseDate, format as formatDate } from 'date-fns';
 
@@ -119,7 +119,7 @@ export class GenericCsvParser {
           : null;
         const merchantName = this.config.merchantColumn
           ? (row[this.config.merchantColumn] || '').trim() || null
-          : normalizeDescription(description);
+          : extractMerchantName(description);
         const runningBalanceCents = this.config.balanceColumn
           ? parseAmountToCents(row[this.config.balanceColumn] || '')
           : null;

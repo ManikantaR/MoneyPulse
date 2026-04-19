@@ -53,18 +53,26 @@ Most finance apps require uploading sensitive bank data to third-party servers. 
 
 ### AI-Powered Categorization
 - **Local-first** — Ollama (llama3.2:3b) categorizes transactions on-device
+- **67 categories** across 13 groups — comprehensive taxonomy out of the box
 - **60+ seed rules** — common merchants pre-mapped out of the box
 - **Learning rules engine** — manual overrides auto-create future categorization rules
+- **AI observability** — admin dashboard for prompt logs, PII alerts, model stats
 - **Cloud AI opt-in** — PII-stripped fallback to cloud models (default OFF)
 
 ### Dashboard & Analytics
-- Income vs. expenses (monthly bar chart)
-- Spending by category (donut chart)
+- Income vs. expenses (monthly bar chart) — **click to drill down into transactions**
+- Spending by category (donut chart) — **click a slice/legend to view category transactions**
 - Spending trend over time (line chart)
 - Account balance history (multi-line chart)
 - Credit card utilization (progress bars)
-- Net worth tracking (including investments)
-- Top merchants by spend
+- Net worth tracking with **drill-down into assets & liabilities** per account
+- Top merchants by spend — **click a bar to search merchant transactions**
+- **Dashboard → Transactions drill-down**: click any KPI card (Income, Expenses, Cash Flow) to navigate to a pre-filtered transactions view with context banner and one-click clear
+
+### File Imports
+- Dedicated imports status page with summary cards (total files, completed, failed, rows imported)
+- Detailed table: file name, account, status badge, imported/skipped/error counts, date
+- Direct link from sidebar navigation
 
 ### Budgets & Alerts
 - Per-category monthly/weekly budgets (personal + shared household)
@@ -261,7 +269,9 @@ pnpm test
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `POSTGRES_PASSWORD` | Yes | — | Database password |
-| `JWT_SECRET` | Yes | — | JWT signing key |
+| `JWT_SECRET` | Yes | — | JWT signing key (generate: `openssl rand -hex 64`) |
+| `ENCRYPTION_KEY` | Yes | — | AES-256-GCM key (generate: `openssl rand -hex 32`) |
+| `REDIS_PASSWORD` | Yes | — | Redis password for `--requirepass` |
 | `POSTGRES_USER` | No | `moneypulse` | Database user |
 | `POSTGRES_DB` | No | `moneypulse` | Database name |
 | `OLLAMA_URL` | No | `http://ollama:11434` | Ollama API URL |
@@ -391,7 +401,9 @@ erDiagram
 | **Phase 3** | AI-powered categorization | ✅ Done — 60+ seed rules, Ollama batch categorizer, PII sanitizer, learning loop, 112 API tests |
 | **Phase 4** | PDF parser microservice | ✅ Done — Python/pdfplumber service, BofA rule-based + AI fallback, 66 tests |
 | **Phase 5** | Dashboard & visualization | ✅ Done — income/expense charts, spending by category, trend lines, CSV export |
-| **Phase 6** | Budgets, alerts & notifications | 🔲 Up next |
+| **Phase 5.5** | Dashboard drill-down & UX polish | ✅ Done — clickable KPI cards, chart drill-down to transactions, URL-driven filters, imports page, CC payment handling |
+| **Phase 6** | Budgets, alerts & notifications | ✅ Done — per-category budgets, HA webhooks, email digests, savings goals |
+| **Phase 6.5** | Security hardening & AI observability | ✅ Done — AES-256-GCM encryption, helmet, CSP, audit gaps, admin AI logs dashboard |
 | **Phase 7** | MCP server for AI agents | 🔲 Planned |
 | **Phase 8** | Investment account tracking | 🔲 Planned |
 
@@ -402,12 +414,21 @@ See [MONEYPULSE-PLAN.md](MONEYPULSE-PLAN.md) for the detailed implementation pla
 | Concern | Approach |
 |---------|----------|
 | **Data residency** | All data stays on your hardware — no external calls unless you opt in |
-| **Account numbers** | Only last 4 digits stored — never the full number |
+| **Encryption at rest** | AES-256-GCM app-layer encryption for PII columns (last_four, original_description, webhook URLs, AI logs) |
+| **Account numbers** | Only last 4 digits stored (encrypted) — never the full number |
 | **AI privacy** | Ollama runs locally by default. Cloud AI is opt-in and PII-stripped |
-| **Authentication** | Dual JWT tokens (access + refresh) with Redis allowlist |
+| **AI observability** | Admin dashboard for AI prompt logs, PII detection alerts, model performance stats |
+| **Authentication** | Dual JWT tokens (access + refresh) with Redis allowlist, HS256 pinned |
 | **Passwords** | 16+ characters, bcrypt cost factor 12 |
+| **Security headers** | Helmet + CSP (frontend), X-Frame-Options DENY, HSTS |
+| **Cookie security** | All cookies httpOnly + secure + sameSite:lax |
 | **Rate limiting** | Login: 5/min, API: 100/min per user |
-| **Audit trail** | All security events logged (login, password change, role change) |
+| **Network isolation** | PostgreSQL, Redis, PDF parser bound to localhost in Docker |
+| **Redis auth** | Password-protected Redis with `--requirepass` |
+| **Swagger** | Disabled in production (`NODE_ENV=production`) |
+| **CSV export** | Formula injection protection (strips `=+@-` prefixes) |
+| **Audit trail** | All security events logged (login, password change, role change, CSV export, file import) |
+| **PII sanitization** | SSN, credit card, email, phone, DOB, account numbers, addresses stripped from AI prompts |
 
 ## Supported Banks
 

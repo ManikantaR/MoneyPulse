@@ -1,14 +1,13 @@
 'use client';
 
-import { Bell, LogOut, Search } from 'lucide-react';
+import { LogOut, Search } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { useUnreadCount } from '@/lib/hooks/useNotifications';
 import { ThemeToggle } from './ThemeToggle';
+import { NotificationBell } from './NotificationBell';
 
 /** Top bar with search, notifications, theme toggle, user info, and logout. */
 export function TopBar() {
   const { user, logout } = useAuth();
-  const { count: unreadCount } = useUnreadCount();
 
   return (
     <header className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--card)]/80 px-6 backdrop-blur-xl shadow-sm">
@@ -24,17 +23,7 @@ export function TopBar() {
 
       <div className="flex items-center gap-3 ml-auto">
         {/* Notifications */}
-        <button
-          className="relative rounded-full p-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-          {unreadCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--destructive)] text-[10px] font-bold text-white">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
+        <NotificationBell />
 
         <ThemeToggle />
 

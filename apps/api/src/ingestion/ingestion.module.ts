@@ -14,6 +14,7 @@ import { CategorizationModule } from '../categorization/categorization.module';
 @Module({
   imports: [
     BullModule.registerQueue({ name: INGESTION_QUEUE }),
+    BullModule.registerQueue({ name: 'alerts' }),
     AuditModule,
     CategorizationModule,
   ],

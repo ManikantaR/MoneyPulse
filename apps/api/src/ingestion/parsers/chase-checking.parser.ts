@@ -4,7 +4,7 @@ import {
   type ParseResult,
   parseDateMMDDYYYY,
   parseAmountToCents,
-  normalizeDescription,
+  extractMerchantName,
 } from './base.parser';
 
 /**
@@ -105,7 +105,7 @@ export class ChaseCheckingParser implements BankParser {
           description,
           amountCents: Math.abs(amountCents),
           isCredit,
-          merchantName: normalizeDescription(description),
+          merchantName: extractMerchantName(description),
           runningBalanceCents,
         });
       } catch (err: any) {

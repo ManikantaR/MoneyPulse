@@ -14,7 +14,13 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
+  Wallet,
+  FileBarChart,
+  LogOut,
+  Brain,
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
+import { UserAvatar } from './UserAvatar';
 
 /** Navigation item definition for the sidebar. */
 interface NavItem {
@@ -27,8 +33,11 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/upload', label: 'Upload', icon: Upload },
+  { href: '/imports', label: 'Imports', icon: FileBarChart },
   { href: '/accounts', label: 'Accounts', icon: Landmark },
+  { href: '/budgets', label: 'Budgets', icon: Wallet },
   { href: '/categories', label: 'Categories', icon: Tags },
+  { href: '/ai-logs', label: 'AI Logs', icon: Brain },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -36,6 +45,7 @@ const navItems: NavItem[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { user, logout } = useAuth();
 
   return (
     <aside
@@ -93,6 +103,33 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* User section */}
+      {user && (
+        <div
+          className={cn(
+            'flex items-center gap-3 border-t border-[var(--border)] px-4 py-3',
+            collapsed && 'justify-center px-0',
+          )}
+        >
+          <UserAvatar displayName={user.displayName} size="sm" />
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{user.displayName}</p>
+              <p className="truncate text-[10px] text-[var(--muted-foreground)]">{user.email}</p>
+            </div>
+          )}
+          {!collapsed && (
+            <button
+              onClick={() => logout()}
+              className="shrink-0 rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Collapse toggle */}
       <button

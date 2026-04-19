@@ -16,6 +16,34 @@ from ..models import ParsedTransaction, ParseError, ParseResponse
 
 logger = logging.getLogger(__name__)
 
+# ── PII Sanitization ────────────────────────────────────────
+# Mirrors the NestJS pii-sanitizer.ts — strips sensitive data before sending
+# raw bank-statement text to the local LLM.
+_PII_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # SSN: 123-45-6789
+    (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[SSN]"),
+    # Credit card: 4×4 (Visa/MC 16-digit) or 4-6-5 (Amex 15-digit)
+    (re.compile(r"\b(?:\d{4}[\s-]?\d{6}[\s-]?\d{5}|\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4})\b"), "[CARD]"),
+    # Email
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "[EMAIL]"),
+    # US phone: (123) 456-7890 or 123-456-7890
+    (re.compile(r"(?:\(\d{3}\)[\s.-]?\d{3}[\s.-]?\d{4}|\d{3}[\s.-]\d{3}[\s.-]\d{4})"), "[PHONE]"),
+    # Routing number: exactly 9 digits
+    (re.compile(r"\b\d{9}\b"), "[ROUTING]"),
+    # Account numbers: 10-18 consecutive digits
+    (re.compile(r"\b\d{10,18}\b"), "[ACCT]"),
+    # Street addresses (basic: number + street name + suffix)
+    (re.compile(r"\b\d{1,6}\s+[A-Za-z]+(?:\s+[A-Za-z]+){0,3}\s+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Rd|Road|Ct|Court|Way|Pl|Place|Cir|Circle)\b", re.IGNORECASE), "[ADDRESS]"),
+]
+
+
+def sanitize_text(text: str) -> str:
+    """Strip PII from raw text before sending to the LLM."""
+    result = text
+    for pattern, replacement in _PII_PATTERNS:
+        result = pattern.sub(replacement, result)
+    return result
+
 
 class AiPdfParser:
     """AI-based PDF parser using a local Ollama LLM instance.
@@ -88,6 +116,9 @@ class AiPdfParser:
         Returns:
             List of ParsedTransactions extracted by the AI.
         """
+        # Sanitize PII before sending to the LLM
+        safe_text = sanitize_text(text[:3000])
+
         prompt = f"""Extract all financial transactions from the following bank statement page.
 For each transaction, return a JSON object with:
 - "date": date in YYYY-MM-DD format
@@ -99,7 +130,7 @@ Return ONLY a JSON array of transactions. If no transactions found, return [].
 
 Bank statement text:
 ---
-{text[:3000]}
+{safe_text}
 ---
 
 JSON array:"""

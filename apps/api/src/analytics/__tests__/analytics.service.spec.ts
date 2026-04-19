@@ -63,8 +63,8 @@ describe('AnalyticsService', () => {
   describe('categoryBreakdown', () => {
     it('should return camelCase category totals with percentage', async () => {
       const mockRows = [
-        { category_id: 'cat-1', category_name: 'Groceries', icon: '🛒', color: '#16a34a', total_cents: '85000', txn_count: '12' },
-        { category_id: 'cat-2', category_name: 'Dining', icon: '🍽️', color: '#f59e0b', total_cents: '42000', txn_count: '8' },
+        { category_id: 'cat-1', category_name: 'Groceries', icon: '🛒', color: '#16a34a', parent_id: null, total_cents: '85000', txn_count: '12' },
+        { category_id: 'cat-2', category_name: 'Dining', icon: '🍽️', color: '#f59e0b', parent_id: null, total_cents: '42000', txn_count: '8' },
       ];
       mockDb.execute.mockResolvedValue({ rows: mockRows });
 
@@ -79,6 +79,7 @@ describe('AnalyticsService', () => {
         categoryName: 'Groceries',
         categoryIcon: '🛒',
         categoryColor: '#16a34a',
+        parentId: null,
         totalCents: 85000,
         transactionCount: 12,
         percentage: 66.9, // 85000 / 127000 * 100 rounded to 1dp

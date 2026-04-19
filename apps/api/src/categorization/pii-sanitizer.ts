@@ -37,7 +37,28 @@ const PII_PATTERNS: Array<{ regex: RegExp; replacement: string }> = [
 
   // Account numbers: 10-18 consecutive digits (generic catch-all; raised minimum to 10 to avoid routing/phone overlap)
   { regex: /\b\d{10,18}\b/g, replacement: '[ACCT]' },
+  {
+    regex: /\b\d{1,5}\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Ct|Way|Pl|Cir|Pkwy)\.?\b/g,
+    replacement: '[ADDRESS]',
+  },
 ];
+
+/**
+ * Detect which PII types are present in a text string (without modifying it).
+ * Returns an array of placeholder names like `['SSN', 'CARD', 'EMAIL']`.
+ */
+export function detectPiiTypes(text: string): string[] {
+  const found: string[] = [];
+  for (const { regex, replacement } of PII_PATTERNS) {
+    // Reset regex state for global patterns
+    regex.lastIndex = 0;
+    if (regex.test(text)) {
+      found.push(replacement.replace(/[\[\]]/g, ''));
+    }
+    regex.lastIndex = 0;
+  }
+  return found;
+}
 
 export interface SanitizedTransaction {
   date: string;

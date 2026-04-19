@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 /** Props for the StatCard summary widget. */
 interface StatCardProps {
@@ -10,6 +11,7 @@ interface StatCardProps {
   trend?: { value: number; label: string };
   accentColor?: 'primary' | 'secondary' | 'danger';
   className?: string;
+  onClick?: () => void;
 }
 
 /** KPI summary card displayed at the top of the dashboard. */
@@ -21,6 +23,7 @@ export function StatCard({
   trend,
   accentColor = 'primary',
   className,
+  onClick,
 }: StatCardProps) {
   const accentStyles = {
     primary: 'from-[var(--primary)]/50 text-[var(--primary)]',
@@ -34,10 +37,15 @@ export function StatCard({
     danger: 'text-[var(--destructive)] bg-[var(--destructive)]/10',
   };
 
+  const Wrapper = onClick ? 'button' : 'div';
+
   return (
-    <div
+    <Wrapper
+      {...(onClick ? { type: 'button' as const } : {})}
+      onClick={onClick}
       className={cn(
-        'relative overflow-hidden rounded-xl bg-[var(--surface-container-low)] p-6 transition-shadow hover:shadow-md',
+        'relative overflow-hidden rounded-xl bg-[var(--surface-container-low)] p-6 transition-shadow hover:shadow-md text-left w-full',
+        onClick && 'cursor-pointer group',
         className,
       )}
     >
@@ -46,17 +54,22 @@ export function StatCard({
         {Icon && (
           <Icon className={cn('h-5 w-5 opacity-80', accentStyles[accentColor])} />
         )}
-        {trend && (
-          <span
-            className={cn(
-              'rounded px-2 py-1 text-xs font-bold',
-              badgeStyles[accentColor],
-            )}
-          >
-            {trend.value >= 0 ? '+' : ''}
-            {trend.value.toFixed(1)}%
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {trend && (
+            <span
+              className={cn(
+                'rounded px-2 py-1 text-xs font-bold',
+                badgeStyles[accentColor],
+              )}
+            >
+              {trend.value >= 0 ? '+' : ''}
+              {trend.value.toFixed(1)}%
+            </span>
+          )}
+          {onClick && (
+            <ChevronRight className="h-4 w-4 text-[var(--muted-foreground)] opacity-0 group-hover:opacity-100 transition-opacity" />
+          )}
+        </div>
       </div>
 
       {/* Label + value */}
@@ -75,6 +88,6 @@ export function StatCard({
           accentStyles[accentColor],
         )}
       />
-    </div>
+    </Wrapper>
   );
 }

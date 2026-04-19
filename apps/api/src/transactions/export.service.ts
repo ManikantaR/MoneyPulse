@@ -3,9 +3,11 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, between, isNull, desc } from 'drizzle-orm';
 
-/** Escape a string value for safe inclusion in a CSV field. */
+/** Escape a string value for safe inclusion in a CSV field. Strips formula injection chars. */
 function csvField(value: string | null | undefined): string {
-  const str = value ?? '';
+  let str = value ?? '';
+  // Strip leading characters that could trigger formula injection in Excel/Sheets
+  str = str.replace(/^[=+\-@\t\r]+/, '');
   return `"${str.replace(/"/g, '""')}"`;
 }
 

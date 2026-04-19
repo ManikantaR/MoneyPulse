@@ -13,6 +13,7 @@ import { join, basename } from 'path';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
+import { unlink } from 'fs/promises';
 import { INGESTION_QUEUE, MAX_UPLOAD_SIZE_BYTES } from '@moneypulse/shared';
 import type { FileType } from '@moneypulse/shared';
 
@@ -70,7 +71,7 @@ export class IngestionService {
     // Compute SHA256
     const fileHash = createHash('sha256').update(file.buffer).digest('hex');
 
-    // Check for duplicate file
+    // Check for duplicate file — allow re-upload if previous attempt failed
     const existing = await this.db
       .select()
       .from(schema.fileUploads)
@@ -78,9 +79,16 @@ export class IngestionService {
       .limit(1);
 
     if (existing.length > 0) {
-      throw new BadRequestException(
-        `This file has already been uploaded (matched by SHA256 hash). Upload ID: ${existing[0].id}`,
-      );
+      if (existing[0].status === 'failed') {
+        // Remove the failed record so user can retry
+        await this.db
+          .delete(schema.fileUploads)
+          .where(eq(schema.fileUploads.id, existing[0].id));
+      } else {
+        throw new BadRequestException(
+          `This file has already been uploaded (matched by SHA256 hash). Upload ID: ${existing[0].id}`,
+        );
+      }
     }
 
     // Sanitize the original filename: strip path separators and control chars,
@@ -180,6 +188,49 @@ export class IngestionService {
       .update(schema.fileUploads)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(schema.fileUploads.id, uploadId));
+  }
+
+  /**
+   * Delete an upload record and its associated transactions.
+   * Only allowed for completed or failed uploads (not in-progress).
+   */
+  async deleteUpload(uploadId: string, userId: string) {
+    const rows = await this.db
+      .select()
+      .from(schema.fileUploads)
+      .where(
+        and(
+          eq(schema.fileUploads.id, uploadId),
+          eq(schema.fileUploads.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (rows.length === 0) throw new NotFoundException('Upload not found');
+    const upload = rows[0];
+
+    if (upload.status === 'processing' || upload.status === 'pending') {
+      throw new BadRequestException(
+        'Cannot delete an upload that is still being processed',
+      );
+    }
+
+    // Delete associated transactions first (FK constraint)
+    await this.db
+      .delete(schema.transactions)
+      .where(eq(schema.transactions.sourceFileId, uploadId));
+
+    // Delete the upload record
+    await this.db
+      .delete(schema.fileUploads)
+      .where(eq(schema.fileUploads.id, uploadId));
+
+    // Try to remove the file from disk (best-effort)
+    if (upload.archivedPath) {
+      try { await unlink(upload.archivedPath); } catch { /* file may already be gone */ }
+    }
+
+    return { deleted: true };
   }
 
   /**
