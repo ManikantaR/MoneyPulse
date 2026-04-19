@@ -84,9 +84,37 @@ export default function TransactionsPage() {
     [categories],
   );
 
-  /** Handle inline category change for a transaction. */
+  /** Group categories: parents with children for <optgroup> dropdowns. */
+  const categoryGroups = useMemo(() => {
+    const parents = categories.filter((c) => !c.parentId);
+    const childMap = new Map<string, typeof categories>();
+    for (const c of categories) {
+      if (c.parentId) {
+        const arr = childMap.get(c.parentId) ?? [];
+        arr.push(c);
+        childMap.set(c.parentId, arr);
+      }
+    }
+    return parents.map((p) => ({ ...p, children: childMap.get(p.id) ?? [] }));
+  }, [categories]);
+
+  const [learnToast, setLearnToast] = useState<string | null>(null);
+
+  /** Handle inline category change for a transaction — also triggers auto-learn rule creation. */
   function handleCategoryChange(txnId: string, categoryId: string) {
-    updateTxn.mutate({ id: txnId, categoryId: categoryId || null });
+    updateTxn.mutate(
+      { id: txnId, categoryId: categoryId || null },
+      {
+        onSuccess: () => {
+          if (categoryId) {
+            const cat = categoryMap[categoryId];
+            const label = cat ? `${cat.icon} ${cat.name}` : 'category';
+            setLearnToast(`Rule learned — future similar transactions will auto-assign to ${label}`);
+            setTimeout(() => setLearnToast(null), 4000);
+          }
+        },
+      },
+    );
   }
 
   /** Toggle a single row selection. */
@@ -207,6 +235,13 @@ export default function TransactionsPage() {
         </div>
       )}
 
+      {/* Learning feedback toast */}
+      {learnToast && (
+        <div className="rounded-xl border border-[var(--secondary)]/30 bg-[var(--secondary)]/10 px-4 py-2.5 text-sm animate-in fade-in slide-in-from-top-2">
+          🧠 {learnToast}
+        </div>
+      )}
+
       {/* Drill-down context banner — shown when navigating from dashboard */}
       {drillLabel && (
         <div className="flex items-center justify-between rounded-xl border border-[var(--primary)]/30 bg-[var(--accent)] px-4 py-2.5 text-sm">
@@ -291,11 +326,21 @@ export default function TransactionsPage() {
           >
             <option value="">All Categories</option>
             <option value="__uncategorized__">⚠ Uncategorized</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.icon} {c.name}
-              </option>
-            ))}
+            {categoryGroups.map((g) =>
+              g.children.length > 0 ? (
+                <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
+                  {g.children.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.icon} {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                <option key={g.id} value={g.id}>
+                  {g.icon} {g.name}
+                </option>
+              ),
+            )}
           </select>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -326,11 +371,21 @@ export default function TransactionsPage() {
             className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm"
           >
             <option value="">Assign category...</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.icon} {c.name}
-              </option>
-            ))}
+            {categoryGroups.map((g) =>
+              g.children.length > 0 ? (
+                <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
+                  {g.children.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.icon} {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                <option key={g.id} value={g.id}>
+                  {g.icon} {g.name}
+                </option>
+              ),
+            )}
           </select>
           <button
             onClick={handleBulkCategorize}
@@ -483,11 +538,21 @@ export default function TransactionsPage() {
                       className="rounded-full border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-1 text-xs font-medium hover:border-[var(--primary)] transition-colors"
                     >
                       <option value="">Uncategorized</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.icon} {c.name}
-                        </option>
-                      ))}
+                      {categoryGroups.map((g) =>
+                        g.children.length > 0 ? (
+                          <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
+                            {g.children.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.icon} {c.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : (
+                          <option key={g.id} value={g.id}>
+                            {g.icon} {g.name}
+                          </option>
+                        ),
+                      )}
                     </select>
                   </td>
                   <td

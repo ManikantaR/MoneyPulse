@@ -90,6 +90,7 @@ export class AnalyticsService {
         c.name AS category_name,
         c.icon,
         c.color,
+        c.parent_id::text AS parent_id,
         SUM(t.amount_cents) AS total_cents,
         COUNT(*) AS txn_count
       FROM ${schema.transactions} t
@@ -101,7 +102,7 @@ export class AnalyticsService {
         ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
         ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
-      GROUP BY c.id, c.name, c.icon, c.color
+      GROUP BY c.id, c.name, c.icon, c.color, c.parent_id
       ORDER BY total_cents DESC
     `);
     const rows = this.extractRows(result);
@@ -114,6 +115,7 @@ export class AnalyticsService {
       categoryName: r.category_name ?? 'Uncategorized',
       categoryIcon: r.icon ?? '📝',
       categoryColor: r.color ?? '#64748b',
+      parentId: r.parent_id ?? null,
       totalCents: Number(r.total_cents),
       transactionCount: Number(r.txn_count),
       percentage: grandTotal > 0

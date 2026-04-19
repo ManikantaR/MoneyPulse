@@ -66,12 +66,13 @@ confirm() {
 load_env() {
   if [[ -f "$SCRIPT_DIR/.env" ]]; then
     # shellcheck disable=SC2046
-    export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
+    export $(grep -v '^#' "$SCRIPT_DIR/.env" | grep '=' | xargs)
   fi
 
   POSTGRES_USER="${POSTGRES_USER:-moneypulse}"
-  POSTGRES_PASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set. Configure .env first.}"
+  POSTGRES_PASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set. Run ./scripts/setup.sh first or configure .env.}"
   POSTGRES_DB="${POSTGRES_DB:-moneypulse}"
+  REDIS_PASSWORD="${REDIS_PASSWORD:-}"
   export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
 }
 
@@ -145,6 +146,20 @@ main() {
     sleep 1
   done
   log "PostgreSQL is ready"
+
+  # Step 5b: Wait for Redis to be ready
+  log "Waiting for Redis..."
+  local redis_auth=""
+  if [[ -n "${REDIS_PASSWORD}" ]]; then
+    redis_auth="-a ${REDIS_PASSWORD}"
+  fi
+  for i in $(seq 1 10); do
+    if $COMPOSE_CMD exec -T redis redis-cli $redis_auth ping 2>/dev/null | grep -q PONG; then
+      break
+    fi
+    sleep 1
+  done
+  log "Redis is ready"
 
   # Step 6: Run migrations
   log "Running database migrations..."

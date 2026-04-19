@@ -24,6 +24,7 @@ export interface CategoryBreakdownItem {
   categoryName: string;
   categoryColor: string;
   categoryIcon: string;
+  parentId: string | null;
   totalCents: number;
   transactionCount: number;
   percentage: number;

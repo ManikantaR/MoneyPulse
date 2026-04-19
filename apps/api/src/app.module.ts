@@ -32,9 +32,17 @@ import { AiLogsModule } from './ai-logs/ai-logs.module';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: { url: config.getOrThrow<string>('REDIS_URL') },
-      }),
+      useFactory: (config: ConfigService) => {
+        const url = new URL(config.getOrThrow<string>('REDIS_URL'));
+        return {
+          connection: {
+            host: url.hostname,
+            port: parseInt(url.port || '6379', 10),
+            password: url.password || undefined,
+            maxRetriesPerRequest: null,
+          },
+        };
+      },
     }),
     DbModule,
     RedisModule,
