@@ -2,7 +2,12 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useTransactions, useUpdateTransaction, useBulkCategorize, useAutoCategorize } from '@/lib/hooks/useTransactions';
+import {
+  useTransactions,
+  useUpdateTransaction,
+  useBulkCategorize,
+  useAutoCategorize,
+} from '@/lib/hooks/useTransactions';
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { formatCents, formatDate } from '@/lib/format';
@@ -22,7 +27,10 @@ export default function TransactionsPage() {
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   const [autoCategResult, setAutoCategResult] = useState<string | null>(null);
 
-  const { data, isLoading } = useTransactions({ ...query, search: search || undefined });
+  const { data, isLoading } = useTransactions({
+    ...query,
+    search: search || undefined,
+  });
   const { data: accountsData } = useAccounts();
   const { data: categoriesData } = useCategories();
   const updateTxn = useUpdateTransaction();
@@ -69,7 +77,12 @@ export default function TransactionsPage() {
     if (selectedIds.size > 0 && bulkCategoryId) {
       bulkCategorize.mutate(
         { transactionIds: Array.from(selectedIds), categoryId: bulkCategoryId },
-        { onSuccess: () => { setSelectedIds(new Set()); setBulkCategoryId(''); } },
+        {
+          onSuccess: () => {
+            setSelectedIds(new Set());
+            setBulkCategoryId('');
+          },
+        },
       );
     }
   }
@@ -100,7 +113,9 @@ export default function TransactionsPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <h1 className="text-4xl font-extrabold tracking-tight">Transactions</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight">
+            Transactions
+          </h1>
           <p className="text-[var(--muted-foreground)]">
             {data?.total ?? 0} total transactions
           </p>
@@ -113,7 +128,9 @@ export default function TransactionsPage() {
                 onSuccess: (res) => {
                   const s = res.data;
                   if (s.total === 0) {
-                    setAutoCategResult('All transactions are already categorized.');
+                    setAutoCategResult(
+                      'All transactions are already categorized.',
+                    );
                   } else {
                     setAutoCategResult(
                       `Processed ${s.total}: ${s.categorizedByRule} by rules, ${s.categorizedByAi} by AI, ${s.uncategorized} still uncategorized.`,
@@ -122,7 +139,9 @@ export default function TransactionsPage() {
                   setTimeout(() => setAutoCategResult(null), 8000);
                 },
                 onError: () => {
-                  setAutoCategResult('Auto-categorize failed. Is Ollama running?');
+                  setAutoCategResult(
+                    'Auto-categorize failed. Is Ollama running?',
+                  );
                   setTimeout(() => setAutoCategResult(null), 5000);
                 },
               });
@@ -131,7 +150,9 @@ export default function TransactionsPage() {
             className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
             title="Run AI + rule engine on all uncategorized transactions"
           >
-            {autoCategorize.isPending ? 'Categorizing...' : '✨ Auto-Categorize'}
+            {autoCategorize.isPending
+              ? 'Categorizing...'
+              : '✨ Auto-Categorize'}
           </button>
           <button
             onClick={handleExport}
@@ -173,12 +194,20 @@ export default function TransactionsPage() {
           </label>
           <select
             value={query.accountId ?? ''}
-            onChange={(e) => setQuery({ ...query, accountId: e.target.value || undefined, page: 1 })}
+            onChange={(e) =>
+              setQuery({
+                ...query,
+                accountId: e.target.value || undefined,
+                page: 1,
+              })
+            }
             className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
           >
             <option value="">All Accounts</option>
             {accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.nickname}</option>
+              <option key={a.id} value={a.id}>
+                {a.nickname}
+              </option>
             ))}
           </select>
         </div>
@@ -188,12 +217,20 @@ export default function TransactionsPage() {
           </label>
           <select
             value={query.categoryId ?? ''}
-            onChange={(e) => setQuery({ ...query, categoryId: e.target.value || undefined, page: 1 })}
+            onChange={(e) =>
+              setQuery({
+                ...query,
+                categoryId: e.target.value || undefined,
+                page: 1,
+              })
+            }
             className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
           >
             <option value="">All Categories</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
@@ -210,7 +247,9 @@ export default function TransactionsPage() {
           >
             <option value="">Assign category...</option>
             {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
           <button
@@ -237,28 +276,47 @@ export default function TransactionsPage() {
               <th className="w-10 px-3 py-4">
                 <input
                   type="checkbox"
-                  checked={transactions.length > 0 && selectedIds.size === transactions.length}
+                  checked={
+                    transactions.length > 0 &&
+                    selectedIds.size === transactions.length
+                  }
                   onChange={toggleAll}
                   className="rounded"
                 />
               </th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Date</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Description</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Account</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">Category</th>
-              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)] text-right">Amount</th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Date
+              </th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Description
+              </th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Account
+              </th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Category
+              </th>
+              <th className="px-6 py-4 text-[10px] font-extrabold uppercase tracking-widest text-[var(--muted-foreground)] text-right">
+                Amount
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-[var(--muted-foreground)]">
+                <td
+                  colSpan={6}
+                  className="px-4 py-12 text-center text-[var(--muted-foreground)]"
+                >
                   Loading...
                 </td>
               </tr>
             ) : transactions.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-[var(--muted-foreground)]">
+                <td
+                  colSpan={6}
+                  className="px-4 py-12 text-center text-[var(--muted-foreground)]"
+                >
                   No transactions found
                 </td>
               </tr>
@@ -280,7 +338,9 @@ export default function TransactionsPage() {
                     />
                   </td>
                   <td className="px-6 py-5 tabular-nums whitespace-nowrap">
-                    <div className="text-sm font-semibold">{formatDate(txn.date)}</div>
+                    <div className="text-sm font-semibold">
+                      {formatDate(txn.date)}
+                    </div>
                   </td>
                   <td className="px-6 py-5 max-w-[300px] truncate">
                     <span className="font-medium">{txn.description}</span>
@@ -296,22 +356,29 @@ export default function TransactionsPage() {
                   <td className="px-6 py-5">
                     <select
                       value={txn.categoryId ?? ''}
-                      onChange={(e) => handleCategoryChange(txn.id, e.target.value)}
+                      onChange={(e) =>
+                        handleCategoryChange(txn.id, e.target.value)
+                      }
                       className="rounded-full border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-1 text-xs font-medium hover:border-[var(--primary)] transition-colors"
                     >
                       <option value="">Uncategorized</option>
                       {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
                       ))}
                     </select>
                   </td>
                   <td
                     className={cn(
                       'px-6 py-5 text-right font-extrabold tabular-nums whitespace-nowrap',
-                      txn.isCredit ? 'text-[var(--secondary)]' : 'text-[var(--foreground)]',
+                      txn.isCredit
+                        ? 'text-[var(--secondary)]'
+                        : 'text-[var(--foreground)]',
                     )}
                   >
-                    {txn.isCredit ? '+' : '-'}{formatCents(txn.amountCents)}
+                    {txn.isCredit ? '+' : '-'}
+                    {formatCents(txn.amountCents)}
                   </td>
                 </tr>
               ))
@@ -327,14 +394,21 @@ export default function TransactionsPage() {
         </p>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setQuery({ ...query, page: Math.max(1, (query.page ?? 1) - 1) })}
+            onClick={() =>
+              setQuery({ ...query, page: Math.max(1, (query.page ?? 1) - 1) })
+            }
             disabled={(query.page ?? 1) <= 1}
             className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-container)] disabled:opacity-50 transition-colors text-[var(--muted-foreground)]"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
-            onClick={() => setQuery({ ...query, page: Math.min(totalPages, (query.page ?? 1) + 1) })}
+            onClick={() =>
+              setQuery({
+                ...query,
+                page: Math.min(totalPages, (query.page ?? 1) + 1),
+              })
+            }
             disabled={(query.page ?? 1) >= totalPages}
             className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-[var(--surface-container)] disabled:opacity-50 transition-colors text-[var(--muted-foreground)]"
           >

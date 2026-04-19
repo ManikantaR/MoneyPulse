@@ -583,6 +583,7 @@ The quickest way to reset everything is the **reset script**:
 ```
 
 The script does all of the following automatically:
+
 1. Stops all containers (`podman-compose down`)
 2. Wipes `~/moneypulse-data/{pg,redis,uploads,watch-folder,backup}/*`
 3. Recreates the data directories

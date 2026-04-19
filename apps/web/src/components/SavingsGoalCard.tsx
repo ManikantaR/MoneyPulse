@@ -44,9 +44,7 @@ export function SavingsGoalCard({
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          {pct.toFixed(0)}%
-        </span>
+        <span className="text-xs text-muted-foreground">{pct.toFixed(0)}%</span>
         {onContribute && (
           <button
             onClick={onContribute}

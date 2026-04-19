@@ -115,9 +115,7 @@ describe('BudgetsService', () => {
 
     it('should update the budget when found', async () => {
       mockDb.limit.mockResolvedValue([{ id: 'b-1' }]);
-      mockDb.returning.mockResolvedValue([
-        { id: 'b-1', amountCents: 60000 },
-      ]);
+      mockDb.returning.mockResolvedValue([{ id: 'b-1', amountCents: 60000 }]);
       const result = await service.updateBudget('b-1', TEST_USER, {
         amountCents: 60000,
       });
@@ -128,9 +126,9 @@ describe('BudgetsService', () => {
   describe('deleteBudget', () => {
     it('should throw NotFoundException if budget not found', async () => {
       mockDb.limit.mockResolvedValue([]);
-      await expect(
-        service.deleteBudget('b-1', TEST_USER),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.deleteBudget('b-1', TEST_USER)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -181,9 +179,9 @@ describe('BudgetsService', () => {
   describe('deleteSavingsGoal', () => {
     it('should throw NotFoundException when goal not found', async () => {
       mockDb.limit.mockResolvedValue([]);
-      await expect(
-        service.deleteSavingsGoal('g-1', TEST_USER),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.deleteSavingsGoal('g-1', TEST_USER)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

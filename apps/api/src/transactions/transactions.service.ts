@@ -96,7 +96,10 @@ export class TransactionsService {
       const memberIds = members.map((m: any) => m.id);
       if (memberIds.length > 0) {
         conditions.push(
-          sql`${schema.transactions.userId} = ANY(ARRAY[${sql.join(memberIds.map((id: string) => sql`${id}::uuid`), sql`, `)}])`,
+          sql`${schema.transactions.userId} = ANY(ARRAY[${sql.join(
+            memberIds.map((id: string) => sql`${id}::uuid`),
+            sql`, `,
+          )}])`,
         );
       }
     } else {
@@ -278,7 +281,10 @@ export class TransactionsService {
       );
     }
 
-    const splitTotal = input.splits.reduce((sum: number, s: any) => sum + s.amountCents, 0);
+    const splitTotal = input.splits.reduce(
+      (sum: number, s: any) => sum + s.amountCents,
+      0,
+    );
     if (splitTotal !== parent.amountCents) {
       throw new BadRequestException(
         `Split amounts (${splitTotal}) must equal parent amount (${parent.amountCents})`,
@@ -325,7 +331,10 @@ export class TransactionsService {
       .where(
         and(
           eq(schema.transactions.userId, userId),
-          sql`${schema.transactions.id} = ANY(ARRAY[${sql.join(input.transactionIds.map((id: string) => sql`${id}::uuid`), sql`, `)}])`,
+          sql`${schema.transactions.id} = ANY(ARRAY[${sql.join(
+            input.transactionIds.map((id: string) => sql`${id}::uuid`),
+            sql`, `,
+          )}])`,
           isNull(schema.transactions.deletedAt),
         ),
       )

@@ -94,7 +94,10 @@ export class IngestionProcessor extends WorkerHost {
           account.institution,
         );
 
-        if (pdfResult.transactions.length === 0 && pdfResult.errors.length > 0) {
+        if (
+          pdfResult.transactions.length === 0 &&
+          pdfResult.errors.length > 0
+        ) {
           await this.ingestionService.updateUploadStatus(uploadId, {
             status: 'failed',
             errorLog: pdfResult.errors,
@@ -179,7 +182,9 @@ export class IngestionProcessor extends WorkerHost {
 
         // Trigger budget alert check after successful import
         if (dedupResult.newTransactions.length > 0) {
-          await this.alertsQueue.add('post-import-check', { userIds: [userId] });
+          await this.alertsQueue.add('post-import-check', {
+            userIds: [userId],
+          });
         }
 
         return;
@@ -205,8 +210,7 @@ export class IngestionProcessor extends WorkerHost {
       );
 
       // Apply skipRows from generic config (skip non-header leading rows)
-      const skipRows =
-        account.csvFormatConfig?.skipRows ?? 0;
+      const skipRows = account.csvFormatConfig?.skipRows ?? 0;
       const dataRows = skipRows > 0 ? rows.slice(skipRows) : rows;
       // rowOffset: 1-based; row 1 = header, data starts at row 2 + any skipped rows
       const rowOffset = 2 + skipRows;

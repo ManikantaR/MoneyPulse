@@ -1,11 +1,16 @@
 import {
   Injectable,
   Inject,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { mkdir } from 'fs/promises';
+import { join } from 'path';
+import { WATCH_FOLDER_DIR } from '@moneypulse/shared';
 import type {
   CreateAccountInput,
   UpdateAccountInput,
@@ -13,7 +18,16 @@ import type {
 
 @Injectable()
 export class AccountsService {
-  constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
+  private readonly logger = new Logger(AccountsService.name);
+  private readonly watchDir: string;
+
+  constructor(
+    @Inject(DATABASE_CONNECTION) private readonly db: any,
+    private readonly config: ConfigService,
+  ) {
+    this.watchDir =
+      this.config.get<string>('WATCH_FOLDER_DIR') || WATCH_FOLDER_DIR;
+  }
 
   /**
    * Create a new bank account for the given user.
@@ -35,7 +49,21 @@ export class AccountsService {
         creditLimitCents: input.creditLimitCents ?? null,
       })
       .returning();
-    return rows[0];
+
+    const account = rows[0];
+
+    // Create watch-folder subdirectory for auto-import
+    try {
+      const slug = this.generateSlug(account.nickname, account.lastFour);
+      const folderPath = join(this.watchDir, slug);
+      await mkdir(folderPath, { recursive: true });
+      this.logger.log(`Created watch folder: ${folderPath}`);
+    } catch (err) {
+      // Non-fatal — log and continue (folder may not be writable in all envs)
+      this.logger.warn(`Could not create watch folder: ${(err as Error).message}`);
+    }
+
+    return account;
   }
 
   /**

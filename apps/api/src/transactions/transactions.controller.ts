@@ -253,10 +253,13 @@ export class TransactionsController {
    */
   @Post('auto-categorize')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Auto-categorize uncategorized transactions via AI' })
+  @ApiOperation({
+    summary: 'Auto-categorize uncategorized transactions via AI',
+  })
   async autoCategorize(@CurrentUser() user: AuthTokenPayload) {
-    const uncategorizedIds =
-      await this.txnService.findUncategorizedIds(user.sub);
+    const uncategorizedIds = await this.txnService.findUncategorizedIds(
+      user.sub,
+    );
 
     if (uncategorizedIds.length === 0) {
       return {

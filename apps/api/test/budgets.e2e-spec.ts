@@ -59,9 +59,7 @@ describe('Budgets (e2e)', () => {
     });
 
     it('should return 401 without auth', async () => {
-      await request(app.getHttpServer())
-        .get('/api/budgets')
-        .expect(401);
+      await request(app.getHttpServer()).get('/api/budgets').expect(401);
     });
   });
 
