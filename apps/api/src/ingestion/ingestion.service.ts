@@ -12,7 +12,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join, basename } from 'path';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { unlink } from 'fs/promises';
 import { INGESTION_QUEUE, MAX_UPLOAD_SIZE_BYTES } from '@moneypulse/shared';
 import type { FileType } from '@moneypulse/shared';
@@ -191,15 +191,6 @@ export class IngestionService {
   }
 
   /**
-   * Map a file extension to its `FileType` discriminant.
-   * Throws `BadRequestException` for `.xls` (not supported by exceljs)
-   * and for any unrecognised extension.
-   *
-   * @param filename - The original filename (extension is case-insensitive)
-   * @returns `'csv' | 'excel' | 'pdf'`
-   * @throws BadRequestException for `.xls` or unknown extensions
-   */
-  /**
    * Delete an upload record and its associated transactions.
    * Only allowed for completed or failed uploads (not in-progress).
    */
@@ -242,6 +233,15 @@ export class IngestionService {
     return { deleted: true };
   }
 
+  /**
+   * Map a file extension to its `FileType` discriminant.
+   * Throws `BadRequestException` for `.xls` (not supported by exceljs)
+   * and for any unrecognised extension.
+   *
+   * @param filename - The original filename (extension is case-insensitive)
+   * @returns `'csv' | 'excel' | 'pdf'`
+   * @throws BadRequestException for `.xls` or unknown extensions
+   */
   private detectFileType(filename: string): FileType {
     const ext = filename.toLowerCase().split('.').pop();
     if (ext === 'csv') return 'csv';

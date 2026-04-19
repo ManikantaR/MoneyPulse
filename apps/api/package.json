@@ -27,7 +27,6 @@
     "@nestjs/platform-express": "^11.1.17",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/throttler": "^6.5.0",
-    "@types/helmet": "^4.0.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.71.0",
     "chokidar": "^5.0.0",

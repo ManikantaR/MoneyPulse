@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { decryptField } from '../common/crypto';
 
 @Injectable()
 export class WebhookService {
@@ -49,13 +50,17 @@ export class WebhookService {
     const webhookUrl = settings[0]?.haWebhookUrl;
     if (!webhookUrl) return;
 
-    if (!this.isUrlSafe(webhookUrl)) {
+    // Decrypt the stored (encrypted) webhook URL
+    const decryptedUrl = decryptField(webhookUrl);
+    if (!decryptedUrl) return;
+
+    if (!this.isUrlSafe(decryptedUrl)) {
       this.logger.warn(`Blocked unsafe webhook URL for user ${userId}`);
       return;
     }
 
     try {
-      const res = await fetch(webhookUrl, {
+      const res = await fetch(decryptedUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

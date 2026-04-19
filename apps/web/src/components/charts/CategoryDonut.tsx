@@ -73,9 +73,11 @@ export function CategoryDonut({ data, onCategoryClick }: CategoryDonutProps) {
         <div className="flex flex-col gap-1.5 w-full">
           {data.map((entry) => (
             <button
+              type="button"
               key={entry.categoryId}
               onClick={() => onCategoryClick?.(entry.categoryId, entry.categoryName)}
-              className="flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--muted)]"
+              disabled={!onCategoryClick}
+              className="flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--muted)] disabled:cursor-default disabled:hover:bg-transparent"
             >
               <span
                 className="h-3 w-3 shrink-0 rounded-full"

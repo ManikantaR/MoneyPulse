@@ -251,9 +251,14 @@ export default function BudgetsPage() {
             onContribute={() => {
               const amount = prompt('Amount in dollars:');
               if (amount) {
+                const parsed = parseFloat(amount);
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                  alert('Please enter a valid positive number.');
+                  return;
+                }
                 contribute.mutate({
                   id: g.id,
-                  amountCents: Math.round(parseFloat(amount) * 100),
+                  amountCents: Math.round(parsed * 100),
                 });
               }
             }}

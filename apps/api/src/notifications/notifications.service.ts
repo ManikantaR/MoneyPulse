@@ -80,9 +80,10 @@ export class NotificationsService {
         type: input.type,
         title: input.title,
         message: input.message,
-        metadata: input.metadata
-          ? { ...input.metadata, dedupeKey: input.dedupeKey }
-          : undefined,
+        metadata: {
+          ...(input.metadata ?? {}),
+          ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}),
+        },
       })
       .returning();
 

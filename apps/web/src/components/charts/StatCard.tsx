@@ -41,6 +41,7 @@ export function StatCard({
 
   return (
     <Wrapper
+      {...(onClick ? { type: 'button' as const } : {})}
       onClick={onClick}
       className={cn(
         'relative overflow-hidden rounded-xl bg-[var(--surface-container-low)] p-6 transition-shadow hover:shadow-md text-left w-full',

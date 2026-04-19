@@ -11,6 +11,7 @@ interface BudgetAlert {
   amountCents: number;
   spentCents: number;
   percentage: number;
+  period: string;
   type: 'warning' | 'over_budget';
 }
 
@@ -40,6 +41,7 @@ export class AlertEngineService {
         b.id AS budget_id,
         b.user_id,
         b.amount_cents,
+        b.period,
         c.name AS category_name,
         COALESCE(spent.total, 0) AS spent_cents
       FROM ${schema.budgets} b
@@ -81,6 +83,7 @@ export class AlertEngineService {
           amountCents: budget,
           spentCents: spent,
           percentage: pct,
+          period: row.period ?? 'monthly',
           type: 'over_budget',
         });
       } else if (pct >= this.WARNING_THRESHOLD) {
@@ -91,6 +94,7 @@ export class AlertEngineService {
           amountCents: budget,
           spentCents: spent,
           percentage: pct,
+          period: row.period ?? 'monthly',
           type: 'warning',
         });
       }
@@ -103,10 +107,20 @@ export class AlertEngineService {
           : `Budget warning: ${alert.categoryName}`;
       const message = `${alert.categoryName}: $${(alert.spentCents / 100).toFixed(2)} of $${(alert.amountCents / 100).toFixed(2)} (${(alert.percentage * 100).toFixed(0)}%)`;
 
-      // Dedupe key scoped to budget + period start so we don't spam daily
+      // Dedupe key scoped to budget + period start so we don't spam per-period
       const periodStart = new Date();
-      periodStart.setDate(1); // monthly boundary
-      const dedupeKey = `budget_alert_${alert.budgetId}_${alert.type}_${periodStart.toISOString().slice(0, 7)}`;
+      let periodKey: string;
+      if (alert.period === 'weekly') {
+        // Scope to ISO week: subtract days to Monday, use ISO week number
+        const day = periodStart.getDay();
+        const diff = day === 0 ? 6 : day - 1; // Monday = 0 offset
+        periodStart.setDate(periodStart.getDate() - diff);
+        periodKey = periodStart.toISOString().slice(0, 10); // YYYY-MM-DD of week start
+      } else {
+        periodStart.setDate(1); // monthly boundary
+        periodKey = periodStart.toISOString().slice(0, 7); // YYYY-MM
+      }
+      const dedupeKey = `budget_alert_${alert.budgetId}_${alert.type}_${periodKey}`;
 
       const alreadySent = await this.notificationsService.findByMetadata(
         alert.userId,

@@ -151,7 +151,12 @@ export default function DashboardPage() {
           <CategoryDonut
             data={breakdown.data}
             onCategoryClick={(categoryId, categoryName) =>
-              drillTo({ categoryId, drill: categoryName })
+              drillTo({
+                // Analytics uses 'uncategorized' sentinel for null-category rows;
+                // the transactions API expects '__uncategorized__' to filter by IS NULL.
+                categoryId: categoryId === 'uncategorized' ? '__uncategorized__' : categoryId,
+                drill: categoryName,
+              })
             }
           />
         )}

@@ -47,9 +47,17 @@ export function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
   // Security headers (CSP, etc.)
+  // Build connect-src from NEXT_PUBLIC_API_URL so it works in all environments
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+  let apiOrigin: string;
+  try {
+    apiOrigin = new URL(apiUrl).origin;
+  } catch {
+    apiOrigin = 'http://localhost:4000';
+  }
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:4000; frame-ancestors 'none'; form-action 'self'; base-uri 'self'",
+    `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ${apiOrigin}; frame-ancestors 'none'; form-action 'self'; base-uri 'self'`,
   );
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');

@@ -34,6 +34,7 @@ export function NotificationBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
+        aria-label="Toggle notifications"
         className="relative p-2 rounded-full hover:bg-accent transition-colors"
       >
         <Bell className="w-5 h-5" />
@@ -59,9 +60,10 @@ export function NotificationBell() {
           </div>
           <div className="divide-y divide-border">
             {notifications.slice(0, 20).map((n: any) => (
-              <div
+              <button
+                type="button"
                 key={n.id}
-                className={`p-3 cursor-pointer hover:bg-muted/50 ${!n.isRead ? 'bg-primary/5' : ''}`}
+                className={`w-full text-left p-3 cursor-pointer hover:bg-muted/50 ${!n.isRead ? 'bg-primary/5' : ''}`}
                 onClick={() => {
                   if (!n.isRead) markRead.mutate(n.id);
                 }}
@@ -70,7 +72,7 @@ export function NotificationBell() {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {n.message}
                 </p>
-              </div>
+              </button>
             ))}
             {notifications.length === 0 && (
               <p className="p-4 text-sm text-muted-foreground">
