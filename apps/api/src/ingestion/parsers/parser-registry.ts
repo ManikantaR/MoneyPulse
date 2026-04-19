@@ -1,6 +1,7 @@
 import type { Institution, CsvFormatConfig } from '@moneypulse/shared';
 import type { BankParser } from './base.parser';
 import { BoaParser } from './boa.parser';
+import { BoaCcParser } from './boa-cc.parser';
 import { ChaseCcParser } from './chase-cc.parser';
 import { ChaseCheckingParser } from './chase-checking.parser';
 import { AmexParser } from './amex.parser';
@@ -9,6 +10,7 @@ import { GenericCsvParser } from './generic-csv.parser';
 
 const BANK_PARSERS: BankParser[] = [
   new BoaParser(),
+  new BoaCcParser(),
   new ChaseCcParser(),
   new ChaseCheckingParser(),
   new AmexParser(),

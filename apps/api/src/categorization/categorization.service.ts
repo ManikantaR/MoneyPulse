@@ -263,4 +263,65 @@ export class CategorizationService {
       confidence,
     });
   }
+
+  /**
+   * Fast categorization pass — rule engine only, no AI.
+   * Returns IDs of transactions still uncategorized (for background AI queue).
+   */
+  async categorizeByRulesOnly(
+    transactionIds: string[],
+    userId: string,
+  ): Promise<{ categorizedByRule: number; uncategorizedIds: string[] }> {
+    if (transactionIds.length === 0)
+      return { categorizedByRule: 0, uncategorizedIds: [] };
+
+    const uncategorized = await this.db
+      .select()
+      .from(schema.transactions)
+      .where(
+        and(
+          eq(schema.transactions.userId, userId),
+          isNull(schema.transactions.categoryId),
+          isNull(schema.transactions.deletedAt),
+          inArray(schema.transactions.id, transactionIds),
+        ),
+      );
+
+    if (uncategorized.length === 0)
+      return { categorizedByRule: 0, uncategorizedIds: [] };
+
+    const ruleMatches = await this.ruleEngine.matchBatch(
+      uncategorized.map((t: any) => ({
+        description: t.description,
+        merchantName: t.merchantName,
+      })),
+      userId,
+    );
+
+    const categorizedByCategoryId = new Map<string, string[]>();
+    const stillUncategorizedIds: string[] = [];
+    let ruleCount = 0;
+
+    for (let i = 0; i < uncategorized.length; i++) {
+      const match = ruleMatches.get(i);
+      if (match) {
+        const txId = uncategorized[i].id as string;
+        const existing = categorizedByCategoryId.get(match.categoryId);
+        if (existing) existing.push(txId);
+        else categorizedByCategoryId.set(match.categoryId, [txId]);
+        ruleCount++;
+      } else {
+        stillUncategorizedIds.push(uncategorized[i].id);
+      }
+    }
+
+    for (const [categoryId, ids] of categorizedByCategoryId.entries()) {
+      await this.db
+        .update(schema.transactions)
+        .set({ categoryId, updatedAt: new Date() })
+        .where(inArray(schema.transactions.id, ids));
+    }
+
+    return { categorizedByRule: ruleCount, uncategorizedIds: stillUncategorizedIds };
+  }
 }

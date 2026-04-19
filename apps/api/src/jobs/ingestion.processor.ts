@@ -38,6 +38,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly auditService: AuditService,
     private readonly categorizationService: CategorizationService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
+    @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {
     super();
   }
@@ -49,8 +50,13 @@ export class IngestionProcessor extends WorkerHost {
    *
    * @param job - BullMQ job containing `{ uploadId, userId, accountId, filePath, fileType }`
    */
-  async process(job: Job<IngestionJobData>): Promise<void> {
-    const { uploadId, userId, accountId, filePath, fileType } = job.data;
+  async process(job: Job<any>): Promise<void> {
+    // Route background AI categorization jobs
+    if (job.name === 'ai-categorize') {
+      return this.processAiCategorize(job);
+    }
+
+    const { uploadId, userId, accountId, filePath, fileType } = job.data as IngestionJobData;
     this.logger.log(`Processing upload ${uploadId}: ${filePath}`);
 
     try {
@@ -77,13 +83,12 @@ export class IngestionProcessor extends WorkerHost {
         headers = result.headers;
         rows = result.rows;
       } else if (fileType === 'csv') {
-        const records = parse(buffer, {
-          columns: true,
-          skip_empty_lines: true,
-          trim: true,
-          bom: true,
-          relax_column_count: true,
-        }) as Record<string, string>[];
+        // Some bank CSVs (e.g. BofA checking) have summary/preamble lines
+        // before the actual column headers. Strip everything before the real
+        // header row so csv-parse doesn't choke.
+        const csvText = this.stripCsvPreamble(buffer.toString('utf-8'));
+
+        const records = this.parseCsvText(csvText);
         headers = records.length > 0 ? Object.keys(records[0]) : [];
         rows = records;
       } else if (fileType === 'pdf') {
@@ -233,23 +238,34 @@ export class IngestionProcessor extends WorkerHost {
           uploadId,
         );
 
-        // Categorize new transactions
+        // Categorize new transactions (Phase 1: fast rules only, Phase 2: AI queued in background)
         try {
           const insertedIds = await this.getInsertedTransactionIds(
             accountId,
             uploadId,
             userId,
           );
-          const categorizationStats =
-            await this.categorizationService.categorizeBatch(
+          const ruleResult =
+            await this.categorizationService.categorizeByRulesOnly(
               insertedIds,
               userId,
             );
           this.logger.log(
-            `Categorization: ${categorizationStats.categorizedByRule} by rules, ` +
-              `${categorizationStats.categorizedByAi} by AI, ` +
-              `${categorizationStats.uncategorized} uncategorized`,
+            `Rule categorization: ${ruleResult.categorizedByRule} by rules, ` +
+              `${ruleResult.uncategorizedIds.length} remaining for AI`,
           );
+
+          // Queue background AI categorization for remaining uncategorized (delayed by 2s)
+          if (ruleResult.uncategorizedIds.length > 0) {
+            await this.ingestionQueue.add(
+              'ai-categorize',
+              { transactionIds: ruleResult.uncategorizedIds, userId },
+              { delay: 2000, attempts: 2, backoff: { type: 'exponential', delay: 10000 } },
+            );
+            this.logger.log(
+              `Queued AI categorization for ${ruleResult.uncategorizedIds.length} transactions`,
+            );
+          }
         } catch (err: any) {
           this.logger.warn(
             `Categorization failed (transactions still imported): ${err.message}`,
@@ -306,6 +322,127 @@ export class IngestionProcessor extends WorkerHost {
       });
       throw err; // Let BullMQ handle retries
     }
+  }
+
+  /**
+   * Parse CSV text with progressive fallbacks:
+   * 1. Standard parse
+   * 2. Standard parse with relax_quotes
+   * 3. Sanitize internal quotes (e.g. BofA descriptions with unescaped
+   *    nested quotes like:  Zelle payment for "Ritu class fee"  ) and re-parse
+   */
+  private parseCsvText(csvText: string): Record<string, string>[] {
+    const baseOpts = {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      bom: true,
+      relax_column_count: true,
+    };
+
+    // Attempt 1: standard parse
+    try {
+      return parse(csvText, { ...baseOpts }) as unknown as Record<string, string>[];
+    } catch {
+      // Attempt 2: relax_quotes (handles trailing quotes like:  Conf# abc123"  )
+      try {
+        return parse(csvText, { ...baseOpts, relax_quotes: true }) as unknown as Record<string, string>[];
+      } catch {
+        // Attempt 3: fix unescaped internal quotes then re-parse
+        this.logger.warn('CSV parse failed; sanitizing internal quotes and retrying');
+        const sanitized = this.sanitizeCsvQuotes(csvText);
+        return parse(sanitized, { ...baseOpts }) as unknown as Record<string, string>[];
+      }
+    }
+  }
+
+  /**
+   * Fix unescaped internal quotes in CSV text.
+   *
+   * Bank CSVs (e.g. BofA) sometimes embed raw quotes inside descriptions:
+   *   "Zelle payment for "Ritu class fee"; Conf# xyz"
+   * Standard CSV requires doubled quotes for literal quotes inside a field:
+   *   "Zelle payment for ""Ritu class fee""; Conf# xyz"
+   *
+   * This method walks each line with a simple state machine, doubling any
+   * quote character that is NOT at a field boundary (opening/closing).
+   */
+  private sanitizeCsvQuotes(csvText: string): string {
+    return csvText
+      .split(/\r?\n/)
+      .map((line) => this.fixLineQuotes(line))
+      .join('\n');
+  }
+
+  private fixLineQuotes(line: string): string {
+    if (!line.includes('"')) return line;
+
+    const out: string[] = [];
+    let i = 0;
+
+    while (i < line.length) {
+      if (line[i] === '"') {
+        // Start of a quoted field
+        out.push('"');
+        i++;
+        // Read field contents until real closing quote (followed by , or EOL)
+        while (i < line.length) {
+          if (line[i] === '"') {
+            if (i + 1 >= line.length || line[i + 1] === ',') {
+              // Closing quote
+              out.push('"');
+              i++;
+              break;
+            } else if (line[i + 1] === '"') {
+              // Already-escaped quote
+              out.push('""');
+              i += 2;
+            } else {
+              // Unescaped internal quote — double it for proper CSV
+              out.push('""');
+              i++;
+            }
+          } else {
+            out.push(line[i]);
+            i++;
+          }
+        }
+      } else if (line[i] === ',') {
+        out.push(',');
+        i++;
+      } else {
+        // Unquoted field — read until comma
+        while (i < line.length && line[i] !== ',') {
+          out.push(line[i]);
+          i++;
+        }
+      }
+    }
+
+    return out.join('');
+  }
+
+  /**
+   * Strip preamble/summary rows that some banks (e.g. BofA checking) put before
+   * the actual CSV header. Scans for the first line that looks like a real
+   * header row (contains "Date" and at least one of the expected column names)
+   * and discards everything above it.
+   */
+  private stripCsvPreamble(text: string): string {
+    const lines = text.split(/\r?\n/);
+    const knownHeaders = ['description', 'amount', 'reference number', 'running bal.', 'payee', 'posted date'];
+
+    for (let i = 0; i < lines.length; i++) {
+      const lower = lines[i].toLowerCase();
+      const hasDate = lower.includes('date');
+      const hasKnown = knownHeaders.some((h) => lower.includes(h));
+      if (hasDate && hasKnown) {
+        return lines.slice(i).join('\n');
+      }
+    }
+
+    // No preamble detected — return as-is
+    return text;
   }
 
   /**
@@ -377,5 +514,26 @@ export class IngestionProcessor extends WorkerHost {
         ),
       );
     return rows.map((r: any) => r.id);
+  }
+
+  /** Background AI categorization for transactions left uncategorized by rule engine. */
+  private async processAiCategorize(
+    job: Job<{ transactionIds: string[]; userId: string }>,
+  ): Promise<void> {
+    const { transactionIds, userId } = job.data;
+    this.logger.log(
+      `Background AI categorization: ${transactionIds.length} transactions`,
+    );
+    try {
+      const stats = await this.categorizationService.categorizeBatch(
+        transactionIds,
+        userId,
+      );
+      this.logger.log(
+        `Background AI done: ${stats.categorizedByRule} rules, ${stats.categorizedByAi} AI, ${stats.uncategorized} uncategorized`,
+      );
+    } catch (err: any) {
+      this.logger.warn(`Background AI categorization failed: ${err.message}`);
+    }
   }
 }

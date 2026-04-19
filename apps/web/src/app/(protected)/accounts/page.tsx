@@ -5,6 +5,7 @@ import { Plus, Landmark, Trash2 } from 'lucide-react';
 import { useAccounts, useCreateAccount, useDeleteAccount } from '@/lib/hooks/useAccounts';
 import { formatCents } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { BankLogo } from '@/components/BankLogo';
 import type { Institution, AccountType } from '@moneypulse/shared';
 
 /** Accounts page — view, create, and manage bank accounts. */
@@ -197,19 +198,22 @@ export default function AccountsPage() {
                 className="relative overflow-hidden rounded-2xl bg-[var(--surface-container-low)] p-6 transition-shadow hover:shadow-md"
               >
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span
-                      className={cn(
-                        'inline-block rounded-full px-3 py-0.5 text-xs font-bold',
-                        inst.color,
-                      )}
-                    >
-                      {inst.label}
-                    </span>
-                    <h3 className="mt-2 text-base font-bold">{account.nickname}</h3>
-                    <p className="text-xs text-[var(--muted-foreground)]">
-                      ••{account.lastFour} · {account.accountType.replace('_', ' ')}
-                    </p>
+                  <div className="flex items-start gap-3">
+                    <BankLogo institution={inst.label} size="md" />
+                    <div>
+                      <span
+                        className={cn(
+                          'inline-block rounded-full px-3 py-0.5 text-xs font-bold',
+                          inst.color,
+                        )}
+                      >
+                        {inst.label}
+                      </span>
+                      <h3 className="mt-2 text-base font-bold">{account.nickname}</h3>
+                      <p className="text-xs text-[var(--muted-foreground)]">
+                        ••{account.lastFour} · {account.accountType.replace('_', ' ')}
+                      </p>
+                    </div>
                   </div>
                   <button
                     onClick={() => {

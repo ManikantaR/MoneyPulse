@@ -67,3 +67,61 @@ export function parseAmountToCents(amountStr: string): number | null {
 export function normalizeDescription(desc: string): string {
   return desc.trim().toLowerCase().replace(/\s+/g, ' ');
 }
+
+/**
+ * Extract a clean, human-readable merchant name from a raw bank description.
+ *
+ * Handles patterns like:
+ *   "AMERICAN EXPRESS DES:ACH PMT ID:A6916 …"  → "American Express"
+ *   "Zelle payment to Patricia M. Walker …"     → "Zelle Patricia M. Walker"
+ *   "WM SUPERCENTER #1523 804-360-1234"         → "WM Supercenter"
+ *   "CHASE CREDIT CRD DES:AUTOPAY …"            → "Chase Credit Card"
+ *   "DOMINION ENERGY DES:BILLPAY …"             → "Dominion Energy"
+ *   "BANK OF AMERICA CREDIT CARD Bill Payment"  → "Bank Of America"
+ */
+export function extractMerchantName(desc: string): string {
+  let d = desc.trim();
+
+  // Strip known BofA ACH patterns: "MERCHANT DES:TYPE ID:XXX INDN:NAME CO ID:XXX PPD/WEB"
+  const achMatch = d.match(/^(.+?)\s+DES:/i);
+  if (achMatch) {
+    d = achMatch[1].trim();
+  }
+
+  // Zelle: "Zelle payment to NAME for MEMO; Conf# XXX"
+  const zelleMatch = d.match(/^Zelle\s+payment\s+to\s+(.+?)(?:\s+for\s+|;\s*Conf)/i);
+  if (zelleMatch) {
+    return titleCase(`Zelle ${zelleMatch[1].trim()}`);
+  }
+
+  // "BANK OF AMERICA CREDIT CARD Bill Payment" → "Bank Of America"
+  if (/^BANK OF AMERICA CREDIT CARD/i.test(d)) {
+    return 'Bank Of America';
+  }
+
+  // Strip store numbers: "#1234", "# 1234"
+  d = d.replace(/#\s*\d+/g, '').trim();
+
+  // Strip trailing phone numbers: "804-360-1234"
+  d = d.replace(/\s+\d{3}[-.]?\d{3}[-.]?\d{4}\s*$/g, '').trim();
+
+  // Strip trailing reference/transaction IDs: long hex strings, etc.
+  d = d.replace(/\s+[A-Z0-9]{10,}$/g, '').trim();
+
+  // Strip trailing "AUTOPAY", "PAYMENT", "BILLPAY", "EPAY", "ACH PMT"
+  d = d.replace(/\s+(AUTOPAY|PAYMENT|BILLPAY|EPAY|ACH PMT|Bill Payment)\s*$/gi, '').trim();
+
+  // "CHASE CREDIT CRD" → "Chase Credit Card"
+  d = d.replace(/\bCRD\b/gi, 'Card');
+
+  // Collapse multiple spaces
+  d = d.replace(/\s+/g, ' ').trim();
+
+  return titleCase(d);
+}
+
+function titleCase(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}

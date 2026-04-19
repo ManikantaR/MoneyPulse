@@ -27,11 +27,11 @@ export class AiCategorizerService {
     this.ollamaModel =
       this.config.get<string>('OLLAMA_MODEL') || 'llama3.2:3b';
     this.batchSize = parseInt(
-      this.config.get<string>('OLLAMA_BATCH_SIZE') || '20',
+      this.config.get<string>('OLLAMA_BATCH_SIZE') || '10',
       10,
     );
     this.timeoutMs = parseInt(
-      this.config.get<string>('OLLAMA_TIMEOUT_MS') || '30000',
+      this.config.get<string>('OLLAMA_TIMEOUT_MS') || '120000',
       10,
     );
   }
@@ -82,7 +82,13 @@ export class AiCategorizerService {
     }>,
     categories: string[],
   ): Promise<Array<AiCategorizationResult | null>> {
-    const prompt = this.buildPrompt(batch, categories);
+    // Sanitize PII before sending to local LLM
+    const sanitizedBatch = batch.map(sanitizeForCloudAI);
+    const prompt = this.buildPrompt(sanitizedBatch, categories);
+
+    this.logger.debug(
+      `Ollama prompt for ${sanitizedBatch.length} txns:\n${prompt}`,
+    );
 
     try {
       const controller = new AbortController();

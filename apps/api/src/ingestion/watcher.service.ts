@@ -119,8 +119,15 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
         .limit(1);
 
       if (existing.length > 0) {
-        this.logger.log(`Duplicate file skipped: ${filePath}`);
-        return;
+        if (existing[0].status === 'failed') {
+          // Remove the failed record so file can be re-processed
+          await this.db
+            .delete(schema.fileUploads)
+            .where(eq(schema.fileUploads.id, existing[0].id));
+        } else {
+          this.logger.log(`Duplicate file skipped: ${filePath}`);
+          return;
+        }
       }
 
       const fileType =

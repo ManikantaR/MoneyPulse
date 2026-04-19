@@ -141,4 +141,11 @@ export const SEED_RULES: SeedRule[] = [
   { pattern: 'venmo', matchType: 'contains', field: 'description', categoryName: 'Transfers', priority: 30 },
   { pattern: 'cash app', matchType: 'contains', field: 'description', categoryName: 'Transfers', priority: 30 },
   { pattern: 'paypal', matchType: 'contains', field: 'description', categoryName: 'Transfers', priority: 30 },
+
+  // ── Credit Card Payment ────────────────────────────────────
+  { pattern: 'payment - thank you', matchType: 'contains', field: 'description', categoryName: 'Credit Card Payment', priority: 10 },
+  { pattern: 'payment thank you', matchType: 'contains', field: 'description', categoryName: 'Credit Card Payment', priority: 10 },
+  { pattern: 'autopay payment', matchType: 'contains', field: 'description', categoryName: 'Credit Card Payment', priority: 10 },
+  { pattern: 'int sch pymt', matchType: 'contains', field: 'description', categoryName: 'Credit Card Payment', priority: 10 },
+  { pattern: 'online payment', matchType: 'contains', field: 'description', categoryName: 'Credit Card Payment', priority: 15 },
 ];

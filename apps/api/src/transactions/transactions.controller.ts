@@ -18,6 +18,7 @@ import { TransactionsService } from './transactions.service';
 import { ExportService } from './export.service';
 import { AuditService } from '../audit/audit.service';
 import { CategorizationService } from '../categorization/categorization.service';
+import { LearningService } from '../categorization/learning.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -46,6 +47,7 @@ export class TransactionsController {
     private readonly exportService: ExportService,
     private readonly auditService: AuditService,
     private readonly categorizationService: CategorizationService,
+    private readonly learningService: LearningService,
   ) {}
 
   /**
@@ -154,6 +156,13 @@ export class TransactionsController {
   ) {
     const txn = await this.txnService.update(id, user.sub, body);
 
+    // Learn from manual category overrides to create auto-categorization rules
+    if (body.categoryId) {
+      this.learningService
+        .learnFromOverride(user.sub, id, body.categoryId)
+        .catch(() => {});
+    }
+
     await this.auditService.log({
       userId: user.sub,
       action: 'transaction_edited',
@@ -231,6 +240,11 @@ export class TransactionsController {
     @CurrentUser() user: AuthTokenPayload,
   ) {
     const result = await this.txnService.bulkCategorize(user.sub, body);
+
+    // Learn from bulk categorization to create prefix-based rules
+    this.learningService
+      .learnFromBulk(user.sub, body.transactionIds, body.categoryId)
+      .catch(() => {});
 
     await this.auditService.log({
       userId: user.sub,

@@ -2559,3 +2559,88 @@ Step 22: Git commit
 - **Frontend**: 11 unit tests (format utilities)
 - **E2E**: 10 analytics endpoint tests
 - **All builds pass**: `nest build` + `next build`
+
+---
+
+## Phase 5.5: Dashboard Drill-Down & UX Polish
+
+**Added after Phase 5 completion to enhance the dashboard experience.**
+
+### Features Added
+
+#### Dashboard → Transactions Drill-Down
+Every dashboard KPI card and chart now navigates to the transactions page with pre-filled URL filters:
+
+| Dashboard Element | Drill-Down Action | Filter Applied |
+|---|---|---|
+| **Total Income** card | Click → Transactions | `isCredit=true` |
+| **Total Expenses** card | Click → Transactions | `isCredit=false` |
+| **Net Cash Flow** card | Click → Transactions | Date range only |
+| **Category Donut** (slice or legend) | Click → Transactions | `categoryId=<id>` |
+| **Top Merchants Bar** | Click bar → Transactions | `search=<merchantName>` |
+| **Income vs Expenses Bar** | Click month → Transactions | `from=<monthStart>&to=<monthEnd>` |
+| **Net Worth Drilldown** | Click "View transactions" per account | `accountId=<id>` |
+
+#### URL-Driven Transactions Filters
+- Transactions page reads `accountId`, `categoryId`, `from`, `to`, `isCredit`, `search`, `drill` from URL search params
+- Displays a context banner ("Showing: {drill label}") with a one-click "Clear filters" button
+- `isCredit` boolean filter added to shared `transactionQuerySchema` (Zod) and API `transactions.service.ts`
+
+#### Clickable Chart Components
+- **StatCard**: accepts `onClick` prop, renders as `<button>` when clickable, shows `ChevronRight` icon on hover
+- **CategoryDonut**: `onCategoryClick` callback for both Pie slices and legend items
+- **TopMerchantsBar**: `onMerchantClick` callback on bar click
+- **IncomeExpenseBar**: `onBarClick` callback passing the clicked month period
+- **NetWorthDrilldown**: "View transactions" link per account row with ExternalLink icon
+
+#### Additional UX Fixes (from prior PR)
+- Duplicate category prevention with unique DB index
+- Credit Card Payment category + seed rules
+- Account column displays institution + lastFour
+- Imports status page (summary cards + detail table)
+- Credit/debit sign convention fix for CC payments
+
+### Files Modified
+
+| File | Changes |
+|---|---|
+| `apps/web/src/app/(protected)/page.tsx` | `drillTo()` callback, wired all chart onClick handlers |
+| `apps/web/src/app/(protected)/transactions/page.tsx` | URL search params init, drill-down banner, clear filters |
+| `apps/web/src/components/charts/StatCard.tsx` | `onClick` prop, button wrapper, ChevronRight hover icon |
+| `apps/web/src/components/charts/CategoryDonut.tsx` | `onCategoryClick` prop for slices and legend |
+| `apps/web/src/components/charts/TopMerchantsBar.tsx` | `onMerchantClick` prop on bar click |
+| `apps/web/src/components/charts/IncomeExpenseBar.tsx` | `onBarClick` prop for month drill-down |
+| `apps/web/src/components/NetWorthDrilldown.tsx` | `from`/`to` props, "View transactions" links |
+| `packages/shared/src/validation/index.ts` | `isCredit: z.coerce.boolean().optional()` in transactionQuerySchema |
+| `apps/api/src/transactions/transactions.service.ts` | `isCredit` filter condition in `findAll` |
+
+### Ingestion & Import Fixes
+
+#### CSV Preamble Stripping
+Real BofA checking downloads include summary rows (Beginning balance, Total credits, Total debits, Ending balance) before the actual CSV headers. Added `stripCsvPreamble()` in `ingestion.processor.ts` that scans for the real header row (containing "Date" + known column names like "Description", "Amount") and discards everything above it.
+
+#### Failed Upload Re-upload
+File-level dedup (SHA-256 hash) previously blocked re-uploading the same file even when the previous attempt failed. Now both the upload endpoint and watch-folder watcher auto-delete failed upload records when the same hash is encountered, allowing seamless retries.
+
+#### Transaction-Level Dedup (Already Existed)
+The `DedupService` handles transaction-level dedup using two strategies:
+1. **External ID match** — bank reference numbers checked via `(account_id, external_id)`
+2. **Hash match** — `SHA256(accountId + date + amount + description + isCredit)` checked via `(account_id, txn_hash)`
+
+This means re-uploading a partially-imported file safely skips already-imported transactions and only adds new ones.
+
+#### Delete Upload API + UI
+- `DELETE /uploads/:id` — deletes upload record + associated transactions (only for completed/failed uploads)
+- Imports page: trash icon per row with confirmation dialog
+- Error details modal: click failed status badge or error count to view `errorLog` entries (row number, error message, raw line)
+
+### Additional Files Modified
+
+| File | Changes |
+|---|---|
+| `apps/api/src/jobs/ingestion.processor.ts` | `stripCsvPreamble()` method, `relax_quotes: true` |
+| `apps/api/src/ingestion/ingestion.service.ts` | Failed-upload hash bypass, `deleteUpload()` method |
+| `apps/api/src/ingestion/ingestion.controller.ts` | `DELETE /uploads/:id` endpoint |
+| `apps/api/src/ingestion/watcher.service.ts` | Failed-upload hash bypass for watch folder |
+| `apps/web/src/lib/hooks/useUpload.ts` | `useDeleteUpload()` mutation hook |
+| `apps/web/src/app/(protected)/imports/page.tsx` | Delete button, error details modal, clickable status/error cells |

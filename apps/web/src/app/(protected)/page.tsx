@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { format, startOfMonth, subMonths } from 'date-fns';
 import { TrendingUp, TrendingDown, ArrowDownUp } from 'lucide-react';
 import { PeriodSelector } from '@/components/PeriodSelector';
@@ -29,6 +30,7 @@ import { formatCents } from '@/lib/format';
 /** Dashboard page — main financial overview with KPI cards and charts. */
 export default function DashboardPage() {
   // Period selector: default = start of current month → today
+  const router = useRouter();
   const [from, setFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [to, setTo] = useState(format(new Date(), 'yyyy-MM-dd'));
 
@@ -38,6 +40,15 @@ export default function DashboardPage() {
 
   // Drilldown slide-over state
   const [drilldown, setDrilldown] = useState<'assets' | 'liabilities' | null>(null);
+
+  /** Navigate to transactions page with pre-filled filters for drill-down. */
+  const drillTo = useCallback(
+    (extra: Record<string, string>) => {
+      const params = new URLSearchParams({ from, to, ...extra });
+      router.push(`/transactions?${params.toString()}`);
+    },
+    [from, to, router],
+  );
 
   const params = { from, to };
 
@@ -116,25 +127,42 @@ export default function DashboardPage() {
           value={kpi ? formatCents(kpi.totalIncome) : '—'}
           icon={TrendingUp}
           accentColor="secondary"
+          onClick={() => drillTo({ isCredit: 'true', drill: 'Total Income' })}
         />
         <StatCard
           title="Total Expenses"
           value={kpi ? formatCents(kpi.totalExpenses) : '—'}
           icon={TrendingDown}
           accentColor="danger"
+          onClick={() => drillTo({ isCredit: 'false', drill: 'Total Expenses' })}
         />
         <StatCard
           title="Net Cash Flow"
           value={kpi ? formatCents(kpi.net) : '—'}
           icon={ArrowDownUp}
           accentColor="primary"
+          onClick={() => drillTo({ drill: 'Net Cash Flow' })}
         />
       </div>
 
       {/* Where is my money going — Category breakdown + Top Merchants */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {breakdown?.data && <CategoryDonut data={breakdown.data} />}
-        {merchants?.data && <TopMerchantsBar data={merchants.data} />}
+        {breakdown?.data && (
+          <CategoryDonut
+            data={breakdown.data}
+            onCategoryClick={(categoryId, categoryName) =>
+              drillTo({ categoryId, drill: categoryName })
+            }
+          />
+        )}
+        {merchants?.data && (
+          <TopMerchantsBar
+            data={merchants.data}
+            onMerchantClick={(merchantName) =>
+              drillTo({ search: merchantName, drill: merchantName })
+            }
+          />
+        )}
       </div>
 
       {/* Big Spends + Spending Trend (trend always shows last 6 months) */}
@@ -149,7 +177,26 @@ export default function DashboardPage() {
 
       {/* Income vs Expenses bar + Account Balance History */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {barData.length > 0 && <IncomeExpenseBar data={barData} />}
+        {barData.length > 0 && (
+          <IncomeExpenseBar
+            data={barData}
+            onBarClick={(period) => {
+              // period is "YYYY-MM"; compute month range
+              const [y, m] = period.split('-');
+              if (y && m) {
+                const monthStart = `${y}-${m}-01`;
+                const d = new Date(Number(y), Number(m), 0); // last day of month
+                const monthEnd = format(d, 'yyyy-MM-dd');
+                const params = new URLSearchParams({
+                  from: monthStart,
+                  to: monthEnd,
+                  drill: `${period} transactions`,
+                });
+                router.push(`/transactions?${params.toString()}`);
+              }
+            }}
+          />
+        )}
         {balances?.data && <AccountBalanceHistory data={balances.data} />}
       </div>
 
@@ -171,6 +218,8 @@ export default function DashboardPage() {
           type={drilldown}
           accounts={balances.data}
           onClose={() => setDrilldown(null)}
+          from={from}
+          to={to}
         />
       )}
     </div>

@@ -109,6 +109,13 @@ export const DEFAULT_CATEGORIES: Omit<
     parentId: null,
     sortOrder: 15,
   },
+  {
+    name: 'Credit Card Payment',
+    icon: '💳',
+    color: '#0891b2',
+    parentId: null,
+    sortOrder: 16,
+  },
 ];
 
 export const INSTITUTIONS: { value: Institution; label: string }[] = [

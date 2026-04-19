@@ -26,6 +26,7 @@ export interface TransactionQueryParams {
   search?: string;
   accountId?: string;
   categoryId?: string;
+  uploadId?: string;
   from?: string;
   to?: string;
   sortBy?: 'date' | 'amount' | 'description' | 'category';

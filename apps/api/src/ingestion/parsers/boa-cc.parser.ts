@@ -8,28 +8,24 @@ import {
 } from './base.parser';
 
 /**
- * Amex CSV Parser
+ * Bank of America Credit Card CSV Parser
  *
  * Format:
- *   Date,Description,Amount
- *   03/15/2026,UBER EATS,34.50
+ *   Posted Date,Reference Number,Payee,Address,Amount
+ *   04/17/2026,10720401530020859090131,"Int Sch Pymt Transfer","",234.00
  *
- * Sign: **POSITIVE = charge** (opposite of BofA/Chase!), negative = credit/refund
- * Only 3 columns — detect by column count + absence of other headers.
+ * Sign convention: positive = credit (payment), negative = debit (charge)
  */
-export class AmexParser implements BankParser {
-  institution = 'amex' as const;
+export class BoaCcParser implements BankParser {
+  institution = 'boa' as const;
 
   canParse(headers: string[]): boolean {
     const normalized = headers.map((h) => h.trim().toLowerCase());
     return (
-      normalized.length <= 4 && // Amex has 3 columns (sometimes a trailing empty)
-      normalized.includes('date') &&
-      normalized.includes('description') &&
+      normalized.includes('posted date') &&
+      normalized.includes('payee') &&
       normalized.includes('amount') &&
-      !normalized.includes('reference number') && // Not BofA
-      !normalized.includes('post date') && // Not Chase
-      !normalized.includes('status') // Not Citi
+      normalized.includes('reference number')
     );
   }
 
@@ -42,7 +38,7 @@ export class AmexParser implements BankParser {
       const rowNum = i + rowOffset;
 
       try {
-        const dateStr = row['Date'] || row['date'];
+        const dateStr = row['Posted Date'] || row['posted date'];
         const date = parseDateMMDDYYYY(dateStr);
         if (!date) {
           errors.push({
@@ -65,24 +61,26 @@ export class AmexParser implements BankParser {
         }
 
         const description = (
-          row['Description'] ||
-          row['description'] ||
-          ''
+          row['Payee'] || row['payee'] || ''
         ).trim();
         if (!description) {
           errors.push({
             row: rowNum,
-            error: 'Empty description',
+            error: 'Empty payee/description',
             raw: JSON.stringify(row),
           });
           continue;
         }
 
-        // AMEX: positive = charge (debit!), negative = credit/refund
-        const isCredit = amountCents < 0;
+        const externalId =
+          (row['Reference Number'] || row['reference number'] || '').trim() ||
+          null;
+
+        // BofA CC: positive = credit (payment), negative = debit (charge)
+        const isCredit = amountCents > 0;
 
         transactions.push({
-          externalId: null,
+          externalId,
           date,
           description,
           amountCents: Math.abs(amountCents),

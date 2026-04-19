@@ -108,8 +108,13 @@ export class TransactionsService {
 
     if (query.accountId)
       conditions.push(eq(schema.transactions.accountId, query.accountId));
-    if (query.categoryId)
+    if (query.uploadId)
+      conditions.push(eq(schema.transactions.sourceFileId, query.uploadId));
+    if (query.categoryId === '__uncategorized__') {
+      conditions.push(isNull(schema.transactions.categoryId));
+    } else if (query.categoryId) {
       conditions.push(eq(schema.transactions.categoryId, query.categoryId));
+    }
     if (query.from && query.to) {
       conditions.push(
         between(
@@ -123,6 +128,9 @@ export class TransactionsService {
       conditions.push(
         ilike(schema.transactions.description, `%${query.search}%`),
       );
+    }
+    if (query.isCredit !== undefined) {
+      conditions.push(eq(schema.transactions.isCredit, query.isCredit));
     }
 
     // Exclude split parents from list
@@ -159,6 +167,7 @@ export class TransactionsService {
       total,
       page: query.page,
       pageSize: query.pageSize,
+      totalPages: Math.ceil(total / query.pageSize),
       hasMore: offset + data.length < total,
     };
   }

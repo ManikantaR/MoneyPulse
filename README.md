@@ -58,13 +58,19 @@ Most finance apps require uploading sensitive bank data to third-party servers. 
 - **Cloud AI opt-in** — PII-stripped fallback to cloud models (default OFF)
 
 ### Dashboard & Analytics
-- Income vs. expenses (monthly bar chart)
-- Spending by category (donut chart)
+- Income vs. expenses (monthly bar chart) — **click to drill down into transactions**
+- Spending by category (donut chart) — **click a slice/legend to view category transactions**
 - Spending trend over time (line chart)
 - Account balance history (multi-line chart)
 - Credit card utilization (progress bars)
-- Net worth tracking (including investments)
-- Top merchants by spend
+- Net worth tracking with **drill-down into assets & liabilities** per account
+- Top merchants by spend — **click a bar to search merchant transactions**
+- **Dashboard → Transactions drill-down**: click any KPI card (Income, Expenses, Cash Flow) to navigate to a pre-filtered transactions view with context banner and one-click clear
+
+### File Imports
+- Dedicated imports status page with summary cards (total files, completed, failed, rows imported)
+- Detailed table: file name, account, status badge, imported/skipped/error counts, date
+- Direct link from sidebar navigation
 
 ### Budgets & Alerts
 - Per-category monthly/weekly budgets (personal + shared household)
@@ -391,6 +397,7 @@ erDiagram
 | **Phase 3** | AI-powered categorization | ✅ Done — 60+ seed rules, Ollama batch categorizer, PII sanitizer, learning loop, 112 API tests |
 | **Phase 4** | PDF parser microservice | ✅ Done — Python/pdfplumber service, BofA rule-based + AI fallback, 66 tests |
 | **Phase 5** | Dashboard & visualization | ✅ Done — income/expense charts, spending by category, trend lines, CSV export |
+| **Phase 5.5** | Dashboard drill-down & UX polish | ✅ Done — clickable KPI cards, chart drill-down to transactions, URL-driven filters, imports page, CC payment handling |
 | **Phase 6** | Budgets, alerts & notifications | 🔲 Up next |
 | **Phase 7** | MCP server for AI agents | 🔲 Planned |
 | **Phase 8** | Investment account tracking | 🔲 Planned |
