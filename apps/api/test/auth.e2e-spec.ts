@@ -3,7 +3,9 @@ import { INestApplication } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
+import Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
+import { REDIS_CLIENT } from '../src/redis/redis.provider';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
@@ -149,6 +151,13 @@ describe('Auth (e2e)', () => {
 
   describe('Force password change flow', () => {
     let memberCookies: string[];
+
+    beforeAll(async () => {
+      // Clear login rate-limit keys so prior logins across test files don't cause 429
+      const redis = app.get<Redis>(REDIS_CLIENT);
+      const keys = await redis.keys('login_throttle:*');
+      if (keys.length) await redis.del(...keys);
+    });
 
     it('invited user should login with temp password', async () => {
       const inviteRes = await request(app.getHttpServer())

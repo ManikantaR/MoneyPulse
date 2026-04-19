@@ -38,7 +38,7 @@ export function IncomeExpenseBar({ data, onBarClick }: IncomeExpenseBarProps) {
           barGap={4}
           onClick={(state) => {
             if (state?.activeLabel && onBarClick) {
-              onBarClick(state.activeLabel);
+              onBarClick(String(state.activeLabel));
             }
           }}
           style={{ cursor: onBarClick ? 'pointer' : undefined }}

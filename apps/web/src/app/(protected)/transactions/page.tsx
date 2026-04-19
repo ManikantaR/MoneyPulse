@@ -571,10 +571,10 @@ function SortHeader({
   align,
 }: {
   label: string;
-  field: string;
+  field: 'date' | 'amount' | 'description' | 'category';
   current?: string;
   order?: string;
-  onSort: (field: string) => void;
+  onSort: (field: 'date' | 'amount' | 'description' | 'category') => void;
   align?: 'right';
 }) {
   const active = current === field;

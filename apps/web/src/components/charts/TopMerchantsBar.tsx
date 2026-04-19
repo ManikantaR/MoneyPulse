@@ -55,8 +55,9 @@ export function TopMerchantsBar({ data, onMerchantClick }: TopMerchantsBarProps)
             barSize={18}
             margin={{ left: 10, right: 20, top: 5, bottom: 5 }}
             onClick={(state) => {
-              if (state?.activePayload?.[0]?.payload?.merchant && onMerchantClick) {
-                onMerchantClick(state.activePayload[0].payload.merchant);
+              const payload = (state as Record<string, unknown>)?.activePayload as Array<{ payload: { merchant: string } }> | undefined;
+              if (payload?.[0]?.payload?.merchant && onMerchantClick) {
+                onMerchantClick(payload[0].payload.merchant);
               }
             }}
             style={{ cursor: onMerchantClick ? 'pointer' : undefined }}
