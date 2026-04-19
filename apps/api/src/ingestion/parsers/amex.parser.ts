@@ -10,27 +10,37 @@ import {
 /**
  * Amex CSV Parser
  *
- * Format:
+ * Handles two Amex export formats:
+ *
+ * Short format (3 columns):
  *   Date,Description,Amount
  *   03/15/2026,UBER EATS,34.50
  *
+ * Full format (5 columns, default Amex web export):
+ *   Date,Description,Card Member,Account #,Amount
+ *   03/15/2026,UBER EATS,JOHN DOE,XXXXX-12345,34.50
+ *
  * Sign: **POSITIVE = charge** (opposite of BofA/Chase!), negative = credit/refund
- * Only 3 columns — detect by column count + absence of other headers.
  */
 export class AmexParser implements BankParser {
   institution = 'amex' as const;
 
   canParse(headers: string[]): boolean {
     const normalized = headers.map((h) => h.trim().toLowerCase());
-    return (
-      normalized.length <= 4 && // Amex has 3 columns (sometimes a trailing empty)
+    const hasCore =
       normalized.includes('date') &&
       normalized.includes('description') &&
-      normalized.includes('amount') &&
-      !normalized.includes('reference number') && // Not BofA
-      !normalized.includes('post date') && // Not Chase
-      !normalized.includes('status') // Not Citi
-    );
+      normalized.includes('amount');
+    const noOtherBank =
+      !normalized.includes('reference number') && // Not BofA checking
+      !normalized.includes('post date') &&         // Not Chase CC
+      !normalized.includes('status') &&            // Not Citi
+      !normalized.includes('posted date');         // Not BofA CC
+    // Only allow Amex-known columns (short or full export)
+    const allKnown = normalized
+      .filter((h) => h !== '') // ignore trailing empty column
+      .every((h) => ['date', 'description', 'amount', 'card member', 'account #'].includes(h));
+    return hasCore && noOtherBank && allKnown;
   }
 
   parseRows(rows: Record<string, string>[], rowOffset: number): ParseResult {

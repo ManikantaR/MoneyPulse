@@ -19,7 +19,10 @@ export type AuditAction =
   | 'bulk_categorized'
   | 'auto_categorize'
   | 'budget_exceeded'
-  | 'file_imported';
+  | 'file_imported'
+  | 'csv_exported'
+  | 'file_uploaded'
+  | 'file_deleted';
 
 export interface User {
   id: string;

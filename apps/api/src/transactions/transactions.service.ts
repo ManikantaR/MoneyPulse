@@ -25,6 +25,7 @@ import type {
   BulkCategorizeInput,
 } from '@moneypulse/shared';
 import { createHash } from 'crypto';
+import { encryptField, decryptField } from '../common/crypto';
 
 @Injectable()
 export class TransactionsService {
@@ -66,7 +67,7 @@ export class TransactionsService {
         txnHash,
         date: new Date(input.date),
         description: input.description,
-        originalDescription: input.description,
+        originalDescription: encryptField(input.description),
         amountCents: input.amountCents,
         categoryId: input.categoryId ?? null,
         merchantName: input.merchantName ?? null,
@@ -75,7 +76,7 @@ export class TransactionsService {
         tags: input.tags ?? [],
       })
       .returning();
-    return rows[0];
+    return this.decryptTxn(rows[0]);
   }
 
   /**
@@ -163,7 +164,7 @@ export class TransactionsService {
       .offset(offset);
 
     return {
-      data,
+      data: data.map((t: any) => this.decryptTxn(t)),
       total,
       page: query.page,
       pageSize: query.pageSize,
@@ -190,7 +191,7 @@ export class TransactionsService {
         ),
       )
       .limit(1);
-    return rows[0] ?? null;
+    return rows[0] ? this.decryptTxn(rows[0]) : null;
   }
 
   /**
@@ -249,7 +250,7 @@ export class TransactionsService {
       .set({ ...input, updatedAt: new Date() })
       .where(eq(schema.transactions.id, id))
       .returning();
-    return rows[0];
+    return this.decryptTxn(rows[0]);
   }
 
   /**
@@ -316,7 +317,7 @@ export class TransactionsService {
             .digest('hex'),
           date: parent.date,
           description: split.description || parent.description,
-          originalDescription: parent.originalDescription,
+          originalDescription: encryptField(parent.originalDescription),
           amountCents: split.amountCents,
           categoryId: split.categoryId,
           isCredit: parent.isCredit,
@@ -327,7 +328,7 @@ export class TransactionsService {
       )
       .returning();
 
-    return { parent: { ...parent, isSplitParent: true }, children };
+    return { parent: { ...parent, isSplitParent: true }, children: children.map((c: any) => this.decryptTxn(c)) };
   }
 
   /**
@@ -368,5 +369,13 @@ export class TransactionsService {
         ),
       );
     return rows.map((r: any) => r.id);
+  }
+
+  private decryptTxn(txn: any) {
+    if (!txn) return txn;
+    return {
+      ...txn,
+      originalDescription: decryptField(txn.originalDescription),
+    };
   }
 }

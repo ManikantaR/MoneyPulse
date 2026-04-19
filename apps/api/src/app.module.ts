@@ -18,6 +18,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { JobsModule } from './jobs/jobs.module';
+import { AiLogsModule } from './ai-logs/ai-logs.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { JobsModule } from './jobs/jobs.module';
     BudgetsModule,
     NotificationsModule,
     JobsModule,
+    AiLogsModule,
     HealthModule,
   ],
   providers: [

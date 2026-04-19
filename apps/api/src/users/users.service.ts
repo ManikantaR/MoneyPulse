@@ -14,6 +14,7 @@ import type {
   InviteUserInput,
   UpdateUserSettingsInput,
 } from '@moneypulse/shared';
+import { encryptField, decryptField } from '../common/crypto';
 
 @Injectable()
 export class UsersService {
@@ -115,16 +116,20 @@ export class UsersService {
       .from(schema.userSettings)
       .where(eq(schema.userSettings.userId, userId))
       .limit(1);
-    return rows[0] ?? null;
+    const row = rows[0] ?? null;
+    return row ? this.decryptSettings(row) : null;
   }
 
   async updateSettings(userId: string, data: UpdateUserSettingsInput) {
+    const encrypted: any = { ...data, updatedAt: new Date() };
+    if (data.haWebhookUrl) encrypted.haWebhookUrl = encryptField(data.haWebhookUrl);
+    if (data.notificationEmail) encrypted.notificationEmail = encryptField(data.notificationEmail);
     const rows = await this.db
       .update(schema.userSettings)
-      .set({ ...data, updatedAt: new Date() })
+      .set(encrypted)
       .where(eq(schema.userSettings.userId, userId))
       .returning();
-    return rows[0];
+    return this.decryptSettings(rows[0]);
   }
 
   async getHousehold(householdId: string) {
@@ -186,5 +191,14 @@ export class UsersService {
 
   private generateTempPassword(): string {
     return randomBytes(18).toString('base64url');
+  }
+
+  private decryptSettings(settings: any) {
+    if (!settings) return settings;
+    return {
+      ...settings,
+      haWebhookUrl: decryptField(settings.haWebhookUrl),
+      notificationEmail: decryptField(settings.notificationEmail),
+    };
   }
 }

@@ -190,7 +190,7 @@ export class AuthController {
 
     res.cookie('device_id', deviceId, {
       ...COOKIE_BASE,
-      httpOnly: false,
+      httpOnly: true,
       maxAge: 365 * 24 * 60 * 60 * 1000,
     });
   }

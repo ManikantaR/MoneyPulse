@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Tags as TagsIcon, Folder } from 'lucide-react';
+import { Plus, Tags as TagsIcon, ChevronDown, ChevronRight } from 'lucide-react';
 import { useCategoryTree, useCreateCategory } from '@/lib/hooks/useCategories';
 import { cn } from '@/lib/utils';
 import type { CategoryTreeNode } from '@/lib/hooks/useCategories';
@@ -10,12 +10,26 @@ import type { CategoryTreeNode } from '@/lib/hooks/useCategories';
 const PRESET_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
   '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b',
+  '#0891b2', '#0ea5e9', '#84cc16', '#a855f7', '#d946ef',
+  '#b91c1c', '#db2777', '#92400e', '#059669', '#65a30d',
 ];
 
 /** Default icons for the category icon picker. */
 const PRESET_ICONS = [
-  '🏠', '🍔', '🚗', '💡', '🎬', '🛍️', '💊', '📚', '✈️', '💼',
-  '🎮', '🏋️', '📱', '🎁', '💰', '📝',
+  '💰', '💵', '🖥️', '🎉', '💸', '📊', '🏘️',
+  '🛒', '🍽️', '⛽', '🔧', '🅿️', '🚘',
+  '🛍️', '👗', '💻', '📷', '🏡', '🎮',
+  '✈️', '🎬', '📱', '💡', '🏥', '🩺', '🦷', '👓', '💊', '🧘',
+  '🏠', '🏦', '🔑', '📜', '🔩',
+  '🌿', '🌱', '🔨', '🛋️',
+  '🛡️', '🏛️', '📋', '💹',
+  '📚', '🎓', '📖', '🏫',
+  '🎵', '🎸', '🎼',
+  '👪', '⚽', '🧸', '👕', '🍼',
+  '💪', '🏋️', '🏅',
+  '🐾', '💉', '🦴',
+  '👤', '🎁', '🎀', '💝', '📈',
+  '🔄', '💳', '📝',
 ];
 
 /** Categories page — view and manage category tree. */
@@ -29,8 +43,18 @@ export default function CategoriesPage() {
     color: '#6366f1',
     parentId: null as string | null,
   });
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const tree = treeData?.data ?? [];
+
+  function toggleCollapse(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   /** Handle new category creation. */
   async function handleCreate(e: React.FormEvent) {
@@ -45,36 +69,70 @@ export default function CategoriesPage() {
     setForm({ name: '', icon: '📝', color: '#6366f1', parentId: null });
   }
 
-  /** Recursive category tree renderer. */
-  function renderCategory(node: CategoryTreeNode, depth: number = 0) {
+  /** Render a parent category card with its subcategories. */
+  function renderCategory(node: CategoryTreeNode) {
+    const hasChildren = node.children.length > 0;
+    const isCollapsed = collapsed.has(node.id);
+
     return (
-      <div key={node.id}>
-        <div
+      <div key={node.id} className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
+        {/* Parent row */}
+        <button
+          type="button"
+          onClick={() => hasChildren && toggleCollapse(node.id)}
           className={cn(
-            'flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-[var(--muted)] transition-colors',
+            'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
+            hasChildren ? 'cursor-pointer hover:bg-[var(--muted)]' : 'cursor-default',
           )}
-          style={{ paddingLeft: `${12 + depth * 24}px` }}
         >
           <span
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-sm"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-lg"
             style={{ backgroundColor: node.color + '20' }}
           >
             {node.icon}
           </span>
-          <div className="flex-1">
-            <p className="text-sm font-medium">{node.name}</p>
-            {node.children.length > 0 && (
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">{node.name}</p>
+            {hasChildren && (
               <p className="text-xs text-[var(--muted-foreground)]">
                 {node.children.length} subcategor{node.children.length === 1 ? 'y' : 'ies'}
               </p>
             )}
           </div>
           <span
-            className="h-3 w-3 rounded-full"
+            className="h-3 w-3 shrink-0 rounded-full"
             style={{ backgroundColor: node.color }}
           />
-        </div>
-        {node.children.map((child) => renderCategory(child, depth + 1))}
+          {hasChildren && (
+            isCollapsed
+              ? <ChevronRight className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+              : <ChevronDown className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
+          )}
+        </button>
+
+        {/* Subcategory list */}
+        {hasChildren && !isCollapsed && (
+          <div className="border-t border-[var(--border)] bg-[var(--surface-container-low)]">
+            {node.children.map((child) => (
+              <div
+                key={child.id}
+                className="flex items-center gap-3 px-4 py-2.5 pl-14 hover:bg-[var(--muted)] transition-colors"
+              >
+                <span
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-sm"
+                  style={{ backgroundColor: child.color + '20' }}
+                >
+                  {child.icon}
+                </span>
+                <p className="flex-1 text-sm">{child.name}</p>
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: child.color }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -208,7 +266,7 @@ export default function CategoriesPage() {
           </p>
         </div>
       ) : (
-        <div className="rounded-2xl bg-[var(--card)] py-2 shadow-sm">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {tree.map((node) => renderCategory(node))}
         </div>
       )}

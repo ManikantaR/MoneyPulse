@@ -16,6 +16,7 @@ import { PdfProxyService } from '../ingestion/parsers/pdf-proxy.service';
 import { AuditService } from '../audit/audit.service';
 import { CategorizationService } from '../categorization/categorization.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
+import { encryptField } from '../common/crypto';
 
 interface IngestionJobData {
   uploadId: string;
@@ -486,7 +487,7 @@ export class IngestionProcessor extends WorkerHost {
           txnHash: this.dedupService.computeHash(accountId, txn),
           date: new Date(txn.date),
           description: txn.description,
-          originalDescription: txn.description,
+          originalDescription: encryptField(txn.description),
           amountCents: txn.amountCents,
           isCredit: txn.isCredit,
           merchantName: txn.merchantName,

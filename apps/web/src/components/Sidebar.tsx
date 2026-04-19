@@ -17,6 +17,7 @@ import {
   Wallet,
   FileBarChart,
   LogOut,
+  Brain,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { UserAvatar } from './UserAvatar';
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { href: '/accounts', label: 'Accounts', icon: Landmark },
   { href: '/budgets', label: 'Budgets', icon: Wallet },
   { href: '/categories', label: 'Categories', icon: Tags },
+  { href: '/ai-logs', label: 'AI Logs', icon: Brain },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

@@ -15,6 +15,7 @@ import type {
   CreateAccountInput,
   UpdateAccountInput,
 } from '@moneypulse/shared';
+import { encryptField, decryptField } from '../common/crypto';
 
 @Injectable()
 export class AccountsService {
@@ -44,13 +45,13 @@ export class AccountsService {
         institution: input.institution,
         accountType: input.accountType,
         nickname: input.nickname,
-        lastFour: input.lastFour,
+        lastFour: encryptField(input.lastFour),
         startingBalanceCents: input.startingBalanceCents,
         creditLimitCents: input.creditLimitCents ?? null,
       })
       .returning();
 
-    const account = rows[0];
+    const account = this.decryptAccount(rows[0]);
 
     // Create watch-folder subdirectory for auto-import
     try {
@@ -78,7 +79,7 @@ export class AccountsService {
       .from(schema.accounts)
       .where(and(eq(schema.accounts.id, id), isNull(schema.accounts.deletedAt)))
       .limit(1);
-    return rows[0] ?? null;
+    return rows[0] ? this.decryptAccount(rows[0]) : null;
   }
 
   /**
@@ -88,7 +89,7 @@ export class AccountsService {
    * @returns Array of account rows
    */
   async findByUser(userId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(schema.accounts)
       .where(
@@ -98,6 +99,7 @@ export class AccountsService {
         ),
       )
       .orderBy(schema.accounts.createdAt);
+    return rows.map((a: any) => this.decryptAccount(a));
   }
 
   /**
@@ -108,7 +110,7 @@ export class AccountsService {
    * @returns Array of `{ account, ownerName }` objects ordered by creation date
    */
   async findByHousehold(householdId: string) {
-    return this.db
+    const results = await this.db
       .select({
         account: schema.accounts,
         ownerName: schema.users.displayName,
@@ -122,6 +124,7 @@ export class AccountsService {
         ),
       )
       .orderBy(schema.accounts.createdAt);
+    return results.map((r: any) => ({ ...r, account: this.decryptAccount(r.account) }));
   }
 
   /**
@@ -141,10 +144,14 @@ export class AccountsService {
 
     const rows = await this.db
       .update(schema.accounts)
-      .set({ ...input, updatedAt: new Date() })
+      .set({
+        ...input,
+        ...(input.lastFour ? { lastFour: encryptField(input.lastFour) } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.accounts.id, id))
       .returning();
-    return rows[0];
+    return this.decryptAccount(rows[0]);
   }
 
   /**
@@ -185,13 +192,22 @@ export class AccountsService {
    * "BofA Checking" + "1234" → "bofa-checking-1234"
    */
   generateSlug(nickname: string, lastFour: string): string {
+    const plainLastFour = decryptField(lastFour);
     return (
       nickname
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '') +
       '-' +
-      lastFour
+      plainLastFour
     );
+  }
+
+  private decryptAccount(account: any) {
+    if (!account) return account;
+    return {
+      ...account,
+      lastFour: decryptField(account.lastFour),
+    };
   }
 }

@@ -109,6 +109,14 @@ export class TransactionsController {
   ) {
     const csv = await this.exportService.exportCsv(user.sub, from, to);
     const filename = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    await this.auditService.log({
+      userId: user.sub,
+      action: 'csv_exported',
+      entityType: 'transaction',
+      newValue: { from, to, filename },
+    });
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
