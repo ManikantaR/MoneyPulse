@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import type { SignedPayload } from './sync.types';
+import { canonicalizeSyncPayload } from './sync-payload.util';
 
 @Injectable()
 export class SigningService {
@@ -16,7 +17,7 @@ export class SigningService {
     }
 
     const timestamp = new Date().toISOString();
-    const canonical = JSON.stringify(body);
+    const canonical = canonicalizeSyncPayload(body);
     const toSign = `${timestamp}\n${idempotencyKey}\n${canonical}`;
 
     const signature = createHmac('sha256', keySecret).update(toSign).digest('hex');

@@ -6,6 +6,7 @@ import { SanitizerV2Service } from './sanitizer-v2.service';
 import { AliasMapperService } from './alias-mapper.service';
 import { SigningService } from './signing.service';
 import { SYNC_MAX_ATTEMPTS } from './sync.constants';
+import { hashSyncPayload } from './sync-payload.util';
 
 interface OutboxRow {
   id: string;
@@ -49,7 +50,11 @@ export class SyncDeliveryService {
     const policy = this.sanitizer.sanitizePayload(row.payload_json);
 
     if (!policy.policyPassed) {
-      await this.markPolicyFailed(row, policy.policyReason);
+      await this.markPolicyFailed(
+        row,
+        policy.policyReason,
+        hashSyncPayload(row.payload_json),
+      );
       return;
     }
 
@@ -63,7 +68,14 @@ export class SyncDeliveryService {
 
     if (!this.endpoint) {
       this.logger.warn('FIREBASE_SYNC_ENDPOINT is not configured, scheduling retry');
-      await this.markRetry(row, 'NO_ENDPOINT', 'Missing FIREBASE_SYNC_ENDPOINT');
+      await this.markRetry(
+        row,
+        'NO_ENDPOINT',
+        'Missing FIREBASE_SYNC_ENDPOINT',
+        null,
+        null,
+        hashSyncPayload(projected),
+      );
       return;
     }
 
@@ -93,15 +105,39 @@ export class SyncDeliveryService {
           })
           .where(sql`${schema.outboxEvents.id} = ${row.id}`);
 
-        await this.insertAudit(row, true, 'POLICY_PASS', row.attempts + 1, res.status, null, null, signed.keyId);
+        await this.insertAudit(
+          row,
+          hashSyncPayload(projected),
+          true,
+          'POLICY_PASS',
+          row.attempts + 1,
+          res.status,
+          null,
+          null,
+          signed.keyId,
+        );
         return;
       }
 
-      await this.markRetry(row, `HTTP_${res.status}`, `Delivery failed with status ${res.status}`, signed.keyId, res.status);
+      await this.markRetry(
+        row,
+        `HTTP_${res.status}`,
+        `Delivery failed with status ${res.status}`,
+        signed.keyId,
+        res.status,
+        hashSyncPayload(projected),
+      );
       this.logger.warn(`Sync delivery failed for ${row.id} with status ${res.status} in ${Date.now() - startedAt}ms`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      await this.markRetry(row, 'NETWORK_ERROR', message, signed.keyId);
+      await this.markRetry(
+        row,
+        'NETWORK_ERROR',
+        message,
+        signed.keyId,
+        null,
+        hashSyncPayload(projected),
+      );
     }
   }
 
@@ -112,7 +148,11 @@ export class SyncDeliveryService {
     return base + jitter;
   }
 
-  private async markPolicyFailed(row: OutboxRow, reason: string): Promise<void> {
+  private async markPolicyFailed(
+    row: OutboxRow,
+    reason: string,
+    payloadHash: string,
+  ): Promise<void> {
     await this.db
       .update(schema.outboxEvents)
       .set({
@@ -123,7 +163,16 @@ export class SyncDeliveryService {
       })
       .where(sql`${schema.outboxEvents.id} = ${row.id}`);
 
-    await this.insertAudit(row, false, reason, row.attempts + 1, null, 'POLICY', 'Policy rejection');
+    await this.insertAudit(
+      row,
+      payloadHash,
+      false,
+      reason,
+      row.attempts + 1,
+      null,
+      'POLICY',
+      'Policy rejection',
+    );
   }
 
   private async markRetry(
@@ -132,6 +181,7 @@ export class SyncDeliveryService {
     message: string,
     signatureKeyId: string | null = null,
     httpStatus: number | null = null,
+    payloadHash: string | null = null,
   ): Promise<void> {
     const nextAttempts = row.attempts + 1;
     const deadLetter = nextAttempts >= SYNC_MAX_ATTEMPTS;
@@ -149,11 +199,22 @@ export class SyncDeliveryService {
       })
       .where(sql`${schema.outboxEvents.id} = ${row.id}`);
 
-    await this.insertAudit(row, false, 'POLICY_PASS', nextAttempts, httpStatus, code, message, signatureKeyId);
+    await this.insertAudit(
+      row,
+      payloadHash ?? hashSyncPayload(row.payload_json),
+      false,
+      'POLICY_PASS',
+      nextAttempts,
+      httpStatus,
+      code,
+      message,
+      signatureKeyId,
+    );
   }
 
   private async insertAudit(
     row: OutboxRow,
+    payloadHash: string,
     policyPassed: boolean,
     policyReason: string,
     attemptNo: number,
@@ -166,7 +227,7 @@ export class SyncDeliveryService {
       outboxEventId: row.id,
       userId: row.user_id,
       action: 'delivery_attempt',
-      payloadHash: 'deferred',
+      payloadHash,
       policyPassed,
       policyReason,
       signatureKid: signatureKeyId,
