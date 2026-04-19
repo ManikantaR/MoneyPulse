@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useTransactions, useUpdateTransaction, useBulkCategorize } from '@/lib/hooks/useTransactions';
+import { useTransactions, useUpdateTransaction, useBulkCategorize, useAutoCategorize } from '@/lib/hooks/useTransactions';
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { formatCents, formatDate } from '@/lib/format';
@@ -20,12 +20,14 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
+  const [autoCategResult, setAutoCategResult] = useState<string | null>(null);
 
   const { data, isLoading } = useTransactions({ ...query, search: search || undefined });
   const { data: accountsData } = useAccounts();
   const { data: categoriesData } = useCategories();
   const updateTxn = useUpdateTransaction();
   const bulkCategorize = useBulkCategorize();
+  const autoCategorize = useAutoCategorize();
 
   const accounts = accountsData?.data ?? [];
   const categories = categoriesData?.data ?? [];
@@ -103,14 +105,50 @@ export default function TransactionsPage() {
             {data?.total ?? 0} total transactions
           </p>
         </div>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors"
-        >
-          <Download className="h-4 w-4" />
-          Export CSV
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              setAutoCategResult(null);
+              autoCategorize.mutate(undefined, {
+                onSuccess: (res) => {
+                  const s = res.data;
+                  if (s.total === 0) {
+                    setAutoCategResult('All transactions are already categorized.');
+                  } else {
+                    setAutoCategResult(
+                      `Processed ${s.total}: ${s.categorizedByRule} by rules, ${s.categorizedByAi} by AI, ${s.uncategorized} still uncategorized.`,
+                    );
+                  }
+                  setTimeout(() => setAutoCategResult(null), 8000);
+                },
+                onError: () => {
+                  setAutoCategResult('Auto-categorize failed. Is Ollama running?');
+                  setTimeout(() => setAutoCategResult(null), 5000);
+                },
+              });
+            }}
+            disabled={autoCategorize.isPending}
+            className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
+            title="Run AI + rule engine on all uncategorized transactions"
+          >
+            {autoCategorize.isPending ? 'Categorizing...' : '✨ Auto-Categorize'}
+          </button>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--card)] px-5 py-2.5 text-sm font-semibold shadow-sm hover:bg-[var(--muted)] transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </button>
+        </div>
       </div>
+
+      {/* Auto-categorize result banner */}
+      {autoCategResult && (
+        <div className="rounded-xl border border-[var(--primary)]/30 bg-[var(--accent)] px-4 py-2.5 text-sm">
+          {autoCategResult}
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="grid grid-cols-1 gap-4 rounded-2xl bg-[var(--surface-container-low)] p-4 md:grid-cols-4">

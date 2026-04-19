@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
+  Wallet,
 } from 'lucide-react';
 
 /** Navigation item definition for the sidebar. */
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { href: '/upload', label: 'Upload', icon: Upload },
   { href: '/accounts', label: 'Accounts', icon: Landmark },
+  { href: '/budgets', label: 'Budgets', icon: Wallet },
   { href: '/categories', label: 'Categories', icon: Tags },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

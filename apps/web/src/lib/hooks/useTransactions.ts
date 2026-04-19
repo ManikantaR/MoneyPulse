@@ -82,3 +82,24 @@ export function useBulkCategorize() {
     },
   });
 }
+
+/** Auto-categorize all uncategorized transactions via AI + rule engine. */
+export function useAutoCategorize() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{
+        data: {
+          total: number;
+          categorizedByRule: number;
+          categorizedByAi: number;
+          suggested: number;
+          uncategorized: number;
+        };
+      }>('/transactions/auto-categorize', {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}

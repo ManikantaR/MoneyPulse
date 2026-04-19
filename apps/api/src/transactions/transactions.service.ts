@@ -333,4 +333,22 @@ export class TransactionsService {
 
     return { updatedCount: updated.length };
   }
+
+  /**
+   * Find all uncategorized transaction IDs for a user.
+   * Returns transactions where categoryId is null and not soft-deleted.
+   */
+  async findUncategorizedIds(userId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: schema.transactions.id })
+      .from(schema.transactions)
+      .where(
+        and(
+          eq(schema.transactions.userId, userId),
+          isNull(schema.transactions.categoryId),
+          isNull(schema.transactions.deletedAt),
+        ),
+      );
+    return rows.map((r: any) => r.id);
+  }
 }

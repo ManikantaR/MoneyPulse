@@ -15,6 +15,13 @@
       "when": 1774479115186,
       "tag": "0001_deep_silver_surfer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776560535475,
+      "tag": "0002_messy_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

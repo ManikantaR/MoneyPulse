@@ -339,9 +339,9 @@ PDF_PARSER_URL=http://localhost:5000
 
 ---
 
-## What's Currently Implemented (Phase 5)
+## What's Currently Implemented (Phase 6)
 
-The app is at **Phase 5** of 8 planned phases. Here's what you can test:
+The app is at **Phase 6** of 8 planned phases. Here's what you can test:
 
 | Feature                             | Status | Where                                                     |
 | ----------------------------------- | ------ | --------------------------------------------------------- |
@@ -362,8 +362,12 @@ The app is at **Phase 5** of 8 planned phases. Here's what you can test:
 | — Spending Trend line chart         | ✅     | Dashboard                                                 |
 | — Account Balances chart            | ✅     | Dashboard                                                 |
 | — Credit Utilization bars           | ✅     | Dashboard                                                 |
-| Budget alerts                       | ⏳     | Phase 6                                                   |
-| Savings goals                       | ⏳     | Phase 6                                                   |
+| Budget tracking                     | ✅     | `/budgets` — create/view/delete budgets per category      |
+| Budget alerts (80% + over)          | ✅     | Notifications — auto-checked daily + after imports        |
+| Savings goals                       | ✅     | `/budgets` — create goals, contribute, track progress     |
+| Notifications + bell                | ✅     | Top bar bell icon — unread badge, mark-all-read           |
+| Home Assistant webhooks             | ✅     | Settings — fires on budget alerts/reminders               |
+| Bank import reminders               | ✅     | Weekly/monthly auto-reminders for stale accounts          |
 | Investments tracking                | ⏳     | Phase 8                                                   |
 
 ---
@@ -565,9 +569,35 @@ Successfully processed files are moved to `.archived/` inside the slug folder.
 
 ## Start Fresh — Purge All Data
 
-Use these commands to reset the app to a clean state.
+The quickest way to reset everything is the **reset script**:
 
-### Stop containers first
+```bash
+# Interactive — asks for confirmation before deleting
+./scripts/reset.sh
+
+# Non-interactive — skips confirmation (CI / automation)
+./scripts/reset.sh --force
+
+# Reset database + Redis only (keep uploads and watch-folder)
+./scripts/reset.sh --db-only
+```
+
+The script does all of the following automatically:
+1. Stops all containers (`podman-compose down`)
+2. Wipes `~/moneypulse-data/{pg,redis,uploads,watch-folder,backup}/*`
+3. Recreates the data directories
+4. Starts infrastructure containers
+5. Waits for PostgreSQL to be ready
+6. Runs database migrations
+7. Seeds default categories and rules
+
+After the script finishes, start the apps (`pnpm dev`) and register a new admin account.
+
+### Manual reset (step-by-step)
+
+If you prefer doing it manually:
+
+#### Stop containers first
 
 ```bash
 podman-compose down

@@ -1,6 +1,6 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Logger, Inject } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DATABASE_CONNECTION } from '../db/db.module';
@@ -37,6 +37,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly pdfProxyService: PdfProxyService,
     private readonly auditService: AuditService,
     private readonly categorizationService: CategorizationService,
+    @InjectQueue('alerts') private readonly alertsQueue: Queue,
   ) {
     super();
   }
@@ -175,6 +176,12 @@ export class IngestionProcessor extends WorkerHost {
           `PDF upload ${uploadId} complete: ${dedupResult.newTransactions.length} imported, ` +
             `${dedupResult.skippedCount} skipped, ${pdfResult.errors.length} errors`,
         );
+
+        // Trigger budget alert check after successful import
+        if (dedupResult.newTransactions.length > 0) {
+          await this.alertsQueue.add('post-import-check', { userIds: [userId] });
+        }
+
         return;
       } else {
         throw new Error(`Unsupported file type: ${fileType}`);
@@ -282,6 +289,11 @@ export class IngestionProcessor extends WorkerHost {
         `Upload ${uploadId} complete: ${dedupResult.newTransactions.length} imported, ` +
           `${dedupResult.skippedCount} skipped, ${parseResult.errors.length} errors`,
       );
+
+      // Trigger budget alert check after successful import
+      if (dedupResult.newTransactions.length > 0) {
+        await this.alertsQueue.add('post-import-check', { userIds: [userId] });
+      }
     } catch (err: any) {
       this.logger.error(`Upload ${uploadId} failed: ${err.message}`, err.stack);
       await this.ingestionService.updateUploadStatus(uploadId, {

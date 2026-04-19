@@ -295,6 +295,7 @@ export const notifications = pgTable('notifications', {
   message: text('message').notNull(),
   isRead: boolean('is_read').notNull().default(false),
   webhookSent: boolean('webhook_sent').notNull().default(false),
+  metadata: jsonb('metadata'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

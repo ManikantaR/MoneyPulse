@@ -17,6 +17,7 @@ export type AuditAction =
   | 'transaction_edited'
   | 'transaction_split'
   | 'bulk_categorized'
+  | 'auto_categorize'
   | 'budget_exceeded'
   | 'file_imported';
 
