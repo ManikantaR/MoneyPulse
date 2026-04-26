@@ -4,19 +4,24 @@ import { Queue } from 'bullmq';
 import { AlertCronProcessor } from './alert-cron.processor';
 import { ReminderProcessor } from './reminder.processor';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SyncModule } from '../sync/sync.module';
+import { SyncDeliveryProcessor } from './sync-delivery.processor';
 
 @Module({
   imports: [
     BullModule.registerQueue({ name: 'alerts' }),
     BullModule.registerQueue({ name: 'reminders' }),
+    BullModule.registerQueue({ name: 'sync-delivery' }),
     NotificationsModule,
+    SyncModule,
   ],
-  providers: [AlertCronProcessor, ReminderProcessor],
+  providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
 export class JobsModule implements OnModuleInit {
   constructor(
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
     @InjectQueue('reminders') private readonly remindersQueue: Queue,
+    @InjectQueue('sync-delivery') private readonly syncQueue: Queue,
   ) {}
 
   async onModuleInit() {
@@ -39,6 +44,13 @@ export class JobsModule implements OnModuleInit {
       'monthly-investment',
       { pattern: '0 9 1 * *' },
       { name: 'investment-reminder' },
+    );
+
+    // Frequent sync delivery sweep for outbox events.
+    await this.syncQueue.upsertJobScheduler(
+      'sync-delivery-sweep',
+      { every: 30000 },
+      { name: 'deliver-pending-sync' },
     );
   }
 }

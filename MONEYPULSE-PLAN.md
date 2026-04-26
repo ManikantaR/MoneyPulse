@@ -353,6 +353,7 @@ moneypulse/
 | **Phase 5** | ✅ DONE        | `aa15b99` | Dashboard & visualization: 7 analytics SQL endpoints (user-scoped, camelCase transforms), 8 Recharts chart components, dashboard with KPI cards + PeriodSelector, transactions with bulk select + CSV export, upload with drag-drop + history, accounts + categories CRUD pages, AppShell layout (collapsible sidebar, TopBar with notifications, dark mode). 112 API tests + 11 web tests pass. Security fixes: 13 Dependabot vulnerabilities resolved via pnpm overrides |
 | **Phase 5.5** | ✅ DONE      | —         | Dashboard drill-down UX, ingestion hardening: clickable KPI cards, chart drill-down, URL-driven transaction filters, imports page with error detail modal + delete, CSV preamble stripping (BofA), relax_quotes, failed-upload re-upload bypass, DELETE /uploads/:id endpoint, transaction-level dedup (hash + externalId), CC payment category + seed rules, account column with lastFour, sign convention fix |
 | **Phase 6** | ✅ DONE        | —         | Budgets & alerts: per-category monthly/weekly budgets, savings goals, HA webhook notifications, email digests, 80%/100% thresholds. Security hardening: AES-256-GCM column encryption (last_four, original_description, webhook URLs, AI logs), helmet + CSP headers, JWT HS256 pinned, Redis auth, localhost-bound services, admin-only AI logs, Swagger gated, cookie httpOnly, CSV formula injection fix, audit logging for exports. 67 categories, AI observability dashboard. 147 tests pass |
+| **Phase 6.7** | ⬜ Planned    | —         | Cloud Sync Domain (local -> Firebase projection): outbox events, sanitizer v2, alias mapper, signing service, delivery worker with retries + dead-letter queue, policy tests (no banned fields / no reverse-sync routes), sync audit trail with payload hash + policy decision |
 | **Phase 7** | ⬜ Not started | —         | MCP server                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **Phase 8** | ⬜ Not started | —         | Investment account tracking                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **Phase 9** | 🔮 Future      | —         | Microsoft Agent Framework                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -758,6 +759,29 @@ All queries filter: `WHERE is_split_parent = false AND deleted_at IS NULL`
 - `apps/api/src/notifications/` — webhook + email services
 - `apps/api/src/jobs/budget-check.job.ts` — cron processor
 - `apps/web/src/app/budgets/page.tsx` — budget management page
+
+---
+
+## Phase 6.7: Cloud Sync Domain (Local -> Firebase)
+
+**Dependencies: Phase 6**
+
+| #   | Step                        | Details                                                                                                                                                                                                                                         |
+| --- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6.7.1 | Outbox persistence        | Add `outbox_events` table. Domain writes append projection events in the same transaction as local changes. Include payload hash, idempotency key, attempts, status, and policy fields.                                                   |
+| 6.7.2 | Sanitizer v2              | Strict outbound policy engine that enforces allowlist schema and denylist patterns. Reject payloads with banned fields (PII/account identifiers/raw AI text) and persist policy reason codes.                                             |
+| 6.7.3 | Alias mapper              | Deterministic pseudonymous IDs for users, accounts, transactions, categories, and budgets. Local UUIDs never leave the local boundary.                                                                                                      |
+| 6.7.4 | Signing service           | HMAC signature + key id + timestamp + idempotency key headers for each outbound event to Firebase ingestion endpoint.                                                                                                                         |
+| 6.7.5 | Delivery worker + DLQ     | BullMQ processor pulls pending events, retries with exponential backoff + jitter, marks dead-letter after max attempts, and supports safe replay tooling.                                                                                   |
+| 6.7.6 | Policy and boundary tests | Add tests to enforce no banned fields in outbound payloads and verify no reverse sync routes are exposed by local API.                                                                                                                        |
+| 6.7.7 | Sync audit trail          | Add `sync_audit_logs` entries for every attempt: payload hash, policy pass/fail, reason, signature key id, HTTP status, and error details.                                                                                                  |
+
+### Key Files
+
+- `PHASE9-SYNC-SPEC.md` — implementation spec for sync domain
+- `apps/api/src/sync/` — sanitizer v2, alias mapper, signing, policies
+- `apps/api/src/jobs/sync-delivery.processor.ts` — outbox delivery processor
+- `apps/api/test/sync-no-reverse-route.e2e-spec.ts` — boundary test
 
 ---
 

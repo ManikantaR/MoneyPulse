@@ -1,0 +1,26 @@
+{
+  "folders": [
+    {
+      "name": "MoneyPulse Local",
+      "path": "."
+    },
+    {
+      "name": "MoneyPulse Web",
+      "path": "../moneypulse-web"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.turbo": true,
+      "**/.next": true,
+      "**/node_modules": true,
+      "**/functions/lib": true
+    },
+    "search.exclude": {
+      "**/.turbo": true,
+      "**/.next": true,
+      "**/node_modules": true,
+      "**/functions/lib": true
+    }
+  }
+}

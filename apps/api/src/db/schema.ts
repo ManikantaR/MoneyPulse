@@ -391,6 +391,77 @@ export const aiPromptLogs = pgTable(
   ],
 );
 
+// ── Sync Outbox (Phase 6.7) ───────────────────────────────
+
+export const outboxEvents = pgTable(
+  'outbox_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventType: varchar('event_type', { length: 80 }).notNull(),
+    aggregateType: varchar('aggregate_type', { length: 80 }).notNull(),
+    aggregateId: uuid('aggregate_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    householdId: uuid('household_id').references(() => households.id),
+    payloadJson: jsonb('payload_json').notNull(),
+    payloadHash: varchar('payload_hash', { length: 64 }).notNull(),
+    schemaVersion: integer('schema_version').notNull().default(1),
+    idempotencyKey: varchar('idempotency_key', { length: 128 })
+      .notNull()
+      .unique(),
+    status: varchar('status', { length: 24 }).notNull().default('pending'),
+    policyPassed: boolean('policy_passed'),
+    policyReason: text('policy_reason'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastErrorCode: varchar('last_error_code', { length: 64 }),
+    lastErrorMessage: text('last_error_message'),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    deadLetteredAt: timestamp('dead_lettered_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_outbox_status_next_attempt').on(table.status, table.nextAttemptAt),
+    index('idx_outbox_user_created').on(table.userId, table.createdAt),
+    index('idx_outbox_aggregate').on(table.aggregateType, table.aggregateId),
+  ],
+);
+
+export const syncAuditLogs = pgTable(
+  'sync_audit_logs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    outboxEventId: uuid('outbox_event_id')
+      .notNull()
+      .references(() => outboxEvents.id),
+    userId: uuid('user_id').references(() => users.id),
+    action: varchar('action', { length: 40 }).notNull(),
+    payloadHash: varchar('payload_hash', { length: 64 }).notNull(),
+    policyPassed: boolean('policy_passed').notNull(),
+    policyReason: text('policy_reason'),
+    signatureKid: varchar('signature_kid', { length: 64 }),
+    attemptNo: integer('attempt_no').notNull(),
+    httpStatus: integer('http_status'),
+    errorCode: varchar('error_code', { length: 64 }),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_sync_audit_outbox').on(table.outboxEventId),
+    index('idx_sync_audit_created').on(table.createdAt),
+  ],
+);
+
 // ── Relations ───────────────────────────────────────────────
 
 export const householdRelations = relations(households, ({ many }) => ({
