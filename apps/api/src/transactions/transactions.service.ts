@@ -1,10 +1,13 @@
 import {
   Injectable,
   Inject,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
+import { OutboxService } from '../sync/outbox.service';
+import { AliasMapperService } from '../sync/alias-mapper.service';
 import * as schema from '../db/schema';
 import {
   eq,
@@ -29,7 +32,13 @@ import { encryptField, decryptField } from '../common/crypto';
 
 @Injectable()
 export class TransactionsService {
-  constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
+  private readonly logger = new Logger(TransactionsService.name);
+
+  constructor(
+    @Inject(DATABASE_CONNECTION) private readonly db: any,
+    private readonly outbox: OutboxService,
+    private readonly aliasMapper: AliasMapperService,
+  ) {}
 
   /**
    * Manual transaction entry (cash purchases, etc.)
@@ -76,7 +85,10 @@ export class TransactionsService {
         tags: input.tags ?? [],
       })
       .returning();
-    return this.decryptTxn(rows[0]);
+
+    const txn = this.decryptTxn(rows[0]);
+    await this.enqueueTransactionEvent('transaction.projected.v1', txn);
+    return txn;
   }
 
   /**
@@ -250,7 +262,9 @@ export class TransactionsService {
       .set({ ...input, updatedAt: new Date() })
       .where(eq(schema.transactions.id, id))
       .returning();
-    return this.decryptTxn(rows[0]);
+    const updated = this.decryptTxn(rows[0]);
+    await this.enqueueTransactionEvent('transaction.projected.v1', updated);
+    return updated;
   }
 
   /**
@@ -377,5 +391,39 @@ export class TransactionsService {
       ...txn,
       originalDescription: decryptField(txn.originalDescription),
     };
+  }
+
+  /**
+   * Enqueue a safe, PII-free projection event for the sync outbox.
+   * Aliasing errors are caught and logged so the domain operation succeeds.
+   */
+  private async enqueueTransactionEvent(
+    eventType: string,
+    txn: any,
+  ): Promise<void> {
+    try {
+      const payload: Record<string, unknown> = {
+        transactionAliasId: this.aliasMapper.toAliasId('transaction', txn.id),
+        accountAliasId: this.aliasMapper.toAliasId('account', txn.accountId),
+        amountCents: txn.amountCents,
+        date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
+        categoryId: txn.categoryId ?? null,
+        isCredit: txn.isCredit,
+        isManual: txn.isManual ?? false,
+        tags: txn.tags ?? [],
+      };
+
+      await this.outbox.enqueue({
+        eventType,
+        aggregateType: 'transaction',
+        aggregateId: txn.id,
+        userId: txn.userId,
+        payload,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Skipping outbox enqueue for transaction ${txn.id}: ${(err as Error).message}`,
+      );
+    }
   }
 }
