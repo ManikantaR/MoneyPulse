@@ -1,0 +1,25 @@
+name: Validate AI Customizations
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'feature/**', 'copilot/**']
+
+jobs:
+  validate-ai-customizations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate customization structure
+        run: node scripts/validate-ai-customizations.mjs
+
+      - name: Lint customization markdown
+        run: npx markdownlint-cli2 "AGENTS.md" ".github/**/*.md" "docs/agentic/**/*.md"

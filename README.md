@@ -453,6 +453,104 @@ pnpm build            # Build all packages
 pnpm lint             # Lint all packages
 ```
 
+---
+
+## AI-Assisted Development
+
+MoneyPulse is configured for GitHub Copilot autonomous development using a full agent, prompt, and skill layer.
+
+→ Full guide: [docs/agentic/README.md](docs/agentic/README.md)  
+→ Rule set and decision-tree checkpoints: [docs/agentic/rule-set.md](docs/agentic/rule-set.md)  
+→ Agent roster: [AGENTS.md](AGENTS.md)
+
+### How to Start
+
+**Always start from the lead agent.** Open GitHub Copilot Chat in VS Code, select the `mp-lead` agent from the agent picker, then describe what you want to work on. The lead agent classifies the work and routes it to the right specialist.
+
+### Step-by-Step Workflow for Any Phase
+
+```
+1. Open VS Code → Copilot Chat → select agent: mp-lead
+2. State: "I want to work on Phase 7 MCP server — [your goal]"
+3. Lead routes to mp-planner (plan) or mp-spec-generator (spec expansion) first
+4. After plan/spec: lead routes to mp-implementor for coding
+5. After coding: mp-tester validates, mp-reviewer checks for regressions
+6. Before handoff: rubber-duck review via mp-reviewer or /mp-rubber-duck prompt
+```
+
+### Phase-by-Phase Quick Commands
+
+Paste these exactly into Copilot Chat after selecting the `mp-lead` agent (or the named specialist directly):
+
+#### Phase 7 — MCP Server for AI Agents
+
+```
+/mp-phase-orchestrate phase=PHASE7 task=Implement MCP server query tools constraints=read-only SQL via existing Drizzle schema
+```
+
+```
+/mp-expand-phase-spec phase=PHASE7 feature=MCP query tools current-state=scaffold planned, no implementation yet
+```
+
+```
+/mp-implement-phase-slice phase=PHASE7 slice=get_transactions MCP tool validation=pnpm --filter=@moneypulse/api test
+```
+
+```
+/mp-review-phase-work target=PHASE7 MCP implementation focus=security
+```
+
+#### Phase 8 — Investment Account Tracking
+
+```
+/mp-phase-orchestrate phase=PHASE8 task=Investment account schema and snapshot history constraints=extend existing Drizzle schema without breaking Phase 1-6 migrations
+```
+
+```
+/mp-expand-phase-spec phase=PHASE8 feature=investment account ingestion current-state=planned only
+```
+
+```
+/mp-implement-phase-slice phase=PHASE8 slice=investment_accounts Drizzle schema and migration validation=DATABASE_URL=... pnpm db:generate
+```
+
+#### For Any Phase — Rubber-Duck Before Handoff
+
+```
+/mp-rubber-duck work=<plan or change summary> summary=<one-line problem statement>
+```
+
+#### Stress-Testing a Spec Before Implementation
+
+```
+/mp-review-phase-work target=PHASE7-SPEC.md focus=all
+```
+
+### Skills Available as Slash Commands
+
+| Slash command | When to use |
+|---|---|
+| `/grill-me` | When a design or spec is vague — forces branch-by-branch resolution |
+| `/rubber-duck-review` | Before any handoff or completion |
+| `/nest-drizzle-feature` | When building a new NestJS module + Drizzle schema slice |
+| `/next-finance-ui-slice` | When adding or updating a finance UI screen |
+| `/pdf-parser-debug` | When debugging or extending the Python PDF parser |
+
+### Pre-commit Hooks
+
+On every commit, the following run automatically:
+
+```bash
+node scripts/validate-ai-customizations.mjs   # checks agent/skill/prompt structure
+npx markdownlint-cli2 ...                      # lints AGENTS.md + .github docs
+```
+
+To re-run manually:
+
+```bash
+node scripts/validate-ai-customizations.mjs
+```
+
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
