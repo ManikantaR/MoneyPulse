@@ -27,26 +27,39 @@ export class OutboxService {
    */
   async enqueue(input: OutboxEnqueueInput): Promise<void> {
     try {
-      const idempotencyKey = `${input.eventType}:${input.aggregateId}:${randomUUID()}`;
-      const payloadHash = hashSyncPayload(input.payload);
-
-      await this.db.insert(schema.outboxEvents).values({
-        eventType: input.eventType,
-        aggregateType: input.aggregateType,
-        aggregateId: input.aggregateId,
-        userId: input.userId,
-        householdId: input.householdId ?? null,
-        payloadJson: input.payload,
-        payloadHash,
-        schemaVersion: input.schemaVersion ?? 1,
-        idempotencyKey,
-        status: 'pending',
-        nextAttemptAt: new Date(),
-      });
+      await this.insertRow(this.db, input);
     } catch (err) {
       this.logger.error(
         `Failed to enqueue outbox event ${input.eventType} for ${input.aggregateId}: ${(err as Error).message}`,
       );
     }
+  }
+
+  /**
+   * Enqueue a sync event within an existing Drizzle transaction context.
+   * Propagates errors so the outer transaction can roll back atomically.
+   * Use this when the domain write and outbox insert must succeed or fail together.
+   */
+  async enqueueInTx(tx: any, input: OutboxEnqueueInput): Promise<void> {
+    await this.insertRow(tx, input);
+  }
+
+  private async insertRow(executor: any, input: OutboxEnqueueInput): Promise<void> {
+    const idempotencyKey = `${input.eventType}:${input.aggregateId}:${randomUUID()}`;
+    const payloadHash = hashSyncPayload(input.payload);
+
+    await executor.insert(schema.outboxEvents).values({
+      eventType: input.eventType,
+      aggregateType: input.aggregateType,
+      aggregateId: input.aggregateId,
+      userId: input.userId,
+      householdId: input.householdId ?? null,
+      payloadJson: input.payload,
+      payloadHash,
+      schemaVersion: input.schemaVersion ?? 1,
+      idempotencyKey,
+      status: 'pending',
+      nextAttemptAt: new Date(),
+    });
   }
 }

@@ -58,13 +58,32 @@ export class SyncDeliveryService {
       return;
     }
 
-    const userAlias = this.aliasMapper.toAliasId('user', row.user_id);
-    const projected = {
-      ...policy.sanitizedPayload,
-      userAliasId: userAlias,
-    };
+    // Alias mapping and signing may throw if secrets are missing or invalid.
+    // These are treated as transient failures so the event is retried/dead-lettered
+    // rather than left stuck without a status transition.
+    let projected: Record<string, unknown>;
+    let signed: import('./sync.types').SignedPayload;
 
-    const signed = this.signing.signPayload(projected, row.idempotency_key);
+    try {
+      const userAlias = this.aliasMapper.toAliasId('user', row.user_id);
+      projected = {
+        ...policy.sanitizedPayload,
+        userAliasId: userAlias,
+      };
+      signed = this.signing.signPayload(projected, row.idempotency_key);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      await this.markRetry(
+        row,
+        'SIGNING_ERROR',
+        message,
+        null,
+        null,
+        hashSyncPayload(row.payload_json),
+      );
+      this.logger.warn(`Sync signing/alias failed for ${row.id}: ${message}`);
+      return;
+    }
 
     if (!this.endpoint) {
       this.logger.warn('FIREBASE_SYNC_ENDPOINT is not configured, scheduling retry');
@@ -96,11 +115,15 @@ export class SyncDeliveryService {
       });
 
       if (res.ok) {
+        const nextAttempts = row.attempts + 1;
         await this.db
           .update(schema.outboxEvents)
           .set({
             status: 'delivered',
+            attempts: nextAttempts,
             deliveredAt: new Date(),
+            lastErrorCode: null,
+            lastErrorMessage: null,
             updatedAt: new Date(),
           })
           .where(sql`${schema.outboxEvents.id} = ${row.id}`);
@@ -110,7 +133,7 @@ export class SyncDeliveryService {
           hashSyncPayload(projected),
           true,
           'POLICY_PASS',
-          row.attempts + 1,
+          nextAttempts,
           res.status,
           null,
           null,

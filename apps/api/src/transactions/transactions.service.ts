@@ -68,26 +68,32 @@ export class TransactionsService {
       )
       .digest('hex');
 
-    const rows = await this.db
-      .insert(schema.transactions)
-      .values({
-        accountId: input.accountId,
-        userId,
-        txnHash,
-        date: new Date(input.date),
-        description: input.description,
-        originalDescription: encryptField(input.description),
-        amountCents: input.amountCents,
-        categoryId: input.categoryId ?? null,
-        merchantName: input.merchantName ?? null,
-        isCredit: input.isCredit,
-        isManual: true,
-        tags: input.tags ?? [],
-      })
-      .returning();
+    // Domain write and outbox insert are wrapped in a single DB transaction so
+    // a committed transaction always has a corresponding outbox event (transactional outbox pattern).
+    const txn = await this.db.transaction(async (tx: any) => {
+      const rows = await tx
+        .insert(schema.transactions)
+        .values({
+          accountId: input.accountId,
+          userId,
+          txnHash,
+          date: new Date(input.date),
+          description: input.description,
+          originalDescription: encryptField(input.description),
+          amountCents: input.amountCents,
+          categoryId: input.categoryId ?? null,
+          merchantName: input.merchantName ?? null,
+          isCredit: input.isCredit,
+          isManual: true,
+          tags: input.tags ?? [],
+        })
+        .returning();
 
-    const txn = this.decryptTxn(rows[0]);
-    await this.enqueueTransactionEvent('transaction.projected.v1', txn);
+      const inserted = this.decryptTxn(rows[0]);
+      await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', inserted);
+      return inserted;
+    });
+
     return txn;
   }
 
@@ -257,13 +263,18 @@ export class TransactionsService {
     if (!txn || txn.userId !== userId)
       throw new NotFoundException('Transaction not found');
 
-    const rows = await this.db
-      .update(schema.transactions)
-      .set({ ...input, updatedAt: new Date() })
-      .where(eq(schema.transactions.id, id))
-      .returning();
-    const updated = this.decryptTxn(rows[0]);
-    await this.enqueueTransactionEvent('transaction.projected.v1', updated);
+    // Wrap the domain update and outbox insert in a single DB transaction.
+    const updated = await this.db.transaction(async (tx: any) => {
+      const rows = await tx
+        .update(schema.transactions)
+        .set({ ...input, updatedAt: new Date() })
+        .where(eq(schema.transactions.id, id))
+        .returning();
+      const updatedRow = this.decryptTxn(rows[0]);
+      await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', updatedRow);
+      return updatedRow;
+    });
+
     return updated;
   }
 
@@ -394,8 +405,40 @@ export class TransactionsService {
   }
 
   /**
-   * Enqueue a safe, PII-free projection event for the sync outbox.
-   * Aliasing errors are caught and logged so the domain operation succeeds.
+   * Enqueue a safe, PII-free projection event within an existing DB transaction.
+   * Alias mapping errors propagate so the outer transaction can roll back atomically.
+   * If ALIAS_SECRET is missing, the domain write is rolled back and the caller receives an error.
+   */
+  private async enqueueTransactionEventInTx(
+    tx: any,
+    eventType: string,
+    txn: any,
+  ): Promise<void> {
+    const payload: Record<string, unknown> = {
+      transactionAliasId: this.aliasMapper.toAliasId('transaction', txn.id),
+      accountAliasId: this.aliasMapper.toAliasId('account', txn.accountId),
+      amountCents: txn.amountCents,
+      date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
+      categoryId: txn.categoryId ?? null,
+      isCredit: txn.isCredit,
+      isManual: txn.isManual ?? false,
+      tags: txn.tags ?? [],
+    };
+
+    await this.outbox.enqueueInTx(tx, {
+      eventType,
+      aggregateType: 'transaction',
+      aggregateId: txn.id,
+      userId: txn.userId,
+      payload,
+    });
+  }
+
+  /**
+   * Enqueue a safe, PII-free projection event for the sync outbox (best-effort).
+   * Aliasing and outbox insert errors are caught and logged so the domain operation
+   * succeeds even when sync secrets are missing or the outbox insert fails.
+   * Prefer enqueueTransactionEventInTx when atomicity with the domain write is required.
    */
   private async enqueueTransactionEvent(
     eventType: string,

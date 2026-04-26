@@ -23,7 +23,7 @@
     "prepare": "simple-git-hooks"
   },
   "simple-git-hooks": {
-    "pre-commit": "node scripts/validate-ai-customizations.mjs && npx markdownlint-cli2 --no-globs AGENTS.md '.github/**/*.md' 'docs/agentic/**/*.md'"
+    "pre-commit": "node scripts/validate-ai-customizations.mjs && npx markdownlint-cli2 --no-globs AGENTS.md \".github/**/*.md\" \"docs/agentic/**/*.md\""
   },
   "devDependencies": {
     "simple-git-hooks": "^2.13.1",
