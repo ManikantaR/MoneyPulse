@@ -36,7 +36,9 @@ async function ensureRequiredFiles() {
 async function ensureDirectoryHasMatches(dir, suffix) {
   const fullDir = path.join(root, dir);
 
-  if (!(await exists(dir))) {
+  try {
+    await stat(fullDir);
+  } catch {
     throw new Error(`Required directory '${dir}' does not exist. Create it and add at least one ${suffix} file.`);
   }
 
