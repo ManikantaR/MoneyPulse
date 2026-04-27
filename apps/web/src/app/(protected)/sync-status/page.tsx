@@ -61,15 +61,15 @@ function StatCard({
 }
 
 function AuditRow({ log }: { log: SyncAuditLog }) {
-  const time = new Date(log.created_at).toLocaleString();
-  const shortId = log.outbox_event_id.slice(0, 8) + '…';
+  const time = new Date(log.createdAt).toLocaleString();
+  const shortId = log.outboxEventId.slice(0, 8) + '…';
 
   return (
     <tr className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--muted)]/40 transition-colors">
       <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)] whitespace-nowrap">{time}</td>
       <td className="px-4 py-2.5 font-mono text-xs">{shortId}</td>
       <td className="px-4 py-2.5">
-        {log.policy_passed ? (
+        {log.policyPassed ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
             <CheckCircle2 className="h-3 w-3" /> Pass
           </span>
@@ -79,16 +79,16 @@ function AuditRow({ log }: { log: SyncAuditLog }) {
           </span>
         )}
       </td>
-      <td className="px-4 py-2.5 text-center text-sm">{log.attempt_no ?? '—'}</td>
+      <td className="px-4 py-2.5 text-center text-sm">{log.attemptNo ?? '—'}</td>
       <td className="px-4 py-2.5 text-center text-sm">
-        {log.http_status ? (
-          <span className={log.http_status === 200 ? 'text-green-500' : 'text-red-500'}>
-            {log.http_status}
+        {log.httpStatus ? (
+          <span className={log.httpStatus === 200 ? 'text-green-500' : 'text-red-500'}>
+            {log.httpStatus}
           </span>
         ) : '—'}
       </td>
       <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">
-        {log.error_code ?? '—'}
+        {log.errorCode ?? '—'}
       </td>
     </tr>
   );

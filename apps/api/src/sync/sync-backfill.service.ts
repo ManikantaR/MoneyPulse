@@ -3,7 +3,7 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import { OutboxService } from './outbox.service';
 import { AliasMapperService } from './alias-mapper.service';
 import * as schema from '../db/schema';
-import { eq, and, notInArray, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 export interface BackfillResult {
   enqueued: number;
@@ -23,9 +23,6 @@ export interface BackfillResult {
 @Injectable()
 export class SyncBackfillService {
   private readonly logger = new Logger(SyncBackfillService.name);
-
-  /** Statuses that mean the transaction was (or is being) processed — skip these */
-  private static readonly SKIP_STATUSES = ['pending', 'retry', 'delivered'];
 
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,

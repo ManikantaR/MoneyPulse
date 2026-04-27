@@ -422,7 +422,8 @@ export class TransactionsService {
       categoryId: txn.categoryId ?? null,
       isCredit: txn.isCredit,
       isManual: txn.isManual ?? false,
-      tags: txn.tags ?? [],
+      // tags intentionally excluded — user-entered text (e.g. "Chase", "Whole Foods")
+      // is not covered by PII regex patterns and poses an institution-name leak risk.
     };
 
     await this.outbox.enqueueInTx(tx, {

@@ -5,15 +5,13 @@ import { api } from '../api';
 
 export interface SyncAuditLog {
   id: number;
-  outbox_event_id: string;
+  outboxEventId: string;
   action: string;
-  policy_passed: boolean;
-  policy_reason: string | null;
-  attempt_no: number | null;
-  http_status: number | null;
-  error_code: string | null;
-  error_message: string | null;
-  created_at: string;
+  policyPassed: boolean;
+  attemptNo: number | null;
+  httpStatus: number | null;
+  errorCode: string | null;
+  createdAt: string;
 }
 
 export interface SyncStats {
