@@ -40,11 +40,16 @@ export function useSyncStats() {
   });
 }
 
+export interface BackfillParams {
+  userId: string;
+  batchSize?: number;
+}
+
 export function useSyncBackfill() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) =>
-      api.post<BackfillResult>('/sync/backfill', { userId }),
+    mutationFn: ({ userId, batchSize }: BackfillParams) =>
+      api.post<BackfillResult>('/sync/backfill', { userId, batchSize }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync', 'stats'] });
     },

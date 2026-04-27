@@ -94,11 +94,15 @@ function AuditRow({ log }: { log: SyncAuditLog }) {
   );
 }
 
+const BATCH_OPTIONS = [10, 25, 50, 100, 200] as const;
+type BatchOption = typeof BATCH_OPTIONS[number];
+
 export default function SyncStatusPage() {
   const { user } = useAuth();
   const { data: stats, isLoading, refetch, isRefetching } = useSyncStats();
   const backfill = useSyncBackfill();
   const [backfillResult, setBackfillResult] = useState<{ enqueued: number; skipped: number; durationMs: number } | null>(null);
+  const [batchSize, setBatchSize] = useState<BatchOption>(50);
 
   const loading = isLoading;
 
@@ -109,7 +113,7 @@ export default function SyncStatusPage() {
   async function handleBackfill() {
     if (!user?.id) return;
     setBackfillResult(null);
-    const result = await backfill.mutateAsync(user.id);
+    const result = await backfill.mutateAsync({ userId: user.id, batchSize });
     setBackfillResult(result);
   }
 
@@ -198,6 +202,23 @@ export default function SyncStatusPage() {
             Backfill failed. Check that the API is running and your account has admin access.
           </div>
         )}
+
+        <div className="flex items-center gap-3">
+          <label htmlFor="batch-size" className="text-sm text-[var(--muted-foreground)] whitespace-nowrap">
+            Batch size
+          </label>
+          <select
+            id="batch-size"
+            value={batchSize}
+            onChange={(e) => setBatchSize(Number(e.target.value) as BatchOption)}
+            disabled={backfill.isPending}
+            className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-sm disabled:opacity-50"
+          >
+            {BATCH_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n} transactions</option>
+            ))}
+          </select>
+        </div>
 
         <button
           onClick={handleBackfill}

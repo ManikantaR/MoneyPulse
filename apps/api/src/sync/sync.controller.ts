@@ -19,6 +19,7 @@ import { sql, desc } from 'drizzle-orm';
 
 export class BackfillBodyDto {
   userId!: string;
+  batchSize?: number;
 }
 
 @ApiTags('Sync')
@@ -106,8 +107,9 @@ export class SyncController {
       throw new BadRequestException('userId is required');
     }
 
+    const batchSize = body.batchSize && body.batchSize > 0 ? Math.min(body.batchSize, 500) : 50;
     const start = Date.now();
-    const result = await this.backfillService.backfillPending(body.userId);
+    const result = await this.backfillService.backfillPending(body.userId, batchSize);
     const durationMs = Date.now() - start;
 
     this.logger.log(
