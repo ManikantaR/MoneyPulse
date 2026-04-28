@@ -156,14 +156,15 @@ export class SyncController {
   async triggerBackfill(@Body(new ZodValidationPipe(backfillSchema)) body: BackfillBody) {
     const batchSize = body.batchSize ?? 50;
     const start = Date.now();
-    const [txResult, catResult] = await Promise.all([
+    const [txResult, catResult, budgetResult] = await Promise.all([
       this.backfillService.backfillPending(body.userId, batchSize),
       this.backfillService.backfillCategories(body.userId),
+      this.backfillService.backfillBudgets(body.userId),
     ]);
     const durationMs = Date.now() - start;
 
     this.logger.log(
-      `Backfill for user=${body.userId}: transactions enqueued=${txResult.enqueued}, skipped=${txResult.skipped}, categories enqueued=${catResult.enqueued}, skipped=${catResult.skipped}, durationMs=${durationMs}`,
+      `Backfill for user=${body.userId}: tx enqueued=${txResult.enqueued}, skipped=${txResult.skipped}; categories enqueued=${catResult.enqueued}, skipped=${catResult.skipped}; budgets enqueued=${budgetResult.enqueued}, skipped=${budgetResult.skipped}; durationMs=${durationMs}`,
     );
 
     return {
@@ -171,6 +172,8 @@ export class SyncController {
       skipped: txResult.skipped,
       categoriesEnqueued: catResult.enqueued,
       categoriesSkipped: catResult.skipped,
+      budgetsEnqueued: budgetResult.enqueued,
+      budgetsSkipped: budgetResult.skipped,
       durationMs,
     };
   }

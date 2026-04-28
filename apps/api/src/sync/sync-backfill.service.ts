@@ -37,6 +37,56 @@ export class SyncBackfillService {
    * @param batchSize Number of transactions to process per DB query (default 100).
    * @returns         Counts of enqueued and skipped transactions.
    */
+  async backfillBudgets(userId: string): Promise<{ enqueued: number; skipped: number }> {
+    const budgets = await this.db
+      .select()
+      .from(schema.budgets)
+      .where(sql`${schema.budgets.deletedAt} IS NULL AND ${schema.budgets.userId} = ${userId}`);
+
+    let enqueued = 0;
+    let skipped = 0;
+
+    for (const budget of budgets) {
+      const existing = await this.db
+        .select({ id: schema.outboxEvents.id })
+        .from(schema.outboxEvents)
+        .where(
+          and(
+            eq(schema.outboxEvents.aggregateId, budget.id),
+            sql`${schema.outboxEvents.eventType} = 'budget.projected.v1'`,
+            sql`${schema.outboxEvents.status} NOT IN ('policy_failed', 'dead_letter')`,
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        await this.outbox.enqueue({
+          eventType: 'budget.projected.v1',
+          aggregateType: 'budget',
+          aggregateId: budget.id,
+          userId,
+          payload: {
+            budgetId: budget.id,
+            categoryId: budget.categoryId,
+            amountCents: budget.amountCents,
+            period: budget.period,
+          },
+        });
+        enqueued++;
+      } catch (err) {
+        this.logger.warn(`Backfill: failed to enqueue budget ${budget.id}: ${(err as Error).message}`);
+      }
+    }
+
+    this.logger.log(`Budget backfill for user=${userId}: enqueued=${enqueued}, skipped=${skipped}`);
+    return { enqueued, skipped };
+  }
+
   async backfillCategories(userId: string): Promise<{ enqueued: number; skipped: number }> {
     const categories = await this.db
       .select()

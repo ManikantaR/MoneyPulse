@@ -80,6 +80,7 @@ export class SyncDeliveryService {
       }
       projected = {
         ...policy.sanitizedPayload,
+        eventType: row.event_type,
         userAliasId: firebaseUid,
       };
       signed = this.signing.signPayload(projected, row.idempotency_key);
