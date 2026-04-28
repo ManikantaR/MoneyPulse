@@ -6,27 +6,31 @@ import {
   UseGuards,
   Inject,
   Logger,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { z } from 'zod/v4';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import { SyncBackfillService } from './sync-backfill.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { AuthTokenPayload } from '@moneypulse/shared';
 import * as schema from '../db/schema';
 import { sql, eq } from 'drizzle-orm';
 
-export class BackfillBodyDto {
-  userId!: string;
-  batchSize?: number;
-}
+const backfillSchema = z.object({
+  userId: z.string().uuid(),
+  batchSize: z.number().int().positive().max(500).optional(),
+});
 
-export class LinkFirebaseDto {
-  firebaseUid!: string;
-}
+const linkFirebaseSchema = z.object({
+  firebaseUid: z.string().min(1),
+});
+
+type BackfillBody = z.infer<typeof backfillSchema>;
+type LinkFirebaseBody = z.infer<typeof linkFirebaseSchema>;
 
 @ApiTags('Sync')
 @Controller('sync')
@@ -46,6 +50,7 @@ export class SyncController {
    * Returns whether the current user has linked their Firebase account.
    */
   @Get('link-status')
+  @Roles('admin', 'member')
   @ApiOperation({ summary: 'Check Firebase account link status for current user' })
   async getLinkStatus(@CurrentUser() user: AuthTokenPayload) {
     const rows = await this.db
@@ -65,21 +70,19 @@ export class SyncController {
    * as userAliasId in projected payloads.
    */
   @Post('link-firebase')
+  @Roles('admin', 'member')
   @ApiOperation({ summary: 'Link Firebase account to local user' })
   async linkFirebase(
     @CurrentUser() user: AuthTokenPayload,
-    @Body() body: LinkFirebaseDto,
+    @Body(new ZodValidationPipe(linkFirebaseSchema)) body: LinkFirebaseBody,
   ) {
-    if (!body?.firebaseUid?.trim()) {
-      throw new BadRequestException('firebaseUid is required');
-    }
     await this.db
       .update(schema.users)
-      .set({ firebaseUid: body.firebaseUid.trim() })
+      .set({ firebaseUid: body.firebaseUid })
       .where(eq(schema.users.id, user.sub));
 
     this.logger.log(`User ${user.sub} linked Firebase UID ${body.firebaseUid}`);
-    return { linked: true, firebaseUid: body.firebaseUid.trim() };
+    return { linked: true, firebaseUid: body.firebaseUid };
   }
 
   /**
@@ -150,20 +153,25 @@ export class SyncController {
    */
   @Post('backfill')
   @ApiOperation({ summary: 'Backfill un-synced transactions into the outbox' })
-  async triggerBackfill(@Body() body: BackfillBodyDto) {
-    if (!body?.userId) {
-      throw new BadRequestException('userId is required');
-    }
-
-    const batchSize = body.batchSize && body.batchSize > 0 ? Math.min(body.batchSize, 500) : 50;
+  async triggerBackfill(@Body(new ZodValidationPipe(backfillSchema)) body: BackfillBody) {
+    const batchSize = body.batchSize ?? 50;
     const start = Date.now();
-    const result = await this.backfillService.backfillPending(body.userId, batchSize);
+    const [txResult, catResult] = await Promise.all([
+      this.backfillService.backfillPending(body.userId, batchSize),
+      this.backfillService.backfillCategories(body.userId),
+    ]);
     const durationMs = Date.now() - start;
 
     this.logger.log(
-      `Backfill for user=${body.userId}: enqueued=${result.enqueued}, skipped=${result.skipped}, durationMs=${durationMs}`,
+      `Backfill for user=${body.userId}: transactions enqueued=${txResult.enqueued}, skipped=${txResult.skipped}, categories enqueued=${catResult.enqueued}, skipped=${catResult.skipped}, durationMs=${durationMs}`,
     );
 
-    return { ...result, durationMs };
+    return {
+      enqueued: txResult.enqueued,
+      skipped: txResult.skipped,
+      categoriesEnqueued: catResult.enqueued,
+      categoriesSkipped: catResult.skipped,
+      durationMs,
+    };
   }
 }

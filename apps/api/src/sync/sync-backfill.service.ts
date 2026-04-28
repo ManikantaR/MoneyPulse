@@ -37,6 +37,56 @@ export class SyncBackfillService {
    * @param batchSize Number of transactions to process per DB query (default 100).
    * @returns         Counts of enqueued and skipped transactions.
    */
+  async backfillCategories(userId: string): Promise<{ enqueued: number; skipped: number }> {
+    const categories = await this.db
+      .select()
+      .from(schema.categories)
+      .where(sql`${schema.categories.deletedAt} IS NULL`);
+
+    let enqueued = 0;
+    let skipped = 0;
+
+    for (const cat of categories) {
+      const existing = await this.db
+        .select({ id: schema.outboxEvents.id })
+        .from(schema.outboxEvents)
+        .where(
+          and(
+            eq(schema.outboxEvents.aggregateId, cat.id),
+            sql`${schema.outboxEvents.status} NOT IN ('policy_failed', 'dead_letter')`,
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        await this.outbox.enqueue({
+          eventType: 'category.projected.v1',
+          aggregateType: 'category',
+          aggregateId: cat.id,
+          userId,
+          payload: {
+            categoryId: cat.id,
+            name: cat.name,
+            icon: cat.icon,
+            color: cat.color,
+            parentCategoryId: cat.parentId ?? null,
+          },
+        });
+        enqueued++;
+      } catch (err) {
+        this.logger.warn(`Backfill: failed to enqueue category ${cat.id}: ${(err as Error).message}`);
+      }
+    }
+
+    this.logger.log(`Category backfill for user=${userId}: enqueued=${enqueued}, skipped=${skipped}`);
+    return { enqueued, skipped };
+  }
+
   async backfillPending(userId: string, batchSize = 100): Promise<BackfillResult> {
     let enqueued = 0;
     let skipped = 0;
