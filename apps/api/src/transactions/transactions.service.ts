@@ -420,10 +420,9 @@ export class TransactionsService {
       amountCents: txn.amountCents,
       date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
       categoryId: txn.categoryId ?? null,
+      merchantName: txn.merchantName ?? null,
       isCredit: txn.isCredit,
       isManual: txn.isManual ?? false,
-      // tags intentionally excluded — user-entered text (e.g. "Chase", "Whole Foods")
-      // is not covered by PII regex patterns and poses an institution-name leak risk.
     };
 
     await this.outbox.enqueueInTx(tx, {
@@ -452,11 +451,9 @@ export class TransactionsService {
         amountCents: txn.amountCents,
         date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
         categoryId: txn.categoryId ?? null,
+        merchantName: txn.merchantName ?? null,
         isCredit: txn.isCredit,
         isManual: txn.isManual ?? false,
-        // tags intentionally excluded — user-entered text (e.g. "Chase", "Whole Foods")
-        // is not covered by PII regex patterns and poses an institution-name leak risk.
-        // categoryId already covers structured categorization needs.
       };
 
       await this.outbox.enqueue({

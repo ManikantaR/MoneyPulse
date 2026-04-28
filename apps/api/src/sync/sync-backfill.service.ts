@@ -176,9 +176,9 @@ export class SyncBackfillService {
         amountCents: txn.amountCents,
         date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
         categoryId: txn.categoryId ?? null,
+        merchantName: txn.merchantName ?? null,
         isCredit: txn.isCredit,
         isManual: txn.isManual ?? false,
-        // tags intentionally excluded (institution-name PII risk)
       };
 
       await this.outbox.enqueue({

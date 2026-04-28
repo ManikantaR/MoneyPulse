@@ -224,7 +224,12 @@ export default function SyncStatusPage() {
               </button>
             </div>
             {linkFirebase.isError && (
-              <p className="text-sm text-red-500">Failed to save. Check that the API is running.</p>
+              <p className="text-sm text-red-500">
+                Failed to save:{' '}
+                {linkFirebase.error instanceof Error
+                  ? linkFirebase.error.message
+                  : 'Check that the API is running.'}
+              </p>
             )}
           </>
         )}
@@ -242,8 +247,9 @@ export default function SyncStatusPage() {
         {backfillResult && (
           <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-2.5 text-sm">
             <span className="font-semibold text-green-600 dark:text-green-400">Done.</span>
-            {' '}Enqueued <strong>{backfillResult.enqueued}</strong> transactions,
-            skipped <strong>{backfillResult.skipped}</strong> already synced
+            {' '}Enqueued <strong>{backfillResult.enqueued}</strong> transactions
+            {backfillResult.categoriesEnqueued > 0 && <> + <strong>{backfillResult.categoriesEnqueued}</strong> categories</>},
+            skipped <strong>{backfillResult.skipped + backfillResult.categoriesSkipped}</strong> already synced
             <span className="text-[var(--muted-foreground)]"> ({backfillResult.durationMs}ms)</span>
           </div>
         )}

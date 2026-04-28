@@ -27,6 +27,8 @@ export interface SyncStats {
 export interface BackfillResult {
   enqueued: number;
   skipped: number;
+  categoriesEnqueued: number;
+  categoriesSkipped: number;
   durationMs: number;
 }
 

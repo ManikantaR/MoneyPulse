@@ -28,8 +28,13 @@ function buildDb(overrides: Partial<ReturnType<typeof buildDb>> = {}) {
   const insertValues = vi.fn().mockResolvedValue(undefined);
   const insert = vi.fn().mockReturnValue({ values: insertValues });
   const execute = vi.fn().mockResolvedValue({ rows: [] });
+  // select chain used by resolveFirebaseUid
+  const selectLimit = vi.fn().mockResolvedValue([{ firebaseUid: 'firebase-uid-test' }]);
+  const selectWhere = vi.fn().mockReturnValue({ limit: selectLimit });
+  const selectFrom = vi.fn().mockReturnValue({ where: selectWhere });
+  const select = vi.fn().mockReturnValue({ from: selectFrom });
 
-  return { execute, update, insert, set, where, insertValues, ...overrides };
+  return { execute, update, insert, set, where, insertValues, select, selectFrom, selectWhere, selectLimit, ...overrides };
 }
 
 function buildSanitizer(pass = true) {
@@ -55,20 +60,18 @@ function buildAliasMapper(fail = false) {
 }
 
 function buildSigning(fail = false) {
-  const signing = new SigningService();
-  if (fail) {
-    vi.spyOn(signing, 'signPayload').mockImplementation(() => {
-      throw new Error('SYNC_SIGNING_SECRET must be set for sync payload signing');
-    });
-  } else {
-    vi.spyOn(signing, 'signPayload').mockReturnValue({
-      signature: 'sig-abc',
-      keyId: 'sync-key-v1',
-      timestamp: '2026-04-26T00:00:00.000Z',
-      idempotencyKey: 'idem-xyz',
-    });
-  }
-  return signing;
+  return {
+    signPayload: fail
+      ? vi.fn().mockImplementation(() => {
+          throw new Error('SYNC_SIGNING_SECRET must be set for sync payload signing');
+        })
+      : vi.fn().mockReturnValue({
+          signature: 'sig-abc',
+          keyId: 'sync-key-v1',
+          timestamp: '2026-04-26T00:00:00.000Z',
+          idempotencyKey: 'idem-xyz',
+        }),
+  } as unknown as SigningService;
 }
 
 function buildService(
@@ -167,21 +170,23 @@ describe('SyncDeliveryService', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Signing/alias error path (now wrapped in try/catch)
+  // Signing error + no Firebase link paths
   // -------------------------------------------------------------------------
 
-  describe('signing/alias error path', () => {
-    it('marks the event as retry when alias mapping throws', async () => {
+  describe('signing/firebase-link error path', () => {
+    it('marks the event as retry with NO_FIREBASE_LINK when user has no firebase_uid', async () => {
       const db = buildDb();
+      // Override select to return no firebaseUid
+      db.selectLimit.mockResolvedValue([{ firebaseUid: null }]);
       db.execute.mockResolvedValue({ rows: [makeRow()] });
 
-      const service = buildService(db, buildSanitizer(), buildAliasMapper(true), buildSigning());
+      const service = buildService(db, buildSanitizer(), buildAliasMapper(), buildSigning());
       await service.deliverPending();
 
       expect(db.update).toHaveBeenCalledTimes(1);
       const setArg = db.set.mock.calls[0][0];
       expect(setArg.status).toBe('retry');
-      expect(setArg.lastErrorCode).toBe('SIGNING_ERROR');
+      expect(setArg.lastErrorCode).toBe('NO_FIREBASE_LINK');
     });
 
     it('marks the event as retry when signing throws', async () => {
@@ -197,13 +202,13 @@ describe('SyncDeliveryService', () => {
       expect(setArg.lastErrorCode).toBe('SIGNING_ERROR');
     });
 
-    it('does not call fetch when signing/alias fails', async () => {
+    it('does not call fetch when signing fails', async () => {
       const db = buildDb();
       db.execute.mockResolvedValue({ rows: [makeRow()] });
       const fetchSpy = vi.fn();
       global.fetch = fetchSpy;
 
-      const service = buildService(db, buildSanitizer(), buildAliasMapper(true), buildSigning());
+      const service = buildService(db, buildSanitizer(), buildAliasMapper(), buildSigning(true));
       await service.deliverPending();
 
       expect(fetchSpy).not.toHaveBeenCalled();
