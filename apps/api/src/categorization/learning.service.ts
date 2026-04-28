@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull, inArray } from 'drizzle-orm';
+import { eq, and, isNull, inArray, sql } from 'drizzle-orm';
 
 /**
  * Learning service that auto-creates categorization rules from user behavior.
@@ -83,6 +83,12 @@ export class LearningService {
         confidence: 1.0,
       });
       this.logger.log(`Created rule: "${pattern}" → category ${newCategoryId}`);
+    }
+
+    // Retroactively apply the new pattern to existing uncategorized transactions
+    await this.applyPatternRetroactively(userId, pattern, 'contains', 'description', newCategoryId);
+    if (merchantPattern && merchantPattern.length >= 3 && merchantPattern !== pattern) {
+      await this.applyPatternRetroactively(userId, merchantPattern, 'contains', 'merchant', newCategoryId);
     }
 
     // Create a separate merchant_name rule if different from description pattern
@@ -210,6 +216,65 @@ export class LearningService {
     }
 
     return cleaned;
+  }
+
+  /**
+   * Apply a newly-learned pattern to all uncategorized transactions for the user.
+   * Runs in the background after rule creation so new categorizations are immediately visible.
+   */
+  private async applyPatternRetroactively(
+    userId: string,
+    pattern: string,
+    matchType: string,
+    field: string,
+    categoryId: string,
+  ): Promise<void> {
+    try {
+      const uncategorized = await this.db
+        .select({
+          id: schema.transactions.id,
+          description: schema.transactions.description,
+          merchantName: schema.transactions.merchantName,
+        })
+        .from(schema.transactions)
+        .where(
+          and(
+            eq(schema.transactions.userId, userId),
+            isNull(schema.transactions.categoryId),
+            isNull(schema.transactions.deletedAt),
+          ),
+        );
+
+      const lowerPattern = pattern.toLowerCase();
+      const toUpdate: string[] = [];
+
+      for (const txn of uncategorized) {
+        const fieldValue = field === 'merchant'
+          ? (txn.merchantName ?? '').toLowerCase()
+          : txn.description.toLowerCase();
+
+        const matches = matchType === 'starts_with'
+          ? fieldValue.startsWith(lowerPattern)
+          : fieldValue.includes(lowerPattern);
+
+        if (matches) toUpdate.push(txn.id);
+      }
+
+      if (toUpdate.length > 0) {
+        await this.db
+          .update(schema.transactions)
+          .set({ categoryId, updatedAt: new Date() })
+          .where(and(
+            eq(schema.transactions.userId, userId),
+            inArray(schema.transactions.id, toUpdate),
+          ));
+        this.logger.log(
+          `Retroactively categorized ${toUpdate.length} transactions with pattern "${pattern}" → category ${categoryId}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(`Retroactive categorization failed: ${(err as Error).message}`);
+    }
   }
 
   /**
