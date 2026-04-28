@@ -14,12 +14,18 @@ import { SyncBackfillService } from './sync-backfill.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthTokenPayload } from '@moneypulse/shared';
 import * as schema from '../db/schema';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 
 export class BackfillBodyDto {
   userId!: string;
   batchSize?: number;
+}
+
+export class LinkFirebaseDto {
+  firebaseUid!: string;
 }
 
 @ApiTags('Sync')
@@ -33,6 +39,48 @@ export class SyncController {
     @Inject(DATABASE_CONNECTION) private readonly db: any,
     private readonly backfillService: SyncBackfillService,
   ) {}
+
+  /**
+   * GET /sync/link-status
+   *
+   * Returns whether the current user has linked their Firebase account.
+   */
+  @Get('link-status')
+  @ApiOperation({ summary: 'Check Firebase account link status for current user' })
+  async getLinkStatus(@CurrentUser() user: AuthTokenPayload) {
+    const rows = await this.db
+      .select({ firebaseUid: schema.users.firebaseUid })
+      .from(schema.users)
+      .where(eq(schema.users.id, user.sub))
+      .limit(1);
+
+    const firebaseUid = rows[0]?.firebaseUid ?? null;
+    return { linked: !!firebaseUid, firebaseUid };
+  }
+
+  /**
+   * POST /sync/link-firebase
+   *
+   * Stores the caller's Firebase UID so the delivery pipeline can use it
+   * as userAliasId in projected payloads.
+   */
+  @Post('link-firebase')
+  @ApiOperation({ summary: 'Link Firebase account to local user' })
+  async linkFirebase(
+    @CurrentUser() user: AuthTokenPayload,
+    @Body() body: LinkFirebaseDto,
+  ) {
+    if (!body?.firebaseUid?.trim()) {
+      throw new BadRequestException('firebaseUid is required');
+    }
+    await this.db
+      .update(schema.users)
+      .set({ firebaseUid: body.firebaseUid.trim() })
+      .where(eq(schema.users.id, user.sub));
+
+    this.logger.log(`User ${user.sub} linked Firebase UID ${body.firebaseUid}`);
+    return { linked: true, firebaseUid: body.firebaseUid.trim() };
+  }
 
   /**
    * GET /sync/stats

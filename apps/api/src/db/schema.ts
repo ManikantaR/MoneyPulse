@@ -70,6 +70,7 @@ export const users = pgTable('users', {
   role: userRoleEnum('role').notNull().default('member'),
   householdId: uuid('household_id').references(() => households.id),
   mustChangePassword: boolean('must_change_password').notNull().default(false),
+  firebaseUid: varchar('firebase_uid', { length: 128 }).unique(),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

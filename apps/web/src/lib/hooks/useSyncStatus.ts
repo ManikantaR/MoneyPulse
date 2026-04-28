@@ -53,3 +53,27 @@ export function useSyncBackfill() {
     },
   });
 }
+
+export interface LinkStatus {
+  linked: boolean;
+  firebaseUid: string | null;
+}
+
+export function useLinkStatus() {
+  return useQuery({
+    queryKey: ['sync', 'link-status'],
+    queryFn: () => api.get<LinkStatus>('/sync/link-status'),
+    staleTime: 60_000,
+  });
+}
+
+export function useLinkFirebase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (firebaseUid: string) =>
+      api.post<LinkStatus>('/sync/link-firebase', { firebaseUid }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync', 'link-status'] });
+    },
+  });
+}

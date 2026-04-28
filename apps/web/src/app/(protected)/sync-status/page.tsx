@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { useSyncStats, useSyncBackfill, type SyncAuditLog } from '@/lib/hooks/useSyncStatus';
+import { useSyncStats, useSyncBackfill, useLinkStatus, useLinkFirebase, type SyncAuditLog } from '@/lib/hooks/useSyncStatus';
 import {
   CloudUpload,
   CheckCircle2,
@@ -12,6 +12,8 @@ import {
   ShieldAlert,
   RefreshCw,
   Loader2,
+  Link2,
+  Link2Off,
 } from 'lucide-react';
 
 function StatCard({
@@ -101,8 +103,11 @@ export default function SyncStatusPage() {
   const { user } = useAuth();
   const { data: stats, isLoading, refetch, isRefetching } = useSyncStats();
   const backfill = useSyncBackfill();
+  const { data: linkStatus, isLoading: linkLoading } = useLinkStatus();
+  const linkFirebase = useLinkFirebase();
   const [backfillResult, setBackfillResult] = useState<{ enqueued: number; skipped: number; durationMs: number } | null>(null);
   const [batchSize, setBatchSize] = useState<BatchOption>(50);
+  const [firebaseUidInput, setFirebaseUidInput] = useState('');
 
   const loading = isLoading;
 
@@ -176,6 +181,53 @@ export default function SyncStatusPage() {
         <CloudUpload className="h-4 w-4 text-[var(--muted-foreground)]" />
         <span className="text-sm text-[var(--muted-foreground)]">Last delivered:</span>
         <span className="text-sm font-medium">{loading ? '—' : lastSyncText}</span>
+      </div>
+
+      {/* Firebase Account Link panel */}
+      <div className={`rounded-xl border bg-[var(--card)] p-5 space-y-3 ${linkStatus?.linked ? 'border-green-500/30' : 'border-yellow-500/30'}`}>
+        <div className="flex items-center gap-2">
+          {linkStatus?.linked
+            ? <Link2 className="h-4 w-4 text-green-500" />
+            : <Link2Off className="h-4 w-4 text-yellow-500" />}
+          <h2 className="text-base font-semibold">Firebase Account</h2>
+        </div>
+
+        {linkLoading ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Checking link status…</p>
+        ) : linkStatus?.linked ? (
+          <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-2.5 text-sm">
+            <span className="font-semibold text-green-600 dark:text-green-400">Linked.</span>
+            {' '}Firebase UID:{' '}
+            <span className="font-mono text-xs break-all">{linkStatus.firebaseUid}</span>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Paste your Firebase UID from the MoneyPulse web app (Settings page). This links your local account so synced transactions appear in your dashboard.
+            </p>
+            <div className="flex gap-2 items-center">
+              <input
+                type="text"
+                placeholder="Firebase UID (e.g. abc123XYZ...)"
+                value={firebaseUidInput}
+                onChange={(e) => setFirebaseUidInput(e.target.value)}
+                disabled={linkFirebase.isPending}
+                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-sm font-mono disabled:opacity-50"
+              />
+              <button
+                onClick={() => linkFirebase.mutate(firebaseUidInput.trim())}
+                disabled={linkFirebase.isPending || !firebaseUidInput.trim()}
+                className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {linkFirebase.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                Link
+              </button>
+            </div>
+            {linkFirebase.isError && (
+              <p className="text-sm text-red-500">Failed to save. Check that the API is running.</p>
+            )}
+          </>
+        )}
       </div>
 
       {/* Backfill panel */}

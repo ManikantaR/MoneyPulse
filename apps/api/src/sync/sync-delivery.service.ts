@@ -1,5 +1,5 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { SanitizerV2Service } from './sanitizer-v2.service';
@@ -65,10 +65,22 @@ export class SyncDeliveryService {
     let signed: import('./sync.types').SignedPayload;
 
     try {
-      const userAlias = this.aliasMapper.toAliasId('user', row.user_id);
+      const firebaseUid = await this.resolveFirebaseUid(row.user_id);
+      if (!firebaseUid) {
+        await this.markRetry(
+          row,
+          'NO_FIREBASE_LINK',
+          `User ${row.user_id} has not linked a Firebase account. Go to Cloud Sync → Link Firebase Account.`,
+          null,
+          null,
+          hashSyncPayload(row.payload_json),
+        );
+        this.logger.warn(`Skipping delivery for ${row.id}: user ${row.user_id} has no firebase_uid`);
+        return;
+      }
       projected = {
         ...policy.sanitizedPayload,
-        userAliasId: userAlias,
+        userAliasId: firebaseUid,
       };
       signed = this.signing.signPayload(projected, row.idempotency_key);
     } catch (err: unknown) {
@@ -162,6 +174,15 @@ export class SyncDeliveryService {
         hashSyncPayload(projected),
       );
     }
+  }
+
+  private async resolveFirebaseUid(userId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ firebaseUid: schema.users.firebaseUid })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+    return rows[0]?.firebaseUid ?? null;
   }
 
   private computeBackoffMillis(attempt: number): number {

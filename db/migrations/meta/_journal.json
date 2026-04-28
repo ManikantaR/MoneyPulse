@@ -29,6 +29,13 @@
       "when": 1776639591043,
       "tag": "0003_furry_talisman",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777334356499,
+      "tag": "0004_link_firebase_uid",
+      "breakpoints": true
     }
   ]
 }
