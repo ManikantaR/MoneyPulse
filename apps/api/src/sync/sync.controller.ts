@@ -175,7 +175,7 @@ export class SyncController {
     const needsEnrichment = await this.db.execute(sql`
       SELECT oe.id, t.merchant_name, t.description
       FROM outbox_events oe
-      JOIN transactions t ON oe.aggregate_id = t.id::text
+      JOIN transactions t ON oe.aggregate_id::text = t.id::text
       WHERE oe.event_type = 'transaction.projected.v1'
         AND oe.user_id = ${body.userId}
         AND (oe.payload_json->>'merchantName') IS NULL
