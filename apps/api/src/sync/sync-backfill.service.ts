@@ -158,6 +158,9 @@ export class SyncBackfillService {
       return { enqueued: 0, skipped: 1 };
     }
 
+    // Compute window start as a proper date param — INTERVAL template vars are not safe in Drizzle sql tags
+    const windowStart = new Date(Date.now() - AI_METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
     const result = await this.db.execute(sql`
       SELECT
         COUNT(*)::int                                                               AS total_runs,
@@ -167,11 +170,11 @@ export class SyncBackfillService {
         COALESCE(SUM(categories_assigned), 0)::int                                 AS categories_assigned_total,
         (SELECT model FROM ai_prompt_logs
            WHERE user_id = ${userId}::uuid
-             AND created_at >= NOW() - INTERVAL '${AI_METRICS_WINDOW_DAYS} days'
+             AND created_at >= ${windowStart}::timestamptz
            ORDER BY created_at DESC LIMIT 1)                                       AS last_model
       FROM ai_prompt_logs
       WHERE user_id = ${userId}::uuid
-        AND created_at >= NOW() - INTERVAL '${AI_METRICS_WINDOW_DAYS} days'
+        AND created_at >= ${windowStart}::timestamptz
     `);
     const row = (result.rows ?? result)[0] as Record<string, unknown> | undefined;
 

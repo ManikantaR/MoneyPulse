@@ -132,7 +132,10 @@ export const transactionQuerySchema = z.object({
   uploadId: z.uuid().optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
-  isCredit: z.coerce.boolean().optional(),
+  isCredit: z.preprocess(
+    (v) => (v === 'true' ? true : v === 'false' ? false : v),
+    z.boolean().optional(),
+  ),
   sortBy: z.enum(['date', 'amount', 'description', 'category']).default('date'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
