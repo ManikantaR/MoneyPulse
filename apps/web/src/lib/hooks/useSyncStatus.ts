@@ -69,6 +69,17 @@ export function useLinkStatus() {
   });
 }
 
+export function useSyncForceResync() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api.post<{ reset: number; durationMs: number }>('/sync/force-resync', { userId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync', 'stats'] });
+    },
+  });
+}
+
 export function useLinkFirebase() {
   const queryClient = useQueryClient();
   return useMutation({

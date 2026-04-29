@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { useSyncStats, useSyncBackfill, useLinkStatus, useLinkFirebase, type SyncAuditLog } from '@/lib/hooks/useSyncStatus';
+import { useSyncStats, useSyncBackfill, useLinkStatus, useLinkFirebase, useSyncForceResync, type SyncAuditLog } from '@/lib/hooks/useSyncStatus';
 import {
   CloudUpload,
   CheckCircle2,
@@ -103,6 +103,7 @@ export default function SyncStatusPage() {
   const { user } = useAuth();
   const { data: stats, isLoading, refetch, isRefetching } = useSyncStats();
   const backfill = useSyncBackfill();
+  const forceResync = useSyncForceResync();
   const { data: linkStatus, isLoading: linkLoading } = useLinkStatus();
   const linkFirebase = useLinkFirebase();
   const [backfillResult, setBackfillResult] = useState<{ enqueued: number; skipped: number; durationMs: number } | null>(null);
@@ -293,6 +294,43 @@ export default function SyncStatusPage() {
               <CloudUpload className="h-4 w-4" />
               Run backfill for my account
             </>
+          )}
+        </button>
+      </div>
+
+      {/* Force Re-sync panel */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Force Re-sync All</h2>
+          <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
+            Resets all delivered events back to pending so they re-deliver with the latest payload (e.g. after adding merchant names). All existing Firestore docs will be overwritten.
+          </p>
+        </div>
+
+        {forceResync.isSuccess && forceResync.data && (
+          <div className="rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-2.5 text-sm">
+            <span className="font-semibold text-green-600 dark:text-green-400">Done.</span>
+            {' '}Reset <strong>{forceResync.data.reset}</strong> events for re-delivery
+            <span className="text-[var(--muted-foreground)]"> ({forceResync.data.durationMs}ms)</span>
+          </div>
+        )}
+
+        {forceResync.isError && (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Force re-sync failed. Check API is running.
+          </div>
+        )}
+
+        <button
+          onClick={() => user?.id && forceResync.mutate(user.id)}
+          disabled={forceResync.isPending || !user?.id}
+          className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2.5 text-sm font-semibold hover:bg-[var(--muted)] transition-colors disabled:opacity-50"
+        >
+          {forceResync.isPending ? (
+            <><Loader2 className="h-4 w-4 animate-spin" />Resetting…</>
+          ) : (
+            <><RefreshCw className="h-4 w-4" />Force Re-sync All Delivered Events</>
           )}
         </button>
       </div>

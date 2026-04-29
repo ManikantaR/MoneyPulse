@@ -146,6 +146,34 @@ export class SyncController {
   }
 
   /**
+   * POST /sync/force-resync
+   *
+   * Resets all delivered outbox events back to pending so they re-deliver
+   * with the current payload shape. Useful after payload schema updates.
+   * Admin only.
+   */
+  @Post('force-resync')
+  @ApiOperation({ summary: 'Reset delivered outbox events for re-delivery' })
+  async forceResync(@Body(new ZodValidationPipe(z.object({ userId: z.string().uuid() }))) body: { userId: string }) {
+    const start = Date.now();
+    const result = await this.db.execute(sql`
+      UPDATE outbox_events
+      SET status = 'pending',
+          attempts = 0,
+          idempotency_key = gen_random_uuid()::text,
+          delivered_at = NULL,
+          last_error_code = NULL,
+          last_error_message = NULL
+      WHERE status = 'delivered'
+        AND user_id = ${body.userId}
+    `);
+    const resetCount = result.rowCount ?? 0;
+    const durationMs = Date.now() - start;
+    this.logger.log(`Force re-sync for user=${body.userId}: reset ${resetCount} events in ${durationMs}ms`);
+    return { reset: resetCount, durationMs };
+  }
+
+  /**
    * POST /sync/backfill
    *
    * Enqueues pre-existing transactions that have never been synced.
