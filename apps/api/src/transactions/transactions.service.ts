@@ -420,7 +420,7 @@ export class TransactionsService {
       amountCents: txn.amountCents,
       date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
       categoryId: txn.categoryId ?? null,
-      merchantName: txn.merchantName ?? null,
+      merchantName: txn.merchantName ?? this._deriveDisplayName(txn.description),
       isCredit: txn.isCredit,
       isManual: txn.isManual ?? false,
     };
@@ -451,7 +451,7 @@ export class TransactionsService {
         amountCents: txn.amountCents,
         date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
         categoryId: txn.categoryId ?? null,
-        merchantName: txn.merchantName ?? null,
+        merchantName: txn.merchantName ?? this._deriveDisplayName(txn.description),
         isCredit: txn.isCredit,
         isManual: txn.isManual ?? false,
       };
@@ -468,5 +468,19 @@ export class TransactionsService {
         `Skipping outbox enqueue for transaction ${txn.id}: ${(err as Error).message}`,
       );
     }
+  }
+
+  private _deriveDisplayName(description: string | null | undefined): string | null {
+    if (!description) return null;
+    let cleaned = description.toLowerCase().trim()
+      .replace(/\s*#\d+/g, '')
+      .replace(/\s*\*[\w]+/g, '')
+      .replace(/\s+\d{5,}/g, '')
+      .replace(/\s+store\s*\d*/gi, '')
+      .replace(/\s+\d{2}\/\d{2,}/g, '')
+      .trim();
+    const words = cleaned.split(/\s+/).filter((w) => w.length >= 2).slice(0, 3);
+    if (words.length === 0) return null;
+    return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   }
 }

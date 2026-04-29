@@ -172,6 +172,25 @@ export class SyncBackfillService {
   }
 
   /**
+   * Derive a human-readable display name from a raw bank description when
+   * merchantName is not set. Strips store numbers, reference codes, and
+   * trailing digits, then title-cases the first 3 significant words.
+   */
+  private _deriveDisplayName(description: string | null | undefined): string | null {
+    if (!description) return null;
+    let cleaned = description.toLowerCase().trim()
+      .replace(/\s*#\d+/g, '')
+      .replace(/\s*\*[\w]+/g, '')
+      .replace(/\s+\d{5,}/g, '')
+      .replace(/\s+store\s*\d*/gi, '')
+      .replace(/\s+\d{2}\/\d{2,}/g, '')
+      .trim();
+    const words = cleaned.split(/\s+/).filter((w) => w.length >= 2).slice(0, 3);
+    if (words.length === 0) return null;
+    return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  /**
    * Fetch a page of transactions for the user.
    * Protected (not private) so tests can override it with stubs.
    */
@@ -226,7 +245,7 @@ export class SyncBackfillService {
         amountCents: txn.amountCents,
         date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
         categoryId: txn.categoryId ?? null,
-        merchantName: txn.merchantName ?? null,
+        merchantName: txn.merchantName ?? this._deriveDisplayName(txn.description),
         isCredit: txn.isCredit,
         isManual: txn.isManual ?? false,
       };
