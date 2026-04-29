@@ -156,6 +156,8 @@ export class SyncController {
   @ApiOperation({ summary: 'Reset delivered outbox events for re-delivery' })
   async forceResync(@Body(new ZodValidationPipe(z.object({ userId: z.string().uuid() }))) body: { userId: string }) {
     const start = Date.now();
+
+    // Reset status for all delivered events
     const result = await this.db.execute(sql`
       UPDATE outbox_events
       SET status = 'pending',
@@ -167,9 +169,56 @@ export class SyncController {
       WHERE status = 'delivered'
         AND user_id = ${body.userId}
     `);
+
+    // Re-derive merchantName for transaction events that have null in their payload.
+    // Older transactions were queued before _deriveDisplayName was added, so their
+    // payload_json.merchantName is null. Enrich from the transactions table now.
+    await this.db.execute(sql`
+      UPDATE outbox_events oe
+      SET payload_json = jsonb_set(
+        oe.payload_json,
+        '{merchantName}',
+        to_jsonb(
+          CASE
+            WHEN t.merchant_name IS NOT NULL THEN t.merchant_name
+            WHEN t.description IS NOT NULL THEN
+              array_to_string(
+                (
+                  SELECT array_agg(initcap(w))
+                  FROM (
+                    SELECT w FROM unnest(
+                      string_to_array(
+                        trim(regexp_replace(
+                          regexp_replace(
+                            regexp_replace(
+                              regexp_replace(
+                                regexp_replace(lower(t.description), '\\s*#\\d+', '', 'g'),
+                                '\\s*\\*\\w+', '', 'g'),
+                              '\\s+\\d{5,}', '', 'g'),
+                            '\\s+store\\s*\\d*', '', 'gi'),
+                          '\\s+\\d{2}/\\d{2,}', '', 'g')
+                      ), ' '
+                    ) w
+                    WHERE length(w) >= 2
+                    LIMIT 3
+                  ) words
+                ),
+                ' '
+              )
+            ELSE NULL
+          END
+        )
+      )
+      FROM transactions t
+      WHERE oe.event_type = 'transaction.projected.v1'
+        AND oe.user_id = ${body.userId}
+        AND oe.aggregate_id = t.id::text
+        AND (oe.payload_json->>'merchantName') IS NULL
+    `);
+
     const resetCount = result.rowCount ?? 0;
     const durationMs = Date.now() - start;
-    this.logger.log(`Force re-sync for user=${body.userId}: reset ${resetCount} events in ${durationMs}ms`);
+    this.logger.log(`Force re-sync for user=${body.userId}: reset ${resetCount} events, enriched merchant names in ${durationMs}ms`);
     return { reset: resetCount, durationMs };
   }
 
