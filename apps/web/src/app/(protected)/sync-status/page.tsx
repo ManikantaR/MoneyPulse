@@ -106,7 +106,7 @@ export default function SyncStatusPage() {
   const forceResync = useSyncForceResync();
   const { data: linkStatus, isLoading: linkLoading } = useLinkStatus();
   const linkFirebase = useLinkFirebase();
-  const [backfillResult, setBackfillResult] = useState<{ enqueued: number; skipped: number; durationMs: number } | null>(null);
+  const [backfillResult, setBackfillResult] = useState<{ enqueued: number; skipped: number; categoriesEnqueued: number; categoriesSkipped: number; budgetsEnqueued: number; budgetsSkipped: number; durationMs: number } | null>(null);
   const [batchSize, setBatchSize] = useState<BatchOption>(50);
   const [firebaseUidInput, setFirebaseUidInput] = useState('');
 

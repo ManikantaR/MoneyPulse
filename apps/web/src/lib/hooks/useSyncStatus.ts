@@ -29,6 +29,8 @@ export interface BackfillResult {
   skipped: number;
   categoriesEnqueued: number;
   categoriesSkipped: number;
+  budgetsEnqueued: number;
+  budgetsSkipped: number;
   durationMs: number;
 }
 
