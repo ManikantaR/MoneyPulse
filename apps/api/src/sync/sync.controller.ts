@@ -170,51 +170,26 @@ export class SyncController {
         AND user_id = ${body.userId}
     `);
 
-    // Re-derive merchantName for transaction events that have null in their payload.
-    // Older transactions were queued before _deriveDisplayName was added, so their
-    // payload_json.merchantName is null. Enrich from the transactions table now.
-    await this.db.execute(sql`
-      UPDATE outbox_events oe
-      SET payload_json = jsonb_set(
-        oe.payload_json,
-        '{merchantName}',
-        to_jsonb(
-          CASE
-            WHEN t.merchant_name IS NOT NULL THEN t.merchant_name
-            WHEN t.description IS NOT NULL THEN
-              array_to_string(
-                (
-                  SELECT array_agg(initcap(w))
-                  FROM (
-                    SELECT w FROM unnest(
-                      string_to_array(
-                        trim(regexp_replace(
-                          regexp_replace(
-                            regexp_replace(
-                              regexp_replace(
-                                regexp_replace(lower(t.description), '\\s*#\\d+', '', 'g'),
-                                '\\s*\\*\\w+', '', 'g'),
-                              '\\s+\\d{5,}', '', 'g'),
-                            '\\s+store\\s*\\d*', '', 'gi'),
-                          '\\s+\\d{2}/\\d{2,}', '', 'g')
-                      ), ' '
-                    ) w
-                    WHERE length(w) >= 2
-                    LIMIT 3
-                  ) words
-                ),
-                ' '
-              )
-            ELSE NULL
-          END
-        )
-      )
-      FROM transactions t
+    // Re-derive merchantName for transaction events whose payload has null merchantName.
+    // Older transactions were queued before _deriveDisplayName was added.
+    const needsEnrichment = await this.db.execute(sql`
+      SELECT oe.id, t.merchant_name, t.description
+      FROM outbox_events oe
+      JOIN transactions t ON oe.aggregate_id = t.id::text
       WHERE oe.event_type = 'transaction.projected.v1'
         AND oe.user_id = ${body.userId}
-        AND oe.aggregate_id = t.id::text
         AND (oe.payload_json->>'merchantName') IS NULL
     `);
+
+    const rows = (needsEnrichment.rows ?? needsEnrichment) as Array<{ id: string; merchant_name: string | null; description: string | null }>;
+    for (const row of rows) {
+      const name = row.merchant_name ?? this._deriveDisplayName(row.description);
+      await this.db.execute(sql`
+        UPDATE outbox_events
+        SET payload_json = jsonb_set(payload_json, '{merchantName}', ${name === null ? 'null' : JSON.stringify(name)}::jsonb)
+        WHERE id = ${row.id}
+      `);
+    }
 
     const resetCount = result.rowCount ?? 0;
     const durationMs = Date.now() - start;
@@ -253,5 +228,19 @@ export class SyncController {
       budgetsSkipped: budgetResult.skipped,
       durationMs,
     };
+  }
+
+  private _deriveDisplayName(description: string | null | undefined): string | null {
+    if (!description) return null;
+    const cleaned = description.toLowerCase().trim()
+      .replace(/\s*#\d+/g, '')
+      .replace(/\s*\*[\w]+/g, '')
+      .replace(/\s+\d{5,}/g, '')
+      .replace(/\s+store\s*\d*/gi, '')
+      .replace(/\s+\d{2}\/\d{2,}/g, '')
+      .trim();
+    const words = cleaned.split(/\s+/).filter((w) => w.length >= 2).slice(0, 3);
+    if (words.length === 0) return null;
+    return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   }
 }
