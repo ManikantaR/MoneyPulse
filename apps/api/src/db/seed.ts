@@ -64,6 +64,7 @@ async function seed() {
   }
 
   console.log(`Seeded ${DEFAULT_CATEGORIES.length} default categories (${parents.length} parents, ${children.length} children)`);
+  console.log('ACTION REQUIRED: Run Backfill from Cloud Sync to push new categories to Firestore.');
 
   await client.end();
   process.exit(0);
