@@ -11,7 +11,7 @@ interface TopTransactionsCardProps {
 export function TopTransactionsCard({ transactions }: TopTransactionsCardProps) {
   const expenses = transactions
     .filter((t) => !t.isCredit)
-    .sort((a, b) => a.amountCents - b.amountCents)
+    .sort((a, b) => b.amountCents - a.amountCents)
     .slice(0, 5);
 
   return (

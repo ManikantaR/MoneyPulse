@@ -63,8 +63,9 @@ export default function DashboardPage() {
     from,
     to,
     sortBy: 'amount',
-    sortOrder: 'asc',
-    pageSize: 10,
+    sortOrder: 'desc',
+    isCredit: false,
+    pageSize: 5,
   });
 
   const nw = netWorthData?.data;

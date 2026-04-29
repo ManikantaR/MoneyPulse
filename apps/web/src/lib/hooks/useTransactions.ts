@@ -29,6 +29,7 @@ export interface TransactionQueryParams {
   uploadId?: string;
   from?: string;
   to?: string;
+  isCredit?: boolean;
   sortBy?: 'date' | 'amount' | 'description' | 'category';
   sortOrder?: 'asc' | 'desc';
 }
