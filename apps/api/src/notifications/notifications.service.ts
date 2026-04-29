@@ -3,6 +3,8 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { WebhookService } from './webhook.service';
+import { OutboxService } from '../sync/outbox.service';
+import { AliasMapperService } from '../sync/alias-mapper.service';
 
 interface CreateNotificationInput {
   userId: string;
@@ -13,11 +15,19 @@ interface CreateNotificationInput {
   metadata?: Record<string, any>;
 }
 
+// Dollar amounts in alert messages must not reach the cloud push payload.
+// Strip everything after the title for the outbox body.
+function sanitizeBodyForCloud(title: string): string {
+  return title;
+}
+
 @Injectable()
 export class NotificationsService {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
     private readonly webhookService: WebhookService,
+    private readonly outbox: OutboxService,
+    private readonly aliasMapper: AliasMapperService,
   ) {}
 
   async findByUser(userId: string, limit = 50) {
@@ -97,6 +107,29 @@ export class NotificationsService {
       })
       .catch((err) => {
         console.error('Webhook dispatch failed:', err.message);
+      });
+
+    // Enqueue cloud projection — body is title-only, no dollar amounts
+    this.outbox
+      .enqueue({
+        eventType: 'notification.projected.v1',
+        aggregateType: 'notification',
+        aggregateId: notification.id,
+        userId: input.userId,
+        payload: {
+          notificationAliasId: this.aliasMapper.toAliasId('notification', notification.id),
+          userAliasId: this.aliasMapper.toAliasId('user', input.userId),
+          type: input.type,
+          title: input.title,
+          body: sanitizeBodyForCloud(input.title),
+          createdAt: (notification.createdAt instanceof Date
+            ? notification.createdAt
+            : new Date()
+          ).toISOString(),
+        },
+      })
+      .catch((err) => {
+        console.error('Notification outbox enqueue failed:', err.message);
       });
 
     return notification;
