@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { useSyncStats, useSyncBackfill, useLinkStatus, useLinkFirebase, useSyncForceResync, type SyncAuditLog } from '@/lib/hooks/useSyncStatus';
+import { useSyncStats, useSyncBackfill, useLinkStatus, useLinkFirebase, useSyncForceResync, type SyncAuditLog, type PolicyFailure } from '@/lib/hooks/useSyncStatus';
 import {
   CloudUpload,
   CheckCircle2,
@@ -93,6 +93,87 @@ function AuditRow({ log }: { log: SyncAuditLog }) {
         {log.errorCode ?? '—'}
       </td>
     </tr>
+  );
+}
+
+// Human-readable explanations for known policy reasons
+const POLICY_REASON_DOCS: Record<string, { label: string; fix: string }> = {
+  PII_DETECTED: {
+    label: 'PII detected in payload',
+    fix: 'The event contained personally identifiable information (e.g. raw account number, bank name). The sanitizer blocked it to protect your data. This is expected for certain import types — no action needed.',
+  },
+  FIELD_BLOCKED: {
+    label: 'Blocked field in payload',
+    fix: 'A disallowed field was present in the sync payload. The data-boundary policy strips it before delivery. Check the sanitizer rules if this keeps recurring.',
+  },
+  AMOUNT_MISSING: {
+    label: 'Amount missing',
+    fix: 'The transaction had no amountCents value. These events are blocked as they would create incomplete records in the cloud.',
+  },
+  UNKNOWN: {
+    label: 'Unknown policy violation',
+    fix: 'The policy reason was not recorded. Check the API logs for more detail.',
+  },
+};
+
+function policyDoc(reason: string | null) {
+  const key = reason ?? 'UNKNOWN';
+  return POLICY_REASON_DOCS[key] ?? { label: reason ?? 'Unknown', fix: 'No additional detail available.' };
+}
+
+function PolicyFailureTable({ failures }: { failures: PolicyFailure[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[var(--border)] bg-[var(--muted)]/20 text-left">
+            <th className="px-4 py-2.5 text-xs font-medium text-[var(--muted-foreground)]">Time</th>
+            <th className="px-4 py-2.5 text-xs font-medium text-[var(--muted-foreground)]">Type</th>
+            <th className="px-4 py-2.5 text-xs font-medium text-[var(--muted-foreground)]">Reason</th>
+            <th className="px-4 py-2.5 text-xs font-medium text-[var(--muted-foreground)]">What it means</th>
+          </tr>
+        </thead>
+        <tbody>
+          {failures.map((f) => {
+            const doc = policyDoc(f.policyReason);
+            const isOpen = expanded === f.id;
+            return (
+              <>
+                <tr
+                  key={f.id}
+                  className="border-b border-[var(--border)] last:border-0 cursor-pointer hover:bg-red-500/5 transition-colors"
+                  onClick={() => setExpanded(isOpen ? null : f.id)}
+                >
+                  <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)] whitespace-nowrap">
+                    {new Date(f.updatedAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs font-mono">{f.eventType}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+                      {f.policyReason ?? 'UNKNOWN'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-[var(--muted-foreground)]">
+                    {doc.label}
+                    <span className="ml-1 text-[var(--primary)]">{isOpen ? '▲' : '▼'}</span>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr key={`${f.id}-detail`} className="border-b border-[var(--border)] bg-red-500/5">
+                    <td colSpan={4} className="px-6 py-3 text-xs text-[var(--muted-foreground)]">
+                      <span className="font-semibold text-[var(--foreground)]">What to do: </span>
+                      {doc.fix}
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -337,6 +418,43 @@ export default function SyncStatusPage() {
 
       {/* Audit log */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+        {/* Policy failure detail panel */}
+        {(stats?.policyFailed ?? 0) > 0 && (
+          <div className="border-b border-[var(--border)]">
+            <div className="px-5 py-4 flex items-center gap-2 bg-red-500/5">
+              <ShieldAlert className="h-4 w-4 text-red-500 shrink-0" />
+              <div>
+                <h2 className="text-base font-semibold text-red-600 dark:text-red-400">
+                  Policy Failures — {stats?.policyFailed} event{stats?.policyFailed !== 1 ? 's' : ''} blocked
+                </h2>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  These events were rejected by the data-boundary policy before leaving your device. No data was sent to the cloud.
+                </p>
+              </div>
+            </div>
+
+            {/* Reason summary */}
+            {stats?.policyFailureReasons && stats.policyFailureReasons.length > 0 && (
+              <div className="px-5 py-3 flex flex-wrap gap-2 border-b border-[var(--border)] bg-[var(--muted)]/20">
+                {stats.policyFailureReasons.map(({ reason, count }) => (
+                  <span
+                    key={reason}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-medium text-red-600 dark:text-red-400"
+                  >
+                    <span className="font-bold">{count}×</span>
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Per-event detail */}
+            {stats?.policyFailures && stats.policyFailures.length > 0 && (
+              <PolicyFailureTable failures={stats.policyFailures} />
+            )}
+          </div>
+        )}
+
         <div className="px-5 py-4 border-b border-[var(--border)]">
           <h2 className="text-base font-semibold">Recent delivery attempts</h2>
           <p className="text-xs text-[var(--muted-foreground)]">Last 20 events, auto-refreshes every 30s</p>

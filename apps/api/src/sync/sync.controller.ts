@@ -134,6 +134,38 @@ export class SyncController {
     `);
     const recentAuditLogs = auditResult.rows ?? auditResult;
 
+    // Policy failure details — show the failed events with reasons grouped by reason
+    const policyFailResult = await this.db.execute(sql`
+      SELECT
+        id AS "id",
+        event_type AS "eventType",
+        aggregate_type AS "aggregateType",
+        aggregate_id AS "aggregateId",
+        policy_reason AS "policyReason",
+        attempts,
+        updated_at AS "updatedAt"
+      FROM ${schema.outboxEvents}
+      WHERE status = 'policy_failed'
+      ORDER BY updated_at DESC
+      LIMIT 50
+    `);
+    const policyFailures = (policyFailResult.rows ?? policyFailResult) as Array<{
+      id: string;
+      eventType: string;
+      aggregateType: string;
+      aggregateId: string;
+      policyReason: string | null;
+      attempts: number;
+      updatedAt: string;
+    }>;
+
+    // Group by reason for summary
+    const reasonCounts: Record<string, number> = {};
+    for (const row of policyFailures) {
+      const key = row.policyReason ?? 'UNKNOWN';
+      reasonCounts[key] = (reasonCounts[key] ?? 0) + 1;
+    }
+
     return {
       pending: counts['pending'] ?? 0,
       retry: counts['retry'] ?? 0,
@@ -142,6 +174,8 @@ export class SyncController {
       deadLetter: counts['dead_letter'] ?? 0,
       lastDeliveredAt,
       recentAuditLogs,
+      policyFailures,
+      policyFailureReasons: Object.entries(reasonCounts).map(([reason, count]) => ({ reason, count })),
     };
   }
 

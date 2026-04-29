@@ -14,6 +14,21 @@ export interface SyncAuditLog {
   createdAt: string;
 }
 
+export interface PolicyFailure {
+  id: string;
+  eventType: string;
+  aggregateType: string;
+  aggregateId: string;
+  policyReason: string | null;
+  attempts: number;
+  updatedAt: string;
+}
+
+export interface PolicyFailureReason {
+  reason: string;
+  count: number;
+}
+
 export interface SyncStats {
   pending: number;
   retry: number;
@@ -22,6 +37,8 @@ export interface SyncStats {
   deadLetter: number;
   lastDeliveredAt: string | null;
   recentAuditLogs: SyncAuditLog[];
+  policyFailures: PolicyFailure[];
+  policyFailureReasons: PolicyFailureReason[];
 }
 
 export interface BackfillResult {
