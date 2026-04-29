@@ -19,6 +19,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import type { AuthTokenPayload } from '@moneypulse/shared';
 import * as schema from '../db/schema';
 import { sql, eq } from 'drizzle-orm';
+import { sanitizeMerchantName } from './sync.constants';
 
 const backfillSchema = z.object({
   userId: z.string().uuid(),
@@ -217,7 +218,7 @@ export class SyncController {
 
     const rows = (needsEnrichment.rows ?? needsEnrichment) as Array<{ id: string; merchant_name: string | null; description: string | null }>;
     for (const row of rows) {
-      const name = row.merchant_name ?? this._deriveDisplayName(row.description);
+      const name = sanitizeMerchantName(row.merchant_name) ?? this._deriveDisplayName(row.description);
       await this.db.execute(sql`
         UPDATE outbox_events
         SET payload_json = jsonb_set(payload_json, '{merchantName}', ${name === null ? 'null' : JSON.stringify(name)}::jsonb)

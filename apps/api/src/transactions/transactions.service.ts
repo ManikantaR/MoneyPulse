@@ -29,6 +29,7 @@ import type {
 } from '@moneypulse/shared';
 import { createHash } from 'crypto';
 import { encryptField, decryptField } from '../common/crypto';
+import { sanitizeMerchantName } from '../sync/sync.constants';
 
 @Injectable()
 export class TransactionsService {
@@ -451,7 +452,7 @@ export class TransactionsService {
         amountCents: txn.amountCents,
         date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
         categoryId: txn.categoryId ?? null,
-        merchantName: txn.merchantName ?? this._deriveDisplayName(txn.description),
+        merchantName: sanitizeMerchantName(txn.merchantName) ?? this._deriveDisplayName(txn.description),
         isCredit: txn.isCredit,
         isManual: txn.isManual ?? false,
       };

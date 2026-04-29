@@ -4,6 +4,7 @@ import { OutboxService } from './outbox.service';
 import { AliasMapperService } from './alias-mapper.service';
 import * as schema from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { sanitizeMerchantName } from './sync.constants';
 
 export interface BackfillResult {
   enqueued: number;
@@ -245,7 +246,7 @@ export class SyncBackfillService {
         amountCents: txn.amountCents,
         date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
         categoryId: txn.categoryId ?? null,
-        merchantName: txn.merchantName ?? this._deriveDisplayName(txn.description),
+        merchantName: sanitizeMerchantName(txn.merchantName) ?? this._deriveDisplayName(txn.description),
         isCredit: txn.isCredit,
         isManual: txn.isManual ?? false,
       };
