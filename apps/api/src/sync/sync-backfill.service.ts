@@ -6,6 +6,8 @@ import * as schema from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { sanitizeMerchantName } from './sync.constants';
 
+const AI_METRICS_WINDOW_DAYS = 30;
+
 export interface BackfillResult {
   enqueued: number;
   skipped: number;
@@ -136,6 +138,86 @@ export class SyncBackfillService {
 
     this.logger.log(`Category backfill for user=${userId}: enqueued=${enqueued}, skipped=${skipped}`);
     return { enqueued, skipped };
+  }
+
+  async backfillAiMetrics(userId: string): Promise<{ enqueued: number; skipped: number }> {
+    const existing = await this.db
+      .select({ id: schema.outboxEvents.id })
+      .from(schema.outboxEvents)
+      .where(
+        and(
+          eq(schema.outboxEvents.aggregateId, userId),
+          sql`${schema.outboxEvents.eventType} = 'ai.metrics.projected.v1'`,
+          sql`${schema.outboxEvents.status} NOT IN ('policy_failed', 'dead_letter')`,
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      this.logger.log(`AI metrics backfill for user=${userId}: skipped (already enqueued)`);
+      return { enqueued: 0, skipped: 1 };
+    }
+
+    const result = await this.db.execute(sql`
+      SELECT
+        COUNT(*)::int                                                               AS total_runs,
+        AVG(latency_ms)::int                                                        AS avg_latency_ms,
+        AVG(avg_confidence)::real                                                   AS avg_confidence,
+        SUM(CASE WHEN pii_detected = true THEN 1 ELSE 0 END)::int                  AS pii_detection_count,
+        COALESCE(SUM(categories_assigned), 0)::int                                 AS categories_assigned_total,
+        (SELECT model FROM ai_prompt_logs
+           WHERE user_id = ${userId}::uuid
+             AND created_at >= NOW() - INTERVAL '${AI_METRICS_WINDOW_DAYS} days'
+           ORDER BY created_at DESC LIMIT 1)                                       AS last_model
+      FROM ai_prompt_logs
+      WHERE user_id = ${userId}::uuid
+        AND created_at >= NOW() - INTERVAL '${AI_METRICS_WINDOW_DAYS} days'
+    `);
+    const row = (result.rows ?? result)[0] as Record<string, unknown> | undefined;
+
+    if (!row) {
+      this.logger.log(`AI metrics backfill for user=${userId}: no AI logs found`);
+      return { enqueued: 0, skipped: 0 };
+    }
+
+    const totalRuns = Number(row['total_runs'] ?? 0);
+    const avgLatencyMs = row['avg_latency_ms'] != null ? Number(row['avg_latency_ms']) : null;
+    const avgConfidence = row['avg_confidence'] != null ? Number(row['avg_confidence']) : null;
+    const piiDetectionCount = Number(row['pii_detection_count'] ?? 0);
+    const categoriesAssignedTotal = Number(row['categories_assigned_total'] ?? 0);
+    const model = typeof row['last_model'] === 'string' ? row['last_model'] : null;
+    const healthStatus =
+      totalRuns === 0 ? 'unavailable'
+      : avgLatencyMs != null && avgLatencyMs >= 10000 ? 'degraded'
+      : 'ok';
+    const piiDetectionRate = totalRuns > 0 ? Math.round((piiDetectionCount / totalRuns) * 1000) / 1000 : 0;
+
+    try {
+      await this.outbox.enqueue({
+        eventType: 'ai.metrics.projected.v1',
+        aggregateType: 'ai_metrics',
+        aggregateId: userId,
+        userId,
+        payload: {
+          windowDays: AI_METRICS_WINDOW_DAYS,
+          totalRuns,
+          avgLatencyMs,
+          avgConfidence,
+          piiDetectionCount,
+          piiDetectionRate,
+          categoriesAssignedTotal,
+          model,
+          healthStatus,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`AI metrics backfill: failed to enqueue for user=${userId}: ${(err as Error).message}`);
+      return { enqueued: 0, skipped: 0 };
+    }
+
+    this.logger.log(`AI metrics backfill for user=${userId}: enqueued (totalRuns=${totalRuns}, model=${model})`);
+    return { enqueued: 1, skipped: 0 };
   }
 
   async backfillPending(userId: string, batchSize = 100): Promise<BackfillResult> {

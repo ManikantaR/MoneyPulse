@@ -34,7 +34,7 @@ export default function TransactionsPage() {
     categoryId: searchParams.get('categoryId') || undefined,
     from: searchParams.get('from') || undefined,
     to: searchParams.get('to') || undefined,
-    isCredit: searchParams.get('isCredit') || undefined,
+    isCredit: searchParams.get('isCredit') === 'true' ? true : searchParams.get('isCredit') === 'false' ? false : undefined,
   }));
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
