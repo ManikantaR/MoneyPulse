@@ -115,6 +115,25 @@ services:
     volumes:
       - ~/moneypulse-data/ollama:/root/.ollama
 
+  # ── MCP Server ──────────────────────────────────────────
+  mcp-server:
+    build:
+      context: .
+      dockerfile: apps/mcp-server/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:3100:3100'
+    environment:
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_NAME: ${POSTGRES_DB:-moneypulse}
+      DB_USER: ${POSTGRES_USER:-moneypulse}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      MCP_PORT: '3100'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ── DB Backup ────────────────────────────────────────────
   backup:
     image: postgres:16-alpine
