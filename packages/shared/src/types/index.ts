@@ -16,6 +16,7 @@ export type AuditAction =
   | 'role_changed'
   | 'transaction_edited'
   | 'transaction_split'
+  | 'transaction_split_edited'
   | 'bulk_categorized'
   | 'auto_categorize'
   | 'budget_exceeded'

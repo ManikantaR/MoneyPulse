@@ -2,13 +2,16 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Scissors, Plus, Trash2 } from 'lucide-react';
 import {
   useTransactions,
   useUpdateTransaction,
   useBulkCategorize,
   useAutoCategorize,
+  useSplitTransaction,
+  useEditSplit,
 } from '@/lib/hooks/useTransactions';
+import type { SplitTransactionInput } from '@moneypulse/shared';
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { CategorySelect } from '@/components/CategorySelect';
@@ -52,6 +55,8 @@ export default function TransactionsPage() {
   const updateTxn = useUpdateTransaction();
   const bulkCategorize = useBulkCategorize();
   const autoCategorize = useAutoCategorize();
+  const splitTxn = useSplitTransaction();
+  const editSplitTxn = useEditSplit();
 
   const accounts = accountsData?.data ?? [];
   const categories = categoriesData?.data ?? [];
@@ -100,6 +105,63 @@ export default function TransactionsPage() {
   }, [categories]);
 
   const [learnToast, setLearnToast] = useState<string | null>(null);
+
+  type SplitRow = { amountCents: number; description: string; categoryId: string };
+  const [splitTarget, setSplitTarget] = useState<{ id: string; amountCents: number; description: string; isEdit: boolean } | null>(null);
+  const [splitRows, setSplitRows] = useState<SplitRow[]>([]);
+  const [splitError, setSplitError] = useState<string | null>(null);
+
+  function openSplit(txn: { id: string; amountCents: number; description: string; isSplitParent: boolean }, children: { amountCents: number; description: string; categoryId: string | null }[]) {
+    setSplitError(null);
+    setSplitTarget({ id: txn.id, amountCents: txn.amountCents, description: txn.description, isEdit: txn.isSplitParent });
+    if (txn.isSplitParent && children.length > 0) {
+      setSplitRows(children.map((c) => ({ amountCents: c.amountCents, description: c.description, categoryId: c.categoryId ?? '' })));
+    } else {
+      setSplitRows([
+        { amountCents: 0, description: '', categoryId: '' },
+        { amountCents: 0, description: '', categoryId: '' },
+      ]);
+    }
+  }
+
+  function closeSplit() {
+    setSplitTarget(null);
+    setSplitRows([]);
+    setSplitError(null);
+  }
+
+  function updateSplitRow(idx: number, field: keyof SplitRow, value: string | number) {
+    setSplitRows((rows) => rows.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  }
+
+  function addSplitRow() {
+    if (splitRows.length < 10) setSplitRows((rows) => [...rows, { amountCents: 0, description: '', categoryId: '' }]);
+  }
+
+  function removeSplitRow(idx: number) {
+    if (splitRows.length > 2) setSplitRows((rows) => rows.filter((_, i) => i !== idx));
+  }
+
+  function submitSplit() {
+    if (!splitTarget) return;
+    const total = splitRows.reduce((s, r) => s + r.amountCents, 0);
+    if (total !== splitTarget.amountCents) {
+      setSplitError(`Split total ${formatCents(total)} ≠ parent ${formatCents(splitTarget.amountCents)}`);
+      return;
+    }
+    if (splitRows.some((r) => r.amountCents <= 0)) {
+      setSplitError('Each split amount must be greater than zero.');
+      return;
+    }
+    setSplitError(null);
+    const splits: SplitTransactionInput['splits'] = splitRows.map((r) => ({
+      amountCents: r.amountCents,
+      description: r.description || undefined,
+      categoryId: r.categoryId || undefined,
+    }));
+    const action = splitTarget.isEdit ? editSplitTxn : splitTxn;
+    action.mutate({ id: splitTarget.id, splits }, { onSuccess: closeSplit, onError: (e: any) => setSplitError(e?.message ?? 'Split failed') });
+  }
 
   /** Handle inline category change for a transaction — also triggers auto-learn rule creation. */
   function handleCategoryChange(txnId: string, categoryId: string) {
@@ -467,64 +529,231 @@ export default function TransactionsPage() {
                 </td>
               </tr>
             ) : (
-              transactions.map((txn) => (
-                <tr
-                  key={txn.id}
-                  className={cn(
-                    'cursor-pointer hover:bg-[var(--surface-container-low)] transition-colors',
-                    selectedIds.has(txn.id) && 'bg-[var(--accent)]',
-                  )}
-                >
-                  <td className="w-10 px-3 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(txn.id)}
-                      onChange={() => toggleSelect(txn.id)}
-                      className="rounded"
-                    />
-                  </td>
-                  <td className="px-6 py-5 tabular-nums whitespace-nowrap">
-                    <div className="text-sm font-semibold">
-                      {formatDate(txn.date)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 max-w-[300px] truncate">
-                    <span className="font-medium">{txn.description}</span>
-                    {txn.merchantName && (
-                      <span className="ml-2 text-xs text-[var(--muted-foreground)]">
-                        {txn.merchantName}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-5 whitespace-nowrap text-[var(--muted-foreground)]">
-                    {accountMap[txn.accountId] ?? '—'}
-                  </td>
-                  <td className="px-6 py-5">
-                    <CategorySelect
-                      value={txn.categoryId ?? ''}
-                      onChange={(v) => handleCategoryChange(txn.id, v)}
-                      categoryGroups={categoryGroups}
-                    />
-                  </td>
-                  <td
+              transactions.map((txn) => {
+                const isParent = txn.isSplitParent;
+                const isChild = !!txn.parentTransactionId;
+                const childrenOfParent = isParent
+                  ? transactions.filter((t) => t.parentTransactionId === txn.id)
+                  : [];
+
+                return (
+                  <tr
+                    key={txn.id}
                     className={cn(
-                      'px-6 py-5 text-right font-extrabold tabular-nums whitespace-nowrap',
-                      txn.isCredit && accountTypeMap[txn.accountId] !== 'credit_card'
-                        ? 'text-[var(--secondary)]'
-                        : txn.isCredit && accountTypeMap[txn.accountId] === 'credit_card'
-                          ? 'text-[var(--muted-foreground)]'
-                          : 'text-[var(--foreground)]',
+                      'transition-colors',
+                      isParent
+                        ? 'opacity-50 bg-[var(--surface-container-low)]/40'
+                        : isChild
+                          ? 'bg-[var(--surface-container-low)]/20 hover:bg-[var(--surface-container-low)]'
+                          : 'cursor-pointer hover:bg-[var(--surface-container-low)]',
+                      !isParent && selectedIds.has(txn.id) && 'bg-[var(--accent)]',
                     )}
                   >
-                    {txn.isCredit ? '+' : '-'}
-                    {formatCents(txn.amountCents)}
-                  </td>
-                </tr>
-              ))
+                    <td className="w-10 px-3 py-4">
+                      {!isParent && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(txn.id)}
+                          onChange={() => toggleSelect(txn.id)}
+                          className="rounded"
+                        />
+                      )}
+                    </td>
+                    <td className="px-6 py-5 tabular-nums whitespace-nowrap">
+                      <div className="text-sm font-semibold">
+                        {formatDate(txn.date)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 max-w-[300px]">
+                      <div className="flex items-center gap-2 truncate">
+                        {isChild && (
+                          <span className="shrink-0 text-xs text-[var(--muted-foreground)]">↳</span>
+                        )}
+                        <span className={cn('font-medium truncate', isParent && 'line-through text-[var(--muted-foreground)]')}>
+                          {txn.description}
+                        </span>
+                        {isParent && (
+                          <span className="shrink-0 rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
+                            split
+                          </span>
+                        )}
+                        {isChild && (
+                          <span className="shrink-0 rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--muted-foreground)]">
+                            part
+                          </span>
+                        )}
+                      </div>
+                      {txn.merchantName && !isParent && (
+                        <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                          {txn.merchantName}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-5 whitespace-nowrap text-[var(--muted-foreground)]">
+                      {accountMap[txn.accountId] ?? '—'}
+                    </td>
+                    <td className="px-6 py-5">
+                      {isParent ? (
+                        <button
+                          onClick={() => openSplit(txn, childrenOfParent)}
+                          className="flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-colors"
+                        >
+                          <Scissors className="h-3 w-3" />
+                          Edit Split
+                        </button>
+                      ) : (
+                        <CategorySelect
+                          value={txn.categoryId ?? ''}
+                          onChange={(v) => handleCategoryChange(txn.id, v)}
+                          categoryGroups={categoryGroups}
+                        />
+                      )}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-6 py-5 text-right font-extrabold tabular-nums whitespace-nowrap',
+                        isParent
+                          ? 'text-[var(--muted-foreground)]'
+                          : txn.isCredit && accountTypeMap[txn.accountId] !== 'credit_card'
+                            ? 'text-[var(--secondary)]'
+                            : txn.isCredit && accountTypeMap[txn.accountId] === 'credit_card'
+                              ? 'text-[var(--muted-foreground)]'
+                              : 'text-[var(--foreground)]',
+                      )}
+                    >
+                      <div className="flex items-center justify-end gap-2">
+                        <span>
+                          {txn.isCredit ? '+' : '-'}
+                          {formatCents(txn.amountCents)}
+                        </span>
+                        {!isParent && !isChild && (
+                          <button
+                            onClick={() => openSplit(txn, [])}
+                            title="Split transaction"
+                            className="rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                          >
+                            <Scissors className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Split Transaction Modal */}
+      {splitTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) closeSplit(); }}>
+          <div className="w-full max-w-lg rounded-2xl bg-[var(--card)] shadow-2xl">
+            <div className="border-b border-[var(--border)] px-6 py-5">
+              <h2 className="text-lg font-extrabold tracking-tight">
+                {splitTarget.isEdit ? 'Edit Split' : 'Split Transaction'}
+              </h2>
+              <p className="mt-1 truncate text-sm text-[var(--muted-foreground)]">
+                {splitTarget.description}
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                Total: <span className="font-bold">{formatCents(splitTarget.amountCents)}</span>
+              </p>
+            </div>
+
+            <div className="max-h-[50vh] overflow-y-auto px-6 py-4 space-y-3">
+              {splitRows.map((row, idx) => (
+                <div key={idx} className="flex items-start gap-2">
+                  <span className="mt-2.5 w-5 shrink-0 text-xs text-[var(--muted-foreground)] font-mono">{idx + 1}.</span>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--muted-foreground)]">$</span>
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={row.amountCents > 0 ? (row.amountCents / 100).toFixed(2) : ''}
+                          onChange={(e) => updateSplitRow(idx, 'amountCents', Math.round(parseFloat(e.target.value || '0') * 100))}
+                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] py-2 pl-7 pr-3 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Description (optional)"
+                        value={row.description}
+                        onChange={(e) => updateSplitRow(idx, 'description', e.target.value)}
+                        className="flex-[2] rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30"
+                      />
+                    </div>
+                    <CategorySelect
+                      value={row.categoryId}
+                      onChange={(v) => updateSplitRow(idx, 'categoryId', v)}
+                      categoryGroups={categoryGroups}
+                      className="text-xs"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeSplitRow(idx)}
+                    disabled={splitRows.length <= 2}
+                    className="mt-2 rounded-lg p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30 transition-colors"
+                    title="Remove row"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+
+              <button
+                onClick={addSplitRow}
+                disabled={splitRows.length >= 10}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--border)] py-2 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-40 transition-colors"
+              >
+                <Plus className="h-4 w-4" /> Add row
+              </button>
+            </div>
+
+            <div className="border-t border-[var(--border)] px-6 py-4">
+              <div className="mb-3 flex items-center justify-between text-sm">
+                <span className="text-[var(--muted-foreground)]">Running total</span>
+                <span className={cn(
+                  'font-bold',
+                  splitRows.reduce((s, r) => s + r.amountCents, 0) === splitTarget.amountCents
+                    ? 'text-[var(--secondary)]'
+                    : 'text-destructive',
+                )}>
+                  {formatCents(splitRows.reduce((s, r) => s + r.amountCents, 0))}
+                  {' / '}
+                  {formatCents(splitTarget.amountCents)}
+                </span>
+              </div>
+              {splitError && (
+                <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">{splitError}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={closeSplit}
+                  className="flex-1 rounded-full border border-[var(--border)] py-2.5 text-sm font-semibold hover:bg-[var(--muted)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitSplit}
+                  disabled={splitTxn.isPending || editSplitTxn.isPending}
+                  className="flex-1 rounded-full bg-[var(--primary)] py-2.5 text-sm font-bold text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50 transition-opacity"
+                >
+                  {splitTxn.isPending || editSplitTxn.isPending
+                    ? 'Saving...'
+                    : splitTarget.isEdit
+                      ? 'Save Changes'
+                      : 'Split'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pagination */}
       <div className="flex items-center justify-between rounded-xl bg-[var(--surface-container-low)]/50 px-6 py-4">

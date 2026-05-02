@@ -110,12 +110,13 @@ export const splitTransactionSchema = z.object({
   splits: z
     .array(
       z.object({
-        amountCents: z.int(),
-        categoryId: z.uuid(),
+        amountCents: z.int().positive(),
+        categoryId: z.uuid().nullable().optional(),
         description: z.string().max(500).optional(),
       }),
     )
-    .min(2),
+    .min(2)
+    .max(10),
 });
 
 export const bulkCategorizeSchema = z.object({

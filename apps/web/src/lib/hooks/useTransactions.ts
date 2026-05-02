@@ -7,6 +7,7 @@ import type {
   UpdateTransactionInput,
   BulkCategorizeInput,
   CreateTransactionInput,
+  SplitTransactionInput,
 } from '@moneypulse/shared';
 
 /** Paginated response shape for transaction queries. */
@@ -76,6 +77,38 @@ export function useBulkCategorize() {
       api.post<{ data: { updated: number } }>(
         '/transactions/bulk-categorize',
         body,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
+/** Split a transaction into 2–10 children. Sum must equal parent amount. */
+export function useSplitTransaction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, splits }: { id: string; splits: SplitTransactionInput['splits'] }) =>
+      api.post<{ data: { parent: Transaction; children: Transaction[] } }>(
+        `/transactions/${id}/split`,
+        { splits },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
+/** Replace the children of an already-split transaction. Sum must equal parent amount. */
+export function useEditSplit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, splits }: { id: string; splits: SplitTransactionInput['splits'] }) =>
+      api.patch<{ data: { parent: Transaction; children: Transaction[] } }>(
+        `/transactions/${id}/split`,
+        { splits },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });

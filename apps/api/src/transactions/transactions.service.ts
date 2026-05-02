@@ -153,9 +153,6 @@ export class TransactionsService {
       conditions.push(eq(schema.transactions.isCredit, query.isCredit));
     }
 
-    // Exclude split parents from list
-    conditions.push(eq(schema.transactions.isSplitParent, false));
-
     const whereCondition = and(...conditions);
 
     const [{ total }] = await this.db
@@ -313,7 +310,7 @@ export class TransactionsService {
 
     if (parent.isSplitParent) {
       throw new BadRequestException(
-        'Transaction has already been split. Cannot split again.',
+        'Transaction is already split — use PATCH /:id/split to edit the split.',
       );
     }
 
@@ -327,34 +324,114 @@ export class TransactionsService {
       );
     }
 
-    await this.db
-      .update(schema.transactions)
-      .set({ isSplitParent: true, updatedAt: new Date() })
-      .where(eq(schema.transactions.id, id));
+    return this.db.transaction(async (tx: any) => {
+      await tx
+        .update(schema.transactions)
+        .set({ isSplitParent: true, updatedAt: new Date() })
+        .where(eq(schema.transactions.id, id));
 
-    const children = await this.db
-      .insert(schema.transactions)
-      .values(
-        input.splits.map((split: any, idx: number) => ({
-          accountId: parent.accountId,
-          userId,
-          txnHash: createHash('sha256')
-            .update(`${parent.id}|split|${idx}`)
-            .digest('hex'),
-          date: parent.date,
-          description: split.description || parent.description,
-          originalDescription: encryptField(parent.originalDescription),
-          amountCents: split.amountCents,
-          categoryId: split.categoryId,
-          isCredit: parent.isCredit,
-          parentTransactionId: parent.id,
-          sourceFileId: parent.sourceFileId,
-          tags: [],
-        })),
-      )
-      .returning();
+      const childRows = await tx
+        .insert(schema.transactions)
+        .values(
+          input.splits.map((split: any, idx: number) => ({
+            accountId: parent.accountId,
+            userId,
+            txnHash: createHash('sha256')
+              .update(`${parent.id}|split|${idx}`)
+              .digest('hex'),
+            date: parent.date,
+            description: split.description || parent.description,
+            originalDescription: encryptField(parent.originalDescription),
+            amountCents: split.amountCents,
+            categoryId: split.categoryId ?? null,
+            merchantName: parent.merchantName ?? null,
+            isCredit: parent.isCredit,
+            isManual: parent.isManual ?? false,
+            parentTransactionId: parent.id,
+            sourceFileId: parent.sourceFileId,
+            tags: [],
+          })),
+        )
+        .returning();
 
-    return { parent: { ...parent, isSplitParent: true }, children: children.map((c: any) => this.decryptTxn(c)) };
+      const updatedParent = { ...parent, isSplitParent: true };
+      const children = childRows.map((c: any) => this.decryptTxn(c));
+
+      await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', updatedParent);
+      for (const child of children) {
+        await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', child);
+      }
+
+      return { parent: updatedParent, children };
+    });
+  }
+
+  /**
+   * Replace the children of an already-split transaction atomically.
+   * Deletes old children and inserts new ones in a single DB transaction.
+   */
+  async editSplit(
+    id: string,
+    userId: string,
+    input: SplitTransactionInput,
+  ) {
+    const parent = await this.findById(id);
+    if (!parent || parent.userId !== userId) throw new NotFoundException();
+
+    if (!parent.isSplitParent) {
+      throw new BadRequestException(
+        'Transaction has not been split yet — use POST /:id/split to create a split.',
+      );
+    }
+
+    const splitTotal = input.splits.reduce(
+      (sum: number, s: any) => sum + s.amountCents,
+      0,
+    );
+    if (splitTotal !== parent.amountCents) {
+      throw new BadRequestException(
+        `Split amounts (${splitTotal}) must equal parent amount (${parent.amountCents})`,
+      );
+    }
+
+    return this.db.transaction(async (tx: any) => {
+      await tx
+        .delete(schema.transactions)
+        .where(eq(schema.transactions.parentTransactionId, id));
+
+      const childRows = await tx
+        .insert(schema.transactions)
+        .values(
+          input.splits.map((split: any, idx: number) => ({
+            accountId: parent.accountId,
+            userId,
+            txnHash: createHash('sha256')
+              .update(`${parent.id}|split|${idx}|edit`)
+              .digest('hex'),
+            date: parent.date,
+            description: split.description || parent.description,
+            originalDescription: encryptField(parent.originalDescription),
+            amountCents: split.amountCents,
+            categoryId: split.categoryId ?? null,
+            merchantName: parent.merchantName ?? null,
+            isCredit: parent.isCredit,
+            isManual: parent.isManual ?? false,
+            parentTransactionId: parent.id,
+            sourceFileId: parent.sourceFileId,
+            tags: [],
+          })),
+        )
+        .returning();
+
+      const children = childRows.map((c: any) => this.decryptTxn(c));
+
+      await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', parent);
+      for (const child of children) {
+        await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', child);
+      }
+
+      return { parent, children };
+    });
   }
 
   /**

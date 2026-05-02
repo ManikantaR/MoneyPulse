@@ -231,6 +231,38 @@ export class TransactionsController {
   }
 
   /**
+   * PATCH /transactions/:id/split — Replace the children of an already-split transaction.
+   * Sum of new splits must equal the parent amount.
+   * Emits a `transaction_split_edited` audit log entry on success.
+   *
+   * @param id - Parent transaction UUID
+   * @param body - Validated split payload `{ splits: [{ amountCents, description?, categoryId? }] }`
+   * @param user - JWT token payload
+   * @returns `{ data: { parent, children } }`
+   */
+  @Patch(':id/split')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Edit split — replace children of a split transaction' })
+  async editSplit(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(splitTransactionSchema))
+    body: SplitTransactionInput,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const result = await this.txnService.editSplit(id, user.sub, body);
+
+    await this.auditService.log({
+      userId: user.sub,
+      action: 'transaction_split_edited',
+      entityType: 'transaction',
+      entityId: id,
+      newValue: { childCount: result.children.length },
+    });
+
+    return { data: result };
+  }
+
+  /**
    * POST /transactions/bulk-categorize — Assign a category to multiple transactions at once.
    * Only updates transactions owned by the authenticated user.
    * Emits a `bulk_categorized` audit log entry on success.
