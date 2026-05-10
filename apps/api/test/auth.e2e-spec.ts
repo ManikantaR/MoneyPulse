@@ -6,11 +6,14 @@ import cookieParser from 'cookie-parser';
 import Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { REDIS_CLIENT } from '../src/redis/redis.provider';
+import { truncateAllTables } from './helpers/db';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
+    await truncateAllTables();
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();

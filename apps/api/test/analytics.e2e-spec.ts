@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
+import { truncateAllTables } from './helpers/db';
 
 describe('Analytics (e2e)', () => {
   let app: INestApplication;
@@ -16,6 +17,8 @@ describe('Analytics (e2e)', () => {
   };
 
   beforeAll(async () => {
+    await truncateAllTables();
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
