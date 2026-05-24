@@ -1,0 +1,1 @@
+ALTER TABLE "accounts" ALTER COLUMN "last_four" SET DATA TYPE varchar(255);

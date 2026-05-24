@@ -16,6 +16,7 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, isNull } from 'drizzle-orm';
 import { INGESTION_QUEUE, WATCH_FOLDER_DIR } from '@moneypulse/shared';
+import { decryptField } from '../common/crypto';
 
 @Injectable()
 export class WatcherService implements OnModuleInit, OnModuleDestroy {
@@ -178,7 +179,8 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
       .where(isNull(schema.accounts.deletedAt));
 
     for (const account of accounts) {
-      const accountSlug = this.generateSlug(account.nickname, account.lastFour);
+      const plainLastFour = decryptField(account.lastFour);
+      const accountSlug = this.generateSlug(account.nickname, plainLastFour);
       if (accountSlug === slug) return account;
     }
 

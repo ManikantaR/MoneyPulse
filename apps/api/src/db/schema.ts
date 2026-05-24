@@ -115,7 +115,7 @@ export const accounts = pgTable('accounts', {
   institution: institutionEnum('institution').notNull(),
   accountType: accountTypeEnum('account_type').notNull(),
   nickname: varchar('nickname', { length: 100 }).notNull(),
-  lastFour: varchar('last_four', { length: 4 }).notNull(),
+  lastFour: varchar('last_four', { length: 255 }).notNull(),
   startingBalanceCents: integer('starting_balance_cents').notNull().default(0),
   creditLimitCents: integer('credit_limit_cents'),
   csvFormatConfig: jsonb('csv_format_config'),

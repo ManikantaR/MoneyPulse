@@ -33,7 +33,7 @@ import type {
 
 const COOKIE_BASE = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: process.env.COOKIE_SECURE !== 'false' && process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
   path: '/',
 };
