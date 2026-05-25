@@ -245,6 +245,11 @@ These changes were made during NAS deployment and must be preserved:
 ### 7.5 Homepage — AdGuard widget
 - **Fixed**: Added `username` and `password` fields to the AdGuard widget config in `services.yaml`. Changed widget URL to `http://adguard:80` (Docker internal network).
 
+### 7.6 "Failed to fetch" after NAS deploy — ✅ Fixed 2026-05-25
+- **Root cause**: Next.js `NEXT_PUBLIC_*` env vars are baked into JS bundles at **build time** (`next build`). Setting them in the compose `environment:` block only affects runtime — too late for client-side code. Every rebuild of the web container would lose the API URL.
+- **Fix**: Added `ARG NEXT_PUBLIC_API_URL` + `ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}` in `apps/web/Dockerfile` (builder stage, before `RUN pnpm --filter @moneypulse/web build`). Added `build.args.NEXT_PUBLIC_API_URL` in `docker-compose.moneypulse.yml`.
+- **IMPORTANT**: Any future `NEXT_PUBLIC_*` variable must be added as both a Docker build ARG and a compose build arg — runtime `environment:` alone will NOT work.
+
 ---
 
 ## 8. Secret Protection Strategy
@@ -376,3 +381,4 @@ Track all deployment-related changes here. Claude Code should append to this sec
 | 2026-05-25 | Installed gitleaks pre-commit hook + GitHub Actions secret scan | Security |
 | 2026-05-25 | Full git history scan: 10 false positives recorded, no real leaks | Security |
 | 2026-05-25 | Fix category assignment: decouple sync outbox from domain write in TransactionsService.update() | Fix |
+| 2026-05-25 | Fix "failed to fetch": pass NEXT_PUBLIC_API_URL as Docker build ARG (not just runtime env) | Fix |

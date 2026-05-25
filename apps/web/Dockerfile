@@ -19,6 +19,12 @@ RUN pnpm --filter @moneypulse/shared build
 FROM shared-build AS builder
 COPY apps/web/ ./apps/web/
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# NEXT_PUBLIC_* vars are baked into JS bundles at build time by Next.js.
+# They MUST be available here — setting them at runtime has no effect.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 RUN pnpm --filter @moneypulse/web build
 
 # Production
