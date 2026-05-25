@@ -429,6 +429,7 @@ See [MONEYPULSE-PLAN.md](MONEYPULSE-PLAN.md) for the detailed implementation pla
 | **CSV export** | Formula injection protection (strips `=+@-` prefixes) |
 | **Audit trail** | All security events logged (login, password change, role change, CSV export, file import) |
 | **PII sanitization** | SSN, credit card, email, phone, DOB, account numbers, addresses stripped from AI prompts |
+| **Secret scanning** | [gitleaks](https://github.com/gitleaks/gitleaks) pre-commit hook blocks accidental commits of secrets/PII; GitHub Actions runs the same scan on every PR |
 
 ## Supported Banks
 

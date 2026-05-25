@@ -1,0 +1,25 @@
+# False positives confirmed 2026-05-25
+# All entries below use shell variable substitution (${POSTGRES_PASSWORD}),
+# CI test credentials, or explicit placeholder values — not real secrets.
+
+# scripts/deploy.sh:145 — DATABASE_URL with ${POSTGRES_PASSWORD} shell var
+a771ed330752451742fd8cea22ebfcddb89dd795:scripts/deploy.sh:postgres-connection-string:145
+
+# scripts/setup.sh — DATABASE_URL with ${POSTGRES_PASSWORD} shell var (3 occurrences)
+a771ed330752451742fd8cea22ebfcddb89dd795:scripts/setup.sh:postgres-connection-string:129
+a771ed330752451742fd8cea22ebfcddb89dd795:scripts/setup.sh:postgres-connection-string:172
+a771ed330752451742fd8cea22ebfcddb89dd795:scripts/setup.sh:postgres-connection-string:188
+a771ed330752451742fd8cea22ebfcddb89dd795:scripts/setup.sh:postgres-connection-string:253
+
+# scripts/reset.sh:75 — DATABASE_URL with ${POSTGRES_USER}:${POSTGRES_PASSWORD} shell vars
+6bdf308fc436f018d33f8925883af6ccad4aa52d:scripts/reset.sh:postgres-connection-string:75
+
+# .github/workflows/ci.yml — CI test database uses literal "testpassword" (not a real credential)
+73f63c7b34fa6b47f74693c6a6fc880d263d731c:.github/workflows/ci.yml:postgres-connection-string:103
+73f63c7b34fa6b47f74693c6a6fc880d263d731c:.github/workflows/ci.yml:postgres-connection-string:126
+
+# .env.example:5 — explicit placeholder "changeme_in_production"
+51bd1549419a5db1e28f1dd0b88441fada38a454:.env.example:postgres-connection-string:5
+
+# docker-compose.yml:47 — DATABASE_URL with ${POSTGRES_PASSWORD} variable interpolation
+51bd1549419a5db1e28f1dd0b88441fada38a454:docker-compose.yml:postgres-connection-string:47

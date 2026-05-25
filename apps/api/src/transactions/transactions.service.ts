@@ -263,19 +263,16 @@ export class TransactionsService {
     if (!txn || txn.userId !== userId)
       throw new NotFoundException('Transaction not found');
 
-    // Wrap the domain update and outbox insert in a single DB transaction.
-    const updated = await this.db.transaction(async (tx: any) => {
-      const rows = await tx
-        .update(schema.transactions)
-        .set({ ...input, updatedAt: new Date() })
-        .where(eq(schema.transactions.id, id))
-        .returning();
-      const updatedRow = this.decryptTxn(rows[0]);
-      await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', updatedRow);
-      return updatedRow;
-    });
-
-    return updated;
+    const rows = await this.db
+      .update(schema.transactions)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(schema.transactions.id, id))
+      .returning();
+    const updatedRow = this.decryptTxn(rows[0]);
+    // Best-effort: sync outbox failures (e.g. ALIAS_SECRET not configured) must
+    // not roll back the domain write. enqueueTransactionEvent already catches.
+    await this.enqueueTransactionEvent('transaction.projected.v1', updatedRow);
+    return updatedRow;
   }
 
   /**

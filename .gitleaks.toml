@@ -1,0 +1,87 @@
+title = "MoneyPulse Gitleaks Config"
+
+[extend]
+# Extend the default gitleaks ruleset
+useDefault = true
+
+# ──────────────────────────────────────────────
+# Custom rules
+# ──────────────────────────────────────────────
+
+[[rules]]
+id = "firebase-service-account"
+description = "Firebase service account JSON"
+regex = '''\"type\":\s*\"service_account\"'''
+tags = ["firebase", "key"]
+
+[[rules]]
+id = "postgres-connection-string"
+description = "PostgreSQL connection string with password"
+regex = '''postgres(?:ql)?:\/\/[^:]+:[^@]{3,}@'''
+tags = ["postgres", "credentials"]
+
+  [rules.allowlist]
+  # Exclude shell/compose variable substitution — these are not real passwords
+  regexes = [
+    '''\$\{[A-Z_]+\}''',
+    '''changeme''',
+    '''testpassword''',
+    '''<[A-Z_]+>''',
+  ]
+
+[[rules]]
+id = "encryption-key-hex64"
+description = "64-char hex string (potential ENCRYPTION_KEY)"
+regex = '''(?i)(ENCRYPTION_KEY|JWT_SECRET|ALIAS_SECRET|SYNC_SIGNING_SECRET)\s*[=:]\s*[0-9a-f]{64}'''
+tags = ["encryption", "key"]
+
+# ──────────────────────────────────────────────
+# Allowlist — global path-level false positives
+# ──────────────────────────────────────────────
+
+[allowlist]
+description = "Known false positives in docs and test fixtures"
+
+# Markdown docs that contain only example/placeholder hex strings
+paths = [
+  '''MONEYPULSE-PLAN\.md''',
+  '''LOCAL_DEPLOYMENT\.md''',
+  '''NAS-DEPLOYMENT-SPEC\.md''',
+  '''.*-SPEC\.md''',
+  '''.*PLAN\.md''',
+]
+
+# Test fixtures and spec files contain dummy secrets by design
+regexes = [
+  # openssl example command output shown in docs (command, not real output)
+  '''openssl rand -hex''',
+  # Placeholder patterns used throughout docs
+  '''<YOUR_VALUE>''',
+  '''<PLACEHOLDER>''',
+]
+
+# ──────────────────────────────────────────────
+# Allowlist — test directories
+# ──────────────────────────────────────────────
+
+[[rules]]
+id = "generic-api-key"
+# Override the default generic-api-key rule to exclude test files
+description = "Generic API key — skip test fixtures"
+regex = '''(?i)(api[_-]?key|apikey|secret|password|passwd|pwd)\s*[=:]\s*['\"]?[0-9a-zA-Z\-_.]{16,}['\"]?'''
+tags = ["generic", "key"]
+
+  [rules.allowlist]
+  paths = [
+    '''__tests__/.*''',
+    '''.*\.spec\.ts''',
+    '''.*\.test\.ts''',
+    '''.*\.spec\.js''',
+    '''.*\.test\.js''',
+  ]
+  regexes = [
+    # openssl command examples in docs (not real values)
+    '''openssl rand''',
+    # Placeholder notation used in all spec files
+    '''<[A-Z_]+>''',
+  ]

@@ -72,7 +72,7 @@ export function useBulkCategorize() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: BulkCategorizeInput) =>
-      api.post<{ data: { updated: number } }>(
+      api.post<{ data: { updatedCount: number } }>(
         '/transactions/bulk-categorize',
         body,
       ),
