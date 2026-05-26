@@ -16,12 +16,6 @@ async function seed() {
 
   console.log('Seeding default categories...');
 
-  // Ensure the unique index exists (idempotent — safe to run on existing DBs)
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_name_parent
-    ON categories (name, COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'))
-  `);
-
   // Two-pass insert: parents first, then children (to resolve parentName → parentId)
   const nameToId = new Map<string, string>();
 
