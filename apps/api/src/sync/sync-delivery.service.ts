@@ -68,6 +68,7 @@ export class SyncDeliveryService {
       const userAlias = this.aliasMapper.toAliasId('user', row.user_id);
       projected = {
         ...policy.sanitizedPayload,
+        eventType: row.event_type,
         userAliasId: userAlias,
       };
       signed = this.signing.signPayload(projected, row.idempotency_key);

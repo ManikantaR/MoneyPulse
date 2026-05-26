@@ -244,6 +244,14 @@ These changes were made during NAS deployment and must be preserved:
 
 If `ALIAS_SECRET` or `SYNC_SIGNING_SECRET` are absent, outbox events are created but the delivery worker will log `SIGNING_ERROR` warnings and retry until the env vars are set. Set them in `/volume1/docker/moneypulse/repo/.env` and run `docker compose up -d --force-recreate`.
 
+### 7.2a Transactions fan-out missing in Firebase — ✅ Fixed 2026-05-25
+
+- **Root cause**: `SyncDeliveryService.deliverOne()` built the projected HTTP body from `sanitizedPayload + userAliasId` but **never included `eventType`** (which was a separate DB column, not part of `payload_json`). Firebase's `ingestSyncEvent` function received the body, saved it to `syncIngressEvents`, returned 202 (so NAS marked events "delivered"), but `req.body.eventType` was `undefined` — so **no fan-out** happened. The `transactions`, `categories`, `budgets` Firestore collections stayed empty.
+- **Fix**: Added `eventType: row.event_type` to the `projected` object in `sync-delivery.service.ts` line 71.
+- **Files changed**: `apps/api/src/sync/sync-delivery.service.ts`
+- **Tests added**: `apps/api/src/sync/__tests__/sync-delivery.service.spec.ts` — new test `includes eventType and userAliasId in the projected body`
+- **Post-deploy**: After redeploying to NAS, reset the 46 already-delivered events back to pending so they re-deliver with `eventType` included. Use the Sync Admin UI → Backfill, or run `POST /sync/backfill` from the API.
+
 ### 7.3 Bank Statement Watcher — BoA preamble handling
 - **Fixed**: Detector now scans up to 15 rows to find the real header row, skipping BoA's summary preamble (balance, totals, etc.)
 - **Test**: `python3 detector.py` runs 10 self-tests including preamble case

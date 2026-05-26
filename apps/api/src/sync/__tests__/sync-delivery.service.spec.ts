@@ -346,5 +346,23 @@ describe('SyncDeliveryService', () => {
       expect(init.headers['x-mp-key-id']).toBe('sync-key-v1');
       expect(init.headers['x-mp-idempotency-key']).toBe('idem-xyz');
     });
+
+    it('includes eventType and userAliasId in the projected body', async () => {
+      const db = buildDb();
+      db.execute.mockResolvedValue({
+        rows: [makeRow({ event_type: 'transaction.projected.v1' })],
+      });
+      const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      global.fetch = fetchSpy;
+
+      const service = buildService(db, buildSanitizer(), buildAliasMapper(), buildSigning());
+      await service.deliverPending();
+
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body);
+      expect(body.eventType).toBe('transaction.projected.v1');
+      expect(body.userAliasId).toBe('a1_alias123');
+      expect(body.amountCents).toBe(500);
+    });
   });
 });
