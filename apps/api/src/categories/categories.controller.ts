@@ -10,6 +10,7 @@ import {
   HttpCode,
   NotFoundException,
 } from '@nestjs/common';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -73,8 +74,9 @@ export class CategoriesController {
   async create(
     @Body(new ZodValidationPipe(createCategorySchema))
     body: CreateCategoryInput,
+    @CurrentUser('sub') userId: string,
   ) {
-    const category = await this.categoriesService.create(body);
+    const category = await this.categoriesService.create(body, userId);
     return { data: category };
   }
 
@@ -94,8 +96,9 @@ export class CategoriesController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateCategorySchema))
     body: UpdateCategoryInput,
+    @CurrentUser('sub') userId: string,
   ) {
-    const category = await this.categoriesService.update(id, body);
+    const category = await this.categoriesService.update(id, body, userId);
     return { data: category };
   }
 

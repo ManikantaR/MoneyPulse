@@ -131,21 +131,27 @@ export const accounts = pgTable('accounts', {
 // ── Categories ──────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const categories: any = pgTable('categories', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: varchar('name', { length: 50 }).notNull(),
-  icon: varchar('icon', { length: 10 }).notNull(),
-  color: varchar('color', { length: 7 }).notNull(),
-  parentId: uuid('parent_id').references((): any => categories.id),
-  sortOrder: integer('sort_order').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+export const categories: any = pgTable(
+  'categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: varchar('name', { length: 50 }).notNull(),
+    icon: varchar('icon', { length: 10 }).notNull(),
+    color: varchar('color', { length: 7 }).notNull(),
+    parentId: uuid('parent_id').references((): any => categories.id),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('uq_categories_name_parent').on(table.name, table.parentId),
+  ],
+);
 
 // ── File Uploads ────────────────────────────────────────────
 

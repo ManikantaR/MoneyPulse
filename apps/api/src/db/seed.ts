@@ -1,4 +1,5 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { categories } from './schema';
 import { DEFAULT_CATEGORIES } from '@moneypulse/shared';
@@ -15,12 +16,35 @@ async function seed() {
 
   console.log('Seeding default categories...');
 
+  // Ensure the unique index exists (idempotent — safe to run on existing DBs)
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_name_parent
+    ON categories (name, COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'))
+  `);
+
   // Two-pass insert: parents first, then children (to resolve parentName → parentId)
   const nameToId = new Map<string, string>();
+
+  // Fetch existing categories first so we can skip duplicates
+  const existing = await db.select().from(categories);
+  const existingKeys = new Set(
+    existing.map((c: any) => `${c.name}::${c.parentId ?? 'ROOT'}`),
+  );
+  for (const row of existing) {
+    nameToId.set((row as any).name, (row as any).id);
+  }
+
+  let inserted = 0;
+  let skipped = 0;
 
   // Pass 1: insert top-level categories (no parentName)
   const parents = DEFAULT_CATEGORIES.filter((c) => !c.parentName);
   for (const cat of parents) {
+    const key = `${cat.name}::ROOT`;
+    if (existingKeys.has(key)) {
+      skipped++;
+      continue;
+    }
     const rows = await db
       .insert(categories)
       .values({
@@ -30,16 +54,10 @@ async function seed() {
         parentId: null,
         sortOrder: cat.sortOrder,
       })
-      .onConflictDoNothing()
       .returning();
-    if (rows[0]) nameToId.set(cat.name, rows[0].id);
-  }
-
-  // If some parents already existed (conflict), fetch them to resolve names
-  if (nameToId.size < parents.length) {
-    const existing = await db.select().from(categories);
-    for (const row of existing) {
-      if (!nameToId.has(row.name)) nameToId.set(row.name, row.id);
+    if (rows[0]) {
+      nameToId.set(cat.name, rows[0].id);
+      inserted++;
     }
   }
 
@@ -51,7 +69,12 @@ async function seed() {
       console.warn(`Skipping "${cat.name}": parent "${cat.parentName}" not found`);
       continue;
     }
-    await db
+    const key = `${cat.name}::${parentId}`;
+    if (existingKeys.has(key)) {
+      skipped++;
+      continue;
+    }
+    const rows = await db
       .insert(categories)
       .values({
         name: cat.name,
@@ -60,10 +83,16 @@ async function seed() {
         parentId,
         sortOrder: cat.sortOrder,
       })
-      .onConflictDoNothing();
+      .returning();
+    if (rows[0]) {
+      nameToId.set(cat.name, rows[0].id);
+      inserted++;
+    }
   }
 
-  console.log(`Seeded ${DEFAULT_CATEGORIES.length} default categories (${parents.length} parents, ${children.length} children)`);
+  console.log(
+    `Seed complete: ${inserted} inserted, ${skipped} already existed (${DEFAULT_CATEGORIES.length} total defined)`,
+  );
 
   await client.end();
   process.exit(0);

@@ -4,8 +4,10 @@ import { AliasMapperService } from './alias-mapper.service';
 import { SigningService } from './signing.service';
 import { SyncDeliveryService } from './sync-delivery.service';
 import { OutboxService } from './outbox.service';
+import { SyncController } from './sync.controller';
 
 @Module({
+  controllers: [SyncController],
   providers: [
     SanitizerV2Service,
     AliasMapperService,

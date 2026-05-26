@@ -3,6 +3,7 @@ import {
   Inject,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DATABASE_CONNECTION } from '../db/db.module';
@@ -16,6 +17,8 @@ import type {
   UpdateAccountInput,
 } from '@moneypulse/shared';
 import { encryptField, decryptField } from '../common/crypto';
+import { OutboxService } from '../sync/outbox.service';
+import { AliasMapperService } from '../sync/alias-mapper.service';
 
 @Injectable()
 export class AccountsService {
@@ -25,6 +28,8 @@ export class AccountsService {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
     private readonly config: ConfigService,
+    @Optional() private readonly outbox?: OutboxService,
+    @Optional() private readonly aliasMapper?: AliasMapperService,
   ) {
     this.watchDir =
       this.config.get<string>('WATCH_FOLDER_DIR') || WATCH_FOLDER_DIR;
@@ -52,6 +57,7 @@ export class AccountsService {
       .returning();
 
     const account = this.decryptAccount(rows[0]);
+    await this.enqueueAccountEvent(account);
 
     // Create watch-folder subdirectory for auto-import
     try {
@@ -151,7 +157,9 @@ export class AccountsService {
       })
       .where(eq(schema.accounts.id, id))
       .returning();
-    return this.decryptAccount(rows[0]);
+    const updated = this.decryptAccount(rows[0]);
+    await this.enqueueAccountEvent(updated);
+    return updated;
   }
 
   /**
@@ -201,6 +209,27 @@ export class AccountsService {
       '-' +
       plainLastFour
     );
+  }
+
+  private async enqueueAccountEvent(account: any): Promise<void> {
+    if (!this.outbox || !this.aliasMapper) return;
+    try {
+      await this.outbox.enqueue({
+        eventType: 'account.projected.v1',
+        aggregateType: 'account',
+        aggregateId: account.id,
+        userId: account.userId,
+        payload: {
+          accountAliasId: this.aliasMapper.toAliasId('account', account.id),
+          institution: account.institution,
+          accountType: account.accountType,
+          nickname: account.nickname,
+          startingBalanceCents: account.startingBalanceCents,
+        },
+      });
+    } catch (err: unknown) {
+      this.logger.warn(`Outbox enqueue skipped for account ${account.id}: ${(err as Error).message}`);
+    }
   }
 
   private decryptAccount(account: any) {

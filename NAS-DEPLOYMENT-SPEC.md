@@ -227,13 +227,22 @@ These changes were made during NAS deployment and must be preserved:
 - **Files changed**: `apps/api/src/transactions/transactions.service.ts` (lines ~261–278), `apps/web/src/lib/hooks/useTransactions.ts` (response type alignment)
 - **Tests added**: `apps/api/src/transactions/__tests__/transactions.service.spec.ts`
 
-### 7.2 Transactions not syncing to Firestore
-- **Symptom**: After importing transactions, they don't appear in the Firebase companion app
-- **Status**: Not yet investigated
-- **Likely area**: Phase 9 sync domain — `apps/api/src/sync/`
-- **Relevant spec**: `PHASE9-SYNC-SPEC.md`
-- **Required env vars**: `ALIAS_SECRET`, `SYNC_SIGNING_SECRET`, `FIREBASE_SYNC_ENDPOINT`
-- **Investigation steps**: Check if outbox_events table has pending rows, check if delivery worker is running, check dead-letter queue, verify Firebase endpoint is reachable from NAS
+### 7.2 Transactions not syncing to Firestore — ✅ Fixed 2026-05-25
+
+- **Root cause**: `IngestionProcessor.insertTransactions()` inserted imported bank statement transactions into PostgreSQL but **never called `OutboxService`**. The BullMQ delivery worker (`sync-delivery-sweep`, every 30s) was running correctly, but the outbox was always empty for imported transactions. Only manually-created/updated transactions (via `TransactionsService`) ever wrote to the outbox.
+- **Fix**: `IngestionProcessor` now injects `OutboxService` + `AliasMapperService`. After every successful batch insert, it calls the new `enqueueIngestionEvents()` (best-effort, per-transaction) which writes to `outbox_events`. `insertTransactions()` now uses `.returning()` to get inserted IDs, eliminating the separate `getInsertedTransactionIds()` follow-up query.
+- **Files changed**: `apps/api/src/ingestion/ingestion.module.ts` (add SyncModule), `apps/api/src/jobs/ingestion.processor.ts`
+- **Tests added**: `apps/api/src/jobs/__tests__/ingestion.processor.sync.spec.ts`
+- **Sync Admin UI** (2026-05-25): `GET /sync/status|events`, `POST /sync/trigger|backfill|replay` with admin-only JWT guard. Web UI at `/sync` — health dashboard, event table, dead-letter replay, historical backfill. `AccountsService`, `BudgetsService`, `CategoriesService` also now emit `account.projected.v1`, `budget.projected.v1`, `category.projected.v1` outbox events.
+- **Required env vars (must be set on NAS before sync will work)**:
+
+| Variable | Purpose | Generate |
+|----------|---------|---------|
+| `ALIAS_SECRET` | Deterministic pseudonyms for local IDs | `openssl rand -hex 32` |
+| `SYNC_SIGNING_SECRET` | HMAC signing key for sync payloads | `openssl rand -hex 32` |
+| `FIREBASE_SYNC_ENDPOINT` | URL of Firebase ingestion Cloud Function | See PHASE9-SYNC-SPEC.md |
+
+If `ALIAS_SECRET` or `SYNC_SIGNING_SECRET` are absent, outbox events are created but the delivery worker will log `SIGNING_ERROR` warnings and retry until the env vars are set. Set them in `/volume1/docker/moneypulse/repo/.env` and run `docker compose up -d --force-recreate`.
 
 ### 7.3 Bank Statement Watcher — BoA preamble handling
 - **Fixed**: Detector now scans up to 15 rows to find the real header row, skipping BoA's summary preamble (balance, totals, etc.)
@@ -381,4 +390,8 @@ Track all deployment-related changes here. Claude Code should append to this sec
 | 2026-05-25 | Installed gitleaks pre-commit hook + GitHub Actions secret scan | Security |
 | 2026-05-25 | Full git history scan: 10 false positives recorded, no real leaks | Security |
 | 2026-05-25 | Fix category assignment: decouple sync outbox from domain write in TransactionsService.update() | Fix |
+| 2026-05-25 | Fix sync pipeline: IngestionProcessor now enqueues outbox events after CSV/PDF import | Fix |
 | 2026-05-25 | Fix "failed to fetch": pass NEXT_PUBLIC_API_URL as Docker build ARG (not just runtime env) | Fix |
+| 2026-05-25 | Added Utilities subcategories: Electric, Water, Gas, Phone, Internet, Trash & Sewer | Data |
+| 2026-05-25 | Sync Admin page: `GET /sync/status`, `POST /sync/trigger|backfill|replay`, `GET /sync/events` + `/sync` UI | Feature |
+| 2026-05-25 | Part C: AccountsService, BudgetsService, CategoriesService now enqueue outbox events on create/update | Feature |

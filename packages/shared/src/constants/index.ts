@@ -56,6 +56,12 @@ export const DEFAULT_CATEGORIES: SeedCategory[] = [
 
   // ── Utilities ─────────────────────────────────────────────
   { name: 'Utilities',           icon: '💡', color: '#14b8a6', sortOrder: 10 },
+  { name: 'Electric',            icon: '⚡', color: '#0d9488', parentName: 'Utilities', sortOrder: 1 },
+  { name: 'Water',               icon: '💧', color: '#2dd4bf', parentName: 'Utilities', sortOrder: 2 },
+  { name: 'Gas',                 icon: '🔥', color: '#5eead4', parentName: 'Utilities', sortOrder: 3 },
+  { name: 'Phone',               icon: '📱', color: '#99f6e4', parentName: 'Utilities', sortOrder: 4 },
+  { name: 'Internet',            icon: '🌐', color: '#ccfbf1', parentName: 'Utilities', sortOrder: 5 },
+  { name: 'Trash & Sewer',       icon: '🗑️', color: '#f0fdfa', parentName: 'Utilities', sortOrder: 6 },
 
   // ── Healthcare ────────────────────────────────────────────
   { name: 'Healthcare',          icon: '🏥', color: '#f43f5e', sortOrder: 11 },

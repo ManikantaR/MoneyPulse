@@ -211,8 +211,136 @@ Set up gitleaks as a pre-commit hook to scan for secrets before every commit.
 
 ---
 
+## Prompt 4: Sync Admin Page + Backfill Existing Transactions
+
+```
+## Context
+
+MoneyPulse is a self-hosted finance app (NestJS API + Next.js UI + PostgreSQL) with a one-way sync pipeline to Firebase. Read these files first:
+- PHASE9-SYNC-SPEC.md (full sync architecture)
+- NAS-DEPLOYMENT-SPEC.md (Sections 7.2, 7.6 for recent fixes)
+- AGENTS.md (repo structure and validation commands)
+- apps/api/src/sync/ — all existing sync services (outbox, sanitizer-v2, alias-mapper, signing, sync-delivery)
+- apps/api/src/jobs/sync-delivery.processor.ts — the delivery sweep worker
+- apps/api/src/jobs/ingestion.processor.ts — recently fixed to enqueue outbox events on import
+
+## Background
+
+The sync pipeline backend is fully wired:
+- OutboxService writes events to outbox_events table
+- SyncDeliveryService polls pending outbox rows every 30s and delivers to Firebase
+- SanitiserV2, AliasMapper, and SigningService process payloads
+- IngestionProcessor and TransactionsService both call OutboxService
+
+What is COMPLETELY MISSING:
+1. No REST API controller for sync operations — zero endpoints exist
+2. No web UI page for sync — the sidebar has no sync entry
+3. No way to backfill historical transactions that were imported BEFORE the sync pipeline was connected
+4. No way to manually trigger a sync sweep, check sync status, or replay dead-lettered events
+5. Only `transaction.projected.v1` events are wired — account, category, budget events are NOT being enqueued
+
+## Task
+
+Build a Sync Admin page (UI + API) with these capabilities:
+
+### Part A: Sync API Controller
+
+Create `apps/api/src/sync/sync.controller.ts` with these endpoints:
+
+1. **GET /api/sync/status** — Return sync pipeline health:
+   - Total outbox events by status (pending, delivered, retry, dead_letter)
+   - Last successful delivery timestamp
+   - Last error message (if any)
+   - Count of events pending delivery
+   - Whether FIREBASE_SYNC_ENDPOINT, ALIAS_SECRET, SYNC_SIGNING_SECRET are configured (boolean flags only, never expose values)
+
+2. **POST /api/sync/trigger** — Manually trigger a sync delivery sweep (call SyncDeliveryService.deliverPending()). Return count of events processed.
+
+3. **POST /api/sync/backfill** — Backfill historical transactions to the outbox:
+   - Accept optional body: `{ fromDate?: string, toDate?: string, accountId?: string }`
+   - Query all transactions matching the filters that do NOT already have a corresponding outbox_events row
+   - For each, call OutboxService.enqueue() with the same payload shape IngestionProcessor uses
+   - Return: `{ enqueued: number, skipped: number, errors: number }`
+   - This must be idempotent — running it twice should not create duplicate outbox rows (use the idempotency_key pattern)
+
+4. **POST /api/sync/replay** — Replay dead-lettered events:
+   - Accept body: `{ eventIds?: string[] }` (if empty, replay ALL dead-lettered)
+   - Reset status from 'dead_letter' to 'pending', reset attempts to 0, set next_attempt_at to now()
+   - Return count of events replayed
+
+5. **GET /api/sync/events** — List outbox events with pagination and filtering:
+   - Query params: `status`, `eventType`, `page`, `limit`
+   - Return outbox rows (without full payload — just id, eventType, aggregateId, status, attempts, createdAt, deliveredAt, lastErrorMessage)
+
+### Part B: Sync Admin UI Page
+
+Create `apps/web/src/app/(protected)/sync/page.tsx`:
+
+1. **Status Dashboard** at the top:
+   - Card showing pipeline health (event counts by status, last delivery time)
+   - Green/yellow/red indicator based on: green = delivering normally, yellow = events pending > 30min, red = dead-lettered events exist or env vars missing
+   - Show whether Firebase endpoint + secrets are configured (from GET /api/sync/status)
+
+2. **Action Buttons**:
+   - "Trigger Sync" button — calls POST /api/sync/trigger, shows result toast
+   - "Backfill Transactions" button — opens a modal with optional date range + account filter, calls POST /api/sync/backfill, shows progress/result
+   - "Replay Dead Letters" button — only visible when dead-lettered events exist, calls POST /api/sync/replay
+
+3. **Events Table**:
+   - Paginated table of outbox events from GET /api/sync/events
+   - Columns: Event Type, Status (with color badge), Attempts, Created, Delivered/Error
+   - Filter by status dropdown
+   - Click row to see full event details in a slide-over panel
+
+4. **Add to Sidebar**:
+   - Add a "Sync" nav item to `apps/web/src/components/Sidebar.tsx`
+   - Use the `RefreshCw` icon from lucide-react
+   - Place it between "AI Logs" and "Settings"
+
+### Part C: Wire Up Missing Event Types (Stretch)
+
+If time permits, wire up outbox event creation for:
+- Account create/update → `account.projected.v1`
+- Category create/update → `category.projected.v1`
+- Budget create/update → `budget.projected.v1`
+
+Follow the same pattern as TransactionsService: call OutboxService.enqueue() after the domain write. Make it best-effort (catch errors, log, don't fail the domain operation).
+
+### Part D: Create API Hook for Frontend
+
+Create `apps/web/src/lib/hooks/useSync.ts`:
+- `useSyncStatus()` — polls GET /api/sync/status every 10s
+- `useSyncEvents(filters)` — fetches GET /api/sync/events with pagination
+- `triggerSync()` — POST /api/sync/trigger
+- `backfillTransactions(options)` — POST /api/sync/backfill
+- `replayDeadLetters(eventIds?)` — POST /api/sync/replay
+
+## Deliverables
+
+- `apps/api/src/sync/sync.controller.ts` — REST endpoints
+- `apps/web/src/app/(protected)/sync/page.tsx` — Sync admin UI
+- `apps/web/src/lib/hooks/useSync.ts` — React hooks
+- Updated `apps/web/src/components/Sidebar.tsx` — add Sync nav item
+- Updated `apps/api/src/sync/sync.module.ts` — register the controller
+- Tests for the sync controller endpoints
+- Update NAS-DEPLOYMENT-SPEC.md Section 7.2 to note sync admin page is built
+- Append a row to the changelog in Section 11
+
+## Rules
+
+- Do NOT read .env files — they contain secrets
+- Do NOT hardcode any real secrets, account numbers, or PII
+- The backfill endpoint must be idempotent — never create duplicate outbox rows
+- The sync admin page should follow the same UI patterns as the existing pages (dark theme, same component library)
+- Run pnpm build after changes to verify no TypeScript errors
+- Run pnpm test to verify no regressions
+```
+
+---
+
 ## Running Order
 
-1. **Prompt 3 first** (gitleaks) — takes 5 minutes, protects you going forward
-2. **Prompt 1** (category bug) — likely a simpler fix
-3. **Prompt 2** (sync bug) — more complex, depends on Firebase companion setup
+1. **Prompt 3 first** (gitleaks) — takes 5 minutes, protects you going forward ✅ Done
+2. **Prompt 1** (category bug) — likely a simpler fix ✅ Done
+3. **Prompt 2** (sync bug) — more complex, depends on Firebase companion setup ✅ Done
+4. **Prompt 4** (sync admin page + backfill) — builds on the Prompt 2 fix, adds UI and backfill capability

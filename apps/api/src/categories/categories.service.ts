@@ -1,9 +1,11 @@
 import {
   Injectable,
   Inject,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
@@ -12,6 +14,7 @@ import type {
   CreateCategoryInput,
   UpdateCategoryInput,
 } from '@moneypulse/shared';
+import { OutboxService } from '../sync/outbox.service';
 
 /**
  * Service for managing the category tree.
@@ -20,7 +23,12 @@ import type {
  */
 @Injectable()
 export class CategoriesService {
-  constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
+  private readonly logger = new Logger(CategoriesService.name);
+
+  constructor(
+    @Inject(DATABASE_CONNECTION) private readonly db: any,
+    @Optional() private readonly outbox?: OutboxService,
+  ) {}
 
   /**
    * Get all categories as a flat list, excluding soft-deleted entries.
@@ -94,7 +102,7 @@ export class CategoriesService {
    * @returns The newly created category row
    * @throws {NotFoundException} If the specified parent category does not exist
    */
-  async create(input: CreateCategoryInput) {
+  async create(input: CreateCategoryInput, actingUserId?: string) {
     if (input.parentId) {
       const parent = await this.findById(input.parentId);
       if (!parent) throw new NotFoundException('Parent category not found');
@@ -110,7 +118,9 @@ export class CategoriesService {
         sortOrder: input.sortOrder ?? 0,
       })
       .returning();
-    return rows[0];
+    const category = rows[0];
+    await this.enqueueCategoryEvent(category, actingUserId);
+    return category;
   }
 
   /**
@@ -123,7 +133,7 @@ export class CategoriesService {
    * @throws {ConflictException} If attempting to set a category as its own parent
    * @throws {BadRequestException} If the new parent would create a circular reference
    */
-  async update(id: string, input: UpdateCategoryInput) {
+  async update(id: string, input: UpdateCategoryInput, actingUserId?: string) {
     const existing = await this.findById(id);
     if (!existing) throw new NotFoundException('Category not found');
 
@@ -146,7 +156,9 @@ export class CategoriesService {
       .set({ ...input, updatedAt: new Date() })
       .where(eq(schema.categories.id, id))
       .returning();
-    return rows[0];
+    const category = rows[0];
+    await this.enqueueCategoryEvent(category, actingUserId);
+    return category;
   }
 
   /**
@@ -206,5 +218,26 @@ export class CategoriesService {
     `);
     const rows = result.rows ?? result;
     return rows.map((r: any) => r.id);
+  }
+
+  private async enqueueCategoryEvent(category: any, userId?: string): Promise<void> {
+    if (!this.outbox || !userId) return;
+    try {
+      await this.outbox.enqueue({
+        eventType: 'category.projected.v1',
+        aggregateType: 'category',
+        aggregateId: category.id,
+        userId,
+        payload: {
+          name: category.name,
+          icon: category.icon ?? null,
+          color: category.color ?? null,
+          parentId: category.parentId ?? null,
+          sortOrder: category.sortOrder ?? 0,
+        },
+      });
+    } catch (err: unknown) {
+      this.logger.warn(`Outbox enqueue skipped for category ${category.id}: ${(err as Error).message}`);
+    }
   }
 }

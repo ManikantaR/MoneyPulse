@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { selectParser } from '../ingestion/parsers/parser-registry';
 import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
@@ -15,6 +15,8 @@ import { IngestionService } from '../ingestion/ingestion.service';
 import { PdfProxyService } from '../ingestion/parsers/pdf-proxy.service';
 import { AuditService } from '../audit/audit.service';
 import { CategorizationService } from '../categorization/categorization.service';
+import { OutboxService } from '../sync/outbox.service';
+import { AliasMapperService } from '../sync/alias-mapper.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
 import { encryptField } from '../common/crypto';
 
@@ -38,6 +40,8 @@ export class IngestionProcessor extends WorkerHost {
     private readonly pdfProxyService: PdfProxyService,
     private readonly auditService: AuditService,
     private readonly categorizationService: CategorizationService,
+    private readonly outbox: OutboxService,
+    private readonly aliasMapper: AliasMapperService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
     @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {
@@ -118,20 +122,23 @@ export class IngestionProcessor extends WorkerHost {
         );
 
         if (dedupResult.newTransactions.length > 0) {
-          await this.insertTransactions(
+          const insertedIds = await this.insertTransactions(
             dedupResult.newTransactions,
             accountId,
             userId,
             uploadId,
           );
 
+          // Enqueue sync outbox events for the newly imported transactions (best-effort)
+          await this.enqueueIngestionEvents(
+            insertedIds,
+            accountId,
+            userId,
+            dedupResult.newTransactions,
+          );
+
           // Categorize PDF transactions
           try {
-            const insertedIds = await this.getInsertedTransactionIds(
-              accountId,
-              uploadId,
-              userId,
-            );
             const categorizationStats =
               await this.categorizationService.categorizeBatch(
                 insertedIds,
@@ -232,20 +239,23 @@ export class IngestionProcessor extends WorkerHost {
 
       // Insert new transactions
       if (dedupResult.newTransactions.length > 0) {
-        await this.insertTransactions(
+        const insertedIds = await this.insertTransactions(
           dedupResult.newTransactions,
           accountId,
           userId,
           uploadId,
         );
 
+        // Enqueue sync outbox events for the newly imported transactions (best-effort)
+        await this.enqueueIngestionEvents(
+          insertedIds,
+          accountId,
+          userId,
+          dedupResult.newTransactions,
+        );
+
         // Categorize new transactions (Phase 1: fast rules only, Phase 2: AI queued in background)
         try {
-          const insertedIds = await this.getInsertedTransactionIds(
-            accountId,
-            uploadId,
-            userId,
-          );
           const ruleResult =
             await this.categorizationService.categorizeByRulesOnly(
               insertedIds,
@@ -475,46 +485,70 @@ export class IngestionProcessor extends WorkerHost {
     accountId: string,
     userId: string,
     sourceFileId: string,
-  ): Promise<void> {
+  ): Promise<string[]> {
     const BATCH_SIZE = 100;
+    const allIds: string[] = [];
     for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
       const batch = transactions.slice(i, i + BATCH_SIZE);
-      await this.db.insert(schema.transactions).values(
-        batch.map((txn) => ({
-          accountId,
-          userId,
-          externalId: txn.externalId,
-          txnHash: this.dedupService.computeHash(accountId, txn),
-          date: new Date(txn.date),
-          description: txn.description,
-          originalDescription: encryptField(txn.description),
-          amountCents: txn.amountCents,
-          isCredit: txn.isCredit,
-          merchantName: txn.merchantName,
-          sourceFileId,
-          tags: [],
-        })),
-      );
+      const rows = await this.db
+        .insert(schema.transactions)
+        .values(
+          batch.map((txn) => ({
+            accountId,
+            userId,
+            externalId: txn.externalId,
+            txnHash: this.dedupService.computeHash(accountId, txn),
+            date: new Date(txn.date),
+            description: txn.description,
+            originalDescription: encryptField(txn.description),
+            amountCents: txn.amountCents,
+            isCredit: txn.isCredit,
+            merchantName: txn.merchantName,
+            sourceFileId,
+            tags: [],
+          })),
+        )
+        .returning({ id: schema.transactions.id });
+      allIds.push(...rows.map((r: any) => r.id));
     }
+    return allIds;
   }
 
-  private async getInsertedTransactionIds(
+  /**
+   * Best-effort outbox enqueue for each newly imported transaction.
+   * Alias mapping errors (e.g. ALIAS_SECRET not configured) are caught per-row
+   * so a single failure never aborts the rest of the batch or the import job.
+   */
+  private async enqueueIngestionEvents(
+    ids: string[],
     accountId: string,
-    sourceFileId: string,
     userId: string,
-  ): Promise<string[]> {
-    const rows = await this.db
-      .select({ id: schema.transactions.id })
-      .from(schema.transactions)
-      .where(
-        and(
-          eq(schema.transactions.accountId, accountId),
-          eq(schema.transactions.sourceFileId, sourceFileId),
-          eq(schema.transactions.userId, userId),
-          isNull(schema.transactions.deletedAt),
-        ),
-      );
-    return rows.map((r: any) => r.id);
+    transactions: ParsedTransaction[],
+  ): Promise<void> {
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        await this.outbox.enqueue({
+          eventType: 'transaction.projected.v1',
+          aggregateType: 'transaction',
+          aggregateId: ids[i],
+          userId,
+          payload: {
+            transactionAliasId: this.aliasMapper.toAliasId('transaction', ids[i]),
+            accountAliasId: this.aliasMapper.toAliasId('account', accountId),
+            amountCents: transactions[i].amountCents,
+            date: new Date(transactions[i].date).toISOString(),
+            categoryId: null,
+            isCredit: transactions[i].isCredit,
+            isManual: false,
+            tags: [],
+          },
+        });
+      } catch (err: unknown) {
+        this.logger.warn(
+          `Skipping outbox enqueue for transaction ${ids[i]}: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   /** Background AI categorization for transactions left uncategorized by rule engine. */

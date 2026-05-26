@@ -10,6 +10,7 @@ import { IngestionProcessor } from '../jobs/ingestion.processor';
 import { PdfProxyService } from './parsers/pdf-proxy.service';
 import { AuditModule } from '../audit/audit.module';
 import { CategorizationModule } from '../categorization/categorization.module';
+import { SyncModule } from '../sync/sync.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CategorizationModule } from '../categorization/categorization.module';
     BullModule.registerQueue({ name: 'alerts' }),
     AuditModule,
     CategorizationModule,
+    SyncModule,
   ],
   controllers: [IngestionController],
   providers: [

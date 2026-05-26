@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, isNull, sql } from 'drizzle-orm';
@@ -8,10 +8,16 @@ import type {
   CreateSavingsGoalInput,
   UpdateSavingsGoalInput,
 } from '@moneypulse/shared';
+import { OutboxService } from '../sync/outbox.service';
 
 @Injectable()
 export class BudgetsService {
-  constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
+  private readonly logger = new Logger(BudgetsService.name);
+
+  constructor(
+    @Inject(DATABASE_CONNECTION) private readonly db: any,
+    @Optional() private readonly outbox?: OutboxService,
+  ) {}
 
   // ── Budgets ──────────────────────────────────────────────
 
@@ -109,7 +115,9 @@ export class BudgetsService {
         householdId: input.householdId ?? null,
       })
       .returning();
-    return rows[0];
+    const budget = rows[0];
+    await this.enqueueBudgetEvent(budget, userId);
+    return budget;
   }
 
   async updateBudget(id: string, userId: string, input: UpdateBudgetInput) {
@@ -125,7 +133,9 @@ export class BudgetsService {
       .set({ ...input, updatedAt: new Date() })
       .where(eq(schema.budgets.id, id))
       .returning();
-    return rows[0];
+    const budget = rows[0];
+    await this.enqueueBudgetEvent(budget, userId);
+    return budget;
   }
 
   async deleteBudget(id: string, userId: string) {
@@ -236,5 +246,25 @@ export class BudgetsService {
       .update(schema.savingsGoals)
       .set({ deletedAt: new Date() })
       .where(eq(schema.savingsGoals.id, id));
+  }
+
+  private async enqueueBudgetEvent(budget: any, userId: string): Promise<void> {
+    if (!this.outbox) return;
+    try {
+      await this.outbox.enqueue({
+        eventType: 'budget.projected.v1',
+        aggregateType: 'budget',
+        aggregateId: budget.id,
+        userId,
+        payload: {
+          categoryId: budget.categoryId,
+          amountCents: budget.amountCents,
+          period: budget.period,
+          householdId: budget.householdId ?? null,
+        },
+      });
+    } catch (err: unknown) {
+      this.logger.warn(`Outbox enqueue skipped for budget ${budget.id}: ${(err as Error).message}`);
+    }
   }
 }
