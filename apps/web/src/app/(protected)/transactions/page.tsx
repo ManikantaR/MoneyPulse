@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { CategoryCombobox, type CategoryOption } from '@/components/CategoryCombobox';
 import {
   useTransactions,
   useUpdateTransaction,
@@ -97,6 +98,12 @@ export default function TransactionsPage() {
     }
     return parents.map((p) => ({ ...p, children: childMap.get(p.id) ?? [] }));
   }, [categories]);
+
+  /** Flat category options for the combobox component. */
+  const categoryOptions: CategoryOption[] = useMemo(
+    () => categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon, parentId: c.parentId })),
+    [categories],
+  );
 
   const [learnToast, setLearnToast] = useState<string | null>(null);
 
@@ -310,10 +317,10 @@ export default function TransactionsPage() {
           <label className="px-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
             Category
           </label>
-          <select
+          <CategoryCombobox
+            categories={categoryOptions}
             value={uncategorizedOnly ? '__uncategorized__' : (query.categoryId ?? '')}
-            onChange={(e) => {
-              const val = e.target.value;
+            onChange={(val) => {
               if (val === '__uncategorized__') {
                 setUncategorizedOnly(true);
                 setQuery({ ...query, categoryId: undefined, page: 1 });
@@ -322,26 +329,12 @@ export default function TransactionsPage() {
                 setQuery({ ...query, categoryId: val || undefined, page: 1 });
               }
             }}
-            className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
-          >
-            <option value="">All Categories</option>
-            <option value="__uncategorized__">⚠ Uncategorized</option>
-            {categoryGroups.map((g) =>
-              g.children.length > 0 ? (
-                <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
-                  {g.children.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.icon} {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : (
-                <option key={g.id} value={g.id}>
-                  {g.icon} {g.name}
-                </option>
-              ),
-            )}
-          </select>
+            placeholder="All Categories"
+            extraOptions={[
+              { value: '', label: 'All Categories' },
+              { value: '__uncategorized__', label: '⚠ Uncategorized' },
+            ]}
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="px-1 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
@@ -365,28 +358,13 @@ export default function TransactionsPage() {
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 rounded-2xl border border-[var(--primary)]/30 bg-[var(--accent)] px-5 py-3">
           <span className="text-sm font-bold">{selectedIds.size} selected</span>
-          <select
+          <CategoryCombobox
+            categories={categoryOptions}
             value={bulkCategoryId}
-            onChange={(e) => setBulkCategoryId(e.target.value)}
-            className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm"
-          >
-            <option value="">Assign category...</option>
-            {categoryGroups.map((g) =>
-              g.children.length > 0 ? (
-                <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
-                  {g.children.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.icon} {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : (
-                <option key={g.id} value={g.id}>
-                  {g.icon} {g.name}
-                </option>
-              ),
-            )}
-          </select>
+            onChange={(val) => setBulkCategoryId(val)}
+            placeholder="Assign category..."
+            className="w-[220px]"
+          />
           <button
             onClick={handleBulkCategorize}
             disabled={!bulkCategoryId || bulkCategorize.isPending}
@@ -530,30 +508,14 @@ export default function TransactionsPage() {
                     {accountMap[txn.accountId] ?? '—'}
                   </td>
                   <td className="px-6 py-5">
-                    <select
+                    <CategoryCombobox
+                      categories={categoryOptions}
                       value={txn.categoryId ?? ''}
-                      onChange={(e) =>
-                        handleCategoryChange(txn.id, e.target.value)
-                      }
-                      className="rounded-full border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-1 text-xs font-medium hover:border-[var(--primary)] transition-colors"
-                    >
-                      <option value="">Uncategorized</option>
-                      {categoryGroups.map((g) =>
-                        g.children.length > 0 ? (
-                          <optgroup key={g.id} label={`${g.icon} ${g.name}`}>
-                            {g.children.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.icon} {c.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ) : (
-                          <option key={g.id} value={g.id}>
-                            {g.icon} {g.name}
-                          </option>
-                        ),
-                      )}
-                    </select>
+                      onChange={(val) => handleCategoryChange(txn.id, val)}
+                      placeholder="Uncategorized"
+                      size="sm"
+                      extraOptions={[{ value: '', label: 'Uncategorized' }]}
+                    />
                   </td>
                   <td
                     className={cn(

@@ -144,7 +144,7 @@ export default function SettingsPage() {
               type="text"
               value={firebaseUid}
               onChange={(e) => setFirebaseUid(e.target.value)}
-              placeholder="e.g. 7mNuwHsX5xcbOC7lXqFhYUiN1Eg1"
+              placeholder="Paste your Firebase Auth UID here"
               className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm font-mono placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
             />
           </div>

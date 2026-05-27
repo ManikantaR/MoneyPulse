@@ -34,6 +34,7 @@ export const DEFAULT_CATEGORIES: SeedCategory[] = [
   { name: 'Auto Repair',         icon: '🔧', color: '#dc2626', parentName: 'Gas/Auto', sortOrder: 1 },
   { name: 'Parking & Tolls',     icon: '🅿️', color: '#f87171', parentName: 'Gas/Auto', sortOrder: 2 },
   { name: 'Car Payment',         icon: '🚘', color: '#fca5a5', parentName: 'Gas/Auto', sortOrder: 3 },
+  { name: 'Fuel',                icon: '⛽', color: '#ef4444', parentName: 'Gas/Auto', sortOrder: 4 },
 
   // ── Shopping ──────────────────────────────────────────────
   { name: 'Shopping',            icon: '🛍️', color: '#3b82f6', sortOrder: 5 },
@@ -53,6 +54,12 @@ export const DEFAULT_CATEGORIES: SeedCategory[] = [
 
   // ── Subscriptions ─────────────────────────────────────────
   { name: 'Subscriptions',       icon: '📱', color: '#6366f1', sortOrder: 9 },
+  { name: 'Streaming',           icon: '📺', color: '#818cf8', parentName: 'Subscriptions', sortOrder: 1 },
+  { name: 'Music',               icon: '🎵', color: '#a78bfa', parentName: 'Subscriptions', sortOrder: 2 },
+  { name: 'AI & Software',       icon: '🤖', color: '#7c3aed', parentName: 'Subscriptions', sortOrder: 3 },
+  { name: 'Cloud Storage',       icon: '☁️', color: '#c4b5fd', parentName: 'Subscriptions', sortOrder: 4 },
+  { name: 'News & Media',        icon: '📰', color: '#8b5cf6', parentName: 'Subscriptions', sortOrder: 5 },
+  { name: 'Gaming Subs',         icon: '🎮', color: '#ddd6fe', parentName: 'Subscriptions', sortOrder: 6 },
 
   // ── Utilities ─────────────────────────────────────────────
   { name: 'Utilities',           icon: '💡', color: '#14b8a6', sortOrder: 10 },
