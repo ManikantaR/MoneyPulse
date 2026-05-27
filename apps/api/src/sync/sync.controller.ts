@@ -218,6 +218,64 @@ export class SyncController {
   }
 
   /**
+   * POST /sync/backfill-categories — Enqueue outbox events for all categories.
+   * Forces re-sync so categories use the current userAliasId (Firebase UID).
+   */
+  @Post('backfill-categories')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Backfill all categories to outbox' })
+  async backfillCategories() {
+    const rows = await this.db.execute(sql`
+      SELECT c.id, c.name, c.icon, c.color, c.parent_id, c.sort_order
+      FROM categories c
+      WHERE c.deleted_at IS NULL
+    `);
+
+    const cats = (rows.rows ?? rows) as Array<{
+      id: string;
+      name: string;
+      icon: string;
+      color: string;
+      parent_id: string | null;
+      sort_order: number;
+    }>;
+
+    // Need a userId for the outbox — grab the first admin user
+    const userRows = await this.db.execute(sql`
+      SELECT id FROM users WHERE role = 'admin' LIMIT 1
+    `);
+    const userId = ((userRows.rows ?? userRows)[0] as any)?.id;
+    if (!userId) return { data: { enqueued: 0, errors: 0, reason: 'no admin user found' } };
+
+    let enqueued = 0;
+    let errors = 0;
+
+    for (const cat of cats) {
+      try {
+        await this.outbox.enqueue({
+          eventType: 'category.projected.v1',
+          aggregateType: 'category',
+          aggregateId: cat.id,
+          userId,
+          payload: {
+            categoryId: cat.id,
+            name: cat.name,
+            icon: cat.icon,
+            color: cat.color,
+            parentCategoryId: cat.parent_id ?? null,
+            sortOrder: cat.sort_order ?? 0,
+          },
+        });
+        enqueued++;
+      } catch {
+        errors++;
+      }
+    }
+
+    return { data: { enqueued, errors } };
+  }
+
+  /**
    * POST /sync/replay — Reset dead-lettered events back to pending for re-delivery.
    */
   @Post('replay')
