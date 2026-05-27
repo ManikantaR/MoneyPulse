@@ -6,6 +6,7 @@ import {
   useSyncEvents,
   useTriggerSync,
   useBackfillSync,
+  useBackfillCategories,
   useReplayDeadLetters,
   type OutboxEvent,
 } from '@/lib/hooks/useSync';
@@ -19,6 +20,7 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  Tags,
 } from 'lucide-react';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,6 +93,7 @@ function StatCard({
 function BackfillModal({ onClose }: { onClose: () => void }) {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [force, setForce] = useState(false);
   const backfill = useBackfillSync();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -98,6 +101,7 @@ function BackfillModal({ onClose }: { onClose: () => void }) {
     await backfill.mutateAsync({
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
+      force: force || undefined,
     });
     onClose();
   };
@@ -128,6 +132,20 @@ function BackfillModal({ onClose }: { onClose: () => void }) {
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm"
             />
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+              className="rounded border-[var(--border)]"
+            />
+            <span>Force re-sync (include already-synced transactions)</span>
+          </label>
+          {force && (
+            <p className="text-xs text-yellow-600 dark:text-yellow-400">
+              Use this when categories changed on existing transactions. Will re-enqueue all matching transactions.
+            </p>
+          )}
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
@@ -173,6 +191,7 @@ export default function SyncPage() {
 
   const trigger = useTriggerSync();
   const replay = useReplayDeadLetters();
+  const backfillCategories = useBackfillCategories();
 
   const status = statusData?.data;
   const events = eventsData?.data ?? [];
@@ -186,6 +205,11 @@ export default function SyncPage() {
 
   const handleReplay = async () => {
     await replay.mutateAsync(undefined);
+    void refetchStatus();
+  };
+
+  const handleBackfillCategories = async () => {
+    await backfillCategories.mutateAsync();
     void refetchStatus();
   };
 
@@ -215,6 +239,14 @@ export default function SyncPage() {
             <DatabaseZap className="h-4 w-4" />
             Backfill
           </button>
+          <button
+            onClick={handleBackfillCategories}
+            disabled={backfillCategories.isPending}
+            className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-50 transition-colors"
+          >
+            <Tags className={`h-4 w-4 ${backfillCategories.isPending ? 'animate-spin' : ''}`} />
+            {backfillCategories.isPending ? 'Syncing…' : 'Backfill Categories'}
+          </button>
           {(status?.counts.dead_letter ?? 0) > 0 && (
             <button
               onClick={handleReplay}
@@ -237,6 +269,11 @@ export default function SyncPage() {
       {replay.isSuccess && (
         <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-600 dark:text-green-400">
           Replayed {replay.data?.data.replayed} dead-letter events.
+        </div>
+      )}
+      {backfillCategories.isSuccess && (
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-600 dark:text-green-400">
+          Categories backfill complete — enqueued {backfillCategories.data?.data.enqueued} · errors {backfillCategories.data?.data.errors}.
         </div>
       )}
 

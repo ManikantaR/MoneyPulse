@@ -52,6 +52,7 @@ export interface BackfillInput {
   fromDate?: string;
   toDate?: string;
   accountId?: string;
+  force?: boolean;
 }
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -103,6 +104,18 @@ export function useBackfillSync() {
   return useMutation({
     mutationFn: (body: BackfillInput) =>
       api.post<{ data: { enqueued: number; skipped: number; errors: number } }>('/sync/backfill', body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['sync'] });
+    },
+  });
+}
+
+/** Backfill all categories to the outbox. */
+export function useBackfillCategories() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ data: { enqueued: number; errors: number } }>('/sync/backfill-categories'),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['sync'] });
     },

@@ -27,6 +27,7 @@ const backfillSchema = z.object({
   fromDate: z.iso.date().optional(),
   toDate: z.iso.date().optional(),
   accountId: z.uuid().optional(),
+  force: z.boolean().optional(),
 });
 
 const replaySchema = z.object({
@@ -162,18 +163,26 @@ export class SyncController {
 
     const whereExpr = conditions.reduce((acc, c) => sql`${acc} AND ${c}`);
 
-    const rows = await this.db.execute(sql`
-      SELECT t.id, t.account_id, t.user_id, t.amount_cents,
-             t.date, t.is_credit, t.category_id, t.tags
-      FROM transactions t
-      WHERE ${whereExpr}
-        AND NOT EXISTS (
-          SELECT 1 FROM outbox_events o
-          WHERE o.aggregate_id = t.id::uuid
-            AND o.aggregate_type = 'transaction'
-        )
-      ORDER BY t.date ASC
-    `);
+    const rows = body.force
+      ? await this.db.execute(sql`
+          SELECT t.id, t.account_id, t.user_id, t.amount_cents,
+                 t.date, t.is_credit, t.category_id, t.tags
+          FROM transactions t
+          WHERE ${whereExpr}
+          ORDER BY t.date ASC
+        `)
+      : await this.db.execute(sql`
+          SELECT t.id, t.account_id, t.user_id, t.amount_cents,
+                 t.date, t.is_credit, t.category_id, t.tags
+          FROM transactions t
+          WHERE ${whereExpr}
+            AND NOT EXISTS (
+              SELECT 1 FROM outbox_events o
+              WHERE o.aggregate_id = t.id::uuid
+                AND o.aggregate_type = 'transaction'
+            )
+          ORDER BY t.date ASC
+        `);
 
     const txns = (rows.rows ?? rows) as Array<{
       id: string;
