@@ -65,7 +65,7 @@ export class SyncDeliveryService {
     let signed: import('./sync.types').SignedPayload;
 
     try {
-      const userAlias = this.aliasMapper.toAliasId('user', row.user_id);
+      const userAlias = await this.resolveUserAlias(row.user_id);
       projected = {
         ...policy.sanitizedPayload,
         eventType: row.event_type,
@@ -170,6 +170,24 @@ export class SyncDeliveryService {
     const base = caps[Math.min(attempt, caps.length - 1)] || 86_400_000;
     const jitter = Math.floor(Math.random() * 5_000);
     return base + jitter;
+  }
+
+  /**
+   * Resolve the user alias for sync: if the user has a Firebase UID configured
+   * in settings, use it directly (so Firestore data matches the Firebase Auth UID).
+   * Otherwise fall back to the HMAC-based alias.
+   */
+  private async resolveUserAlias(userId: string): Promise<string> {
+    const rows = await this.db.execute(sql`
+      SELECT firebase_uid FROM ${schema.userSettings}
+      WHERE ${schema.userSettings.userId} = ${userId}
+      LIMIT 1
+    `);
+    const row = (rows.rows ?? rows)[0] as { firebase_uid?: string | null } | undefined;
+    if (row?.firebase_uid) {
+      return row.firebase_uid;
+    }
+    return this.aliasMapper.toAliasId('user', userId);
   }
 
   private async markPolicyFailed(

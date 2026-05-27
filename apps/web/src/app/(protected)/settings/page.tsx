@@ -16,6 +16,9 @@ export default function SettingsPage() {
   const [haWebhookUrl, setHaWebhookUrl] = useState(
     settings?.haWebhookUrl ?? '',
   );
+  const [firebaseUid, setFirebaseUid] = useState(
+    settings?.firebaseUid ?? '',
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -29,6 +32,7 @@ export default function SettingsPage() {
         timezone,
         weeklyDigestEnabled: weeklyDigest,
         haWebhookUrl: haWebhookUrl || null,
+        firebaseUid: firebaseUid || null,
       });
       refetchUser();
       setMessage('Settings saved');
@@ -126,6 +130,22 @@ export default function SettingsPage() {
               onChange={(e) => setHaWebhookUrl(e.target.value)}
               placeholder="https://homeassistant.local/api/webhook/..."
               className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+            />
+          </div>
+          <div>
+            <label htmlFor="firebaseUid" className="block text-sm font-semibold">
+              Firebase User ID
+            </label>
+            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+              Your Firebase Auth UID — used as the identity for synced data in MoneyPulse Web
+            </p>
+            <input
+              id="firebaseUid"
+              type="text"
+              value={firebaseUid}
+              onChange={(e) => setFirebaseUid(e.target.value)}
+              placeholder="e.g. 7mNuwHsX5xcbOC7lXqFhYUiN1Eg1"
+              className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm font-mono placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
             />
           </div>
         </section>

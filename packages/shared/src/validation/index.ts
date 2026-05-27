@@ -197,6 +197,7 @@ export const updateUserSettingsSchema = z.object({
   haWebhookUrl: z.url().nullable().optional(),
   weeklyDigestEnabled: z.boolean().optional(),
   notificationEmail: z.email().nullable().optional(),
+  firebaseUid: z.string().max(128).nullable().optional(),
 });
 
 // ── File Upload ─────────────────────────────────────────────

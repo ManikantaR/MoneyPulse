@@ -97,6 +97,7 @@ export const userSettings = pgTable('user_settings', {
     .notNull()
     .default(false),
   notificationEmail: varchar('notification_email', { length: 255 }),
+  firebaseUid: varchar('firebase_uid', { length: 128 }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
