@@ -50,6 +50,7 @@ export interface UserSettings {
   haWebhookUrl: string | null;
   weeklyDigestEnabled: boolean;
   notificationEmail: string | null;
+  firebaseUid: string | null;
 }
 
 export interface Account {
