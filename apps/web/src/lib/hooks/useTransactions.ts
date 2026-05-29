@@ -30,6 +30,7 @@ export interface TransactionQueryParams {
   from?: string;
   to?: string;
   isCredit?: string;
+  excludeTransfers?: string;
   sortBy?: 'date' | 'amount' | 'description' | 'category';
   sortOrder?: 'asc' | 'desc';
 }

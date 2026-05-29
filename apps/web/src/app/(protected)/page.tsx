@@ -68,6 +68,7 @@ export default function DashboardPage() {
     sortBy: 'amount',
     sortOrder: 'desc',
     isCredit: 'false',
+    excludeTransfers: 'true',
     pageSize: 10,
   });
 
@@ -131,21 +132,21 @@ export default function DashboardPage() {
           value={kpi ? formatCents(kpi.totalIncome) : '—'}
           icon={TrendingUp}
           accentColor="secondary"
-          onClick={() => drillTo({ isCredit: 'true', drill: 'Total Income' })}
+          onClick={() => drillTo({ isCredit: 'true', excludeTransfers: 'true', drill: 'Total Income' })}
         />
         <StatCard
           title="Total Expenses"
           value={kpi ? formatCents(kpi.totalExpenses) : '—'}
           icon={TrendingDown}
           accentColor="danger"
-          onClick={() => drillTo({ isCredit: 'false', drill: 'Total Expenses' })}
+          onClick={() => drillTo({ isCredit: 'false', excludeTransfers: 'true', drill: 'Total Expenses' })}
         />
         <StatCard
           title="Net Cash Flow"
           value={kpi ? formatCents(kpi.net) : '—'}
           icon={ArrowDownUp}
           accentColor="primary"
-          onClick={() => drillTo({ drill: 'Net Cash Flow' })}
+          onClick={() => drillTo({ excludeTransfers: 'true', drill: 'Net Cash Flow' })}
         />
       </div>
 

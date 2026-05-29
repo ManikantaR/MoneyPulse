@@ -35,6 +35,7 @@ export default function TransactionsPage() {
     from: searchParams.get('from') || undefined,
     to: searchParams.get('to') || undefined,
     isCredit: searchParams.get('isCredit') || undefined,
+    excludeTransfers: searchParams.get('excludeTransfers') || undefined,
   }));
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

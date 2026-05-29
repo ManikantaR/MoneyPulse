@@ -151,6 +151,13 @@ export class TransactionsService {
     if (query.isCredit !== undefined) {
       conditions.push(eq(schema.transactions.isCredit, query.isCredit));
     }
+    if (query.excludeTransfers) {
+      conditions.push(
+        sql`(${schema.transactions.categoryId} IS NULL OR ${schema.transactions.categoryId} NOT IN (
+          SELECT id FROM ${schema.categories} WHERE is_transfer = true
+        ))`,
+      );
+    }
 
     // Exclude split parents from list
     conditions.push(eq(schema.transactions.isSplitParent, false));

@@ -133,6 +133,7 @@ export const transactionQuerySchema = z.object({
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
   isCredit: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+  excludeTransfers: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   sortBy: z.enum(['date', 'amount', 'description', 'category']).default('date'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
