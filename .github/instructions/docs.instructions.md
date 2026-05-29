@@ -1,5 +1,5 @@
 ---
-applyTo: "README.md,docs/**/*.md,PHASE*-SPEC.md,MONEYPULSE-PLAN.md,AGENTS.md,.github/prompts/*.md,.github/agents/*.md,.github/skills/**/SKILL.md"
+applyTo: "README.md,docs/**/*.md,specs/PHASE*-SPEC.md,specs/MONEYPULSE-PLAN.md,AGENTS.md,.github/prompts/*.md,.github/agents/*.md,.github/skills/**/SKILL.md"
 ---
 
 - Write docs so an autonomous coding agent can act with minimal repo exploration.

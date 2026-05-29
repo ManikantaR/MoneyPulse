@@ -406,8 +406,10 @@ erDiagram
 | **Phase 6.5** | Security hardening & AI observability | ✅ Done — AES-256-GCM encryption, helmet, CSP, audit gaps, admin AI logs dashboard |
 | **Phase 7** | MCP server for AI agents | 🔲 Planned |
 | **Phase 8** | Investment account tracking | 🔲 Planned |
+| **Phase 9** | Firebase sync pipeline (outbox → Firestore) | ✅ Done — one-way sync, HMAC signing, alias mapping, backfill |
+| **Phase 10** | Feature enhancements | 🚧 In Progress — see [PHASE10-FEATURES-SPEC.md](specs/PHASE10-FEATURES-SPEC.md) |
 
-See [MONEYPULSE-PLAN.md](MONEYPULSE-PLAN.md) for the detailed implementation plan with 38 architectural decisions, and individual phase specs (`PHASE1-SPEC.md` through `PHASE8-SPEC.md`) for full implementation details.
+See [MONEYPULSE-PLAN.md](specs/MONEYPULSE-PLAN.md) for the detailed implementation plan with 38 architectural decisions, and individual phase specs in the [`specs/`](specs/) directory for full implementation details. The [SPEC-INDEX.md](specs/SPEC-INDEX.md) provides a unified overview of all phases.
 
 ## Privacy & Security
 
@@ -443,7 +445,7 @@ See [MONEYPULSE-PLAN.md](MONEYPULSE-PLAN.md) for the detailed implementation pla
 
 ## Contributing
 
-Contributions are welcome! Please read the existing [plan](MONEYPULSE-PLAN.md) and phase specs before submitting PRs to ensure alignment with the architecture.
+Contributions are welcome! Please read the existing [plan](specs/MONEYPULSE-PLAN.md) and phase specs in [`specs/`](specs/) before submitting PRs to ensure alignment with the architecture.
 
 ```bash
 # Development workflow

@@ -4,7 +4,7 @@ This repository is the local-first MoneyPulse application: NestJS API, Next.js w
 
 ## Working Rules
 
-- Start from `MONEYPULSE-PLAN.md` and the relevant `PHASE*-SPEC.md` file before implementing or restructuring code.
+- Start from `specs/MONEYPULSE-PLAN.md` and the relevant `specs/PHASE*-SPEC.md` file before implementing or restructuring code.
 - Preserve local-first privacy guarantees. Cloud sync, AI categorization, exports, and integrations must never weaken the primary local data boundary.
 - Prefer vertical slices with explicit file inventories, validation commands, and acceptance criteria.
 - Keep backend, frontend, shared package, and PDF parser changes coordinated in specs when a feature crosses boundaries.

@@ -10,9 +10,9 @@ Copy-paste these prompts into Claude Code one at a time. Each is self-contained.
 ## Context
 
 MoneyPulse is a self-hosted finance app (NestJS API + Next.js UI + PostgreSQL). Read these files first:
-- NAS-DEPLOYMENT-SPEC.md (Section 7.1 — Known Issues)
+- specs/specs/NAS-DEPLOYMENT-SPEC.md (Section 7.1 — Known Issues)
 - AGENTS.md (for repo structure and validation commands)
-- MONEYPULSE-PLAN.md (first 100 lines for architecture overview)
+- specs/specs/MONEYPULSE-PLAN.md (first 100 lines for architecture overview)
 
 ## Problem
 
@@ -51,7 +51,7 @@ Users cannot assign categories to transactions in the UI. This was noticed after
 - Root cause explanation
 - Code fix (with tests if the fix touches service logic)
 - If the bug is frontend-only, fix the component and verify the API works independently via curl example
-- Update NAS-DEPLOYMENT-SPEC.md Section 7.1 to mark the issue as fixed with a one-line explanation
+- Update specs/NAS-DEPLOYMENT-SPEC.md Section 7.1 to mark the issue as fixed with a one-line explanation
 - Append a row to the changelog in Section 11
 
 ## Rules
@@ -70,8 +70,8 @@ Users cannot assign categories to transactions in the UI. This was noticed after
 ## Context
 
 MoneyPulse is a self-hosted finance app that syncs de-identified data to a Firebase companion web app (one-way: local → Firebase). Read these files first:
-- NAS-DEPLOYMENT-SPEC.md (Section 7.2 — Known Issues)
-- PHASE9-SYNC-SPEC.md (full sync architecture)
+- specs/NAS-DEPLOYMENT-SPEC.md (Section 7.2 — Known Issues)
+- specs/PHASE9-SYNC-SPEC.md (full sync architecture)
 - AGENTS.md (for repo structure)
 
 ## Problem
@@ -129,7 +129,7 @@ The sync pipeline has these components in apps/api/src/sync/:
 - Code fix with tests
 - If the issue is missing migrations, create them
 - If the issue is missing env vars, document what's needed (but do NOT include actual values)
-- Update NAS-DEPLOYMENT-SPEC.md Section 7.2 to mark the issue as fixed
+- Update specs/NAS-DEPLOYMENT-SPEC.md Section 7.2 to mark the issue as fixed
 - Append a row to the changelog in Section 11
 
 ## Rules
@@ -148,7 +148,7 @@ The sync pipeline has these components in apps/api/src/sync/:
 ```
 ## Context
 
-MoneyPulse is a finance app that handles sensitive data (bank account numbers, transaction data). We need to prevent accidental secret/PII commits. Read NAS-DEPLOYMENT-SPEC.md Section 8 for the current security posture.
+MoneyPulse is a finance app that handles sensitive data (bank account numbers, transaction data). We need to prevent accidental secret/PII commits. Read specs/NAS-DEPLOYMENT-SPEC.md Section 8 for the current security posture.
 
 ## Task
 
@@ -168,7 +168,7 @@ Set up gitleaks as a pre-commit hook to scan for secrets before every commit.
 2. Create .gitleaks.toml at the repo root with rules to:
    - Scan all staged files
    - Allowlist known false positives:
-     - Example hex strings in documentation (MONEYPULSE-PLAN.md, LOCAL_DEPLOYMENT.md, NAS-DEPLOYMENT-SPEC.md)
+     - Example hex strings in documentation (specs/MONEYPULSE-PLAN.md, LOCAL_DEPLOYMENT.md, specs/NAS-DEPLOYMENT-SPEC.md)
      - Test fixtures with dummy secrets (any file under __tests__/ or *.spec.ts)
      - The openssl command examples in docs (they show the command, not actual output)
    - Add custom rules to detect:
@@ -200,7 +200,7 @@ Set up gitleaks as a pre-commit hook to scan for secrets before every commit.
 
 5. Update the repo README.md "Security Notes" section to mention the pre-commit hook.
 
-6. Update NAS-DEPLOYMENT-SPEC.md Section 8 to mark gitleaks as implemented (not just recommended).
+6. Update specs/NAS-DEPLOYMENT-SPEC.md Section 8 to mark gitleaks as implemented (not just recommended).
 
 ## Rules
 
@@ -217,8 +217,8 @@ Set up gitleaks as a pre-commit hook to scan for secrets before every commit.
 ## Context
 
 MoneyPulse is a self-hosted finance app (NestJS API + Next.js UI + PostgreSQL) with a one-way sync pipeline to Firebase. Read these files first:
-- PHASE9-SYNC-SPEC.md (full sync architecture)
-- NAS-DEPLOYMENT-SPEC.md (Sections 7.2, 7.6 for recent fixes)
+- specs/PHASE9-SYNC-SPEC.md (full sync architecture)
+- specs/NAS-DEPLOYMENT-SPEC.md (Sections 7.2, 7.6 for recent fixes)
 - AGENTS.md (repo structure and validation commands)
 - apps/api/src/sync/ — all existing sync services (outbox, sanitizer-v2, alias-mapper, signing, sync-delivery)
 - apps/api/src/jobs/sync-delivery.processor.ts — the delivery sweep worker
@@ -323,7 +323,7 @@ Create `apps/web/src/lib/hooks/useSync.ts`:
 - Updated `apps/web/src/components/Sidebar.tsx` — add Sync nav item
 - Updated `apps/api/src/sync/sync.module.ts` — register the controller
 - Tests for the sync controller endpoints
-- Update NAS-DEPLOYMENT-SPEC.md Section 7.2 to note sync admin page is built
+- Update specs/NAS-DEPLOYMENT-SPEC.md Section 7.2 to note sync admin page is built
 - Append a row to the changelog in Section 11
 
 ## Rules

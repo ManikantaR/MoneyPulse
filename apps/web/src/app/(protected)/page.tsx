@@ -63,7 +63,8 @@ export default function DashboardPage() {
     from,
     to,
     sortBy: 'amount',
-    sortOrder: 'asc',
+    sortOrder: 'desc',
+    isCredit: 'false',
     pageSize: 10,
   });
 

@@ -35,7 +35,7 @@ MoneyPulse is a privacy-first, self-hosted personal finance application. It runs
 
 ## Search Guidance
 
-- Start from `MONEYPULSE-PLAN.md` and the relevant `PHASE*-SPEC.md` file.
+- Start from `specs/MONEYPULSE-PLAN.md` and the relevant `specs/PHASE*-SPEC.md` file.
 - For DB and validation work, inspect `apps/api/src/db`, `packages/shared/src`, and `db/migrations`.
 - For PDF work, inspect `services/pdf-parser/src` and its tests.
 

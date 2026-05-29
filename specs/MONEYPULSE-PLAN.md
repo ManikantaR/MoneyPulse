@@ -778,7 +778,7 @@ All queries filter: `WHERE is_split_parent = false AND deleted_at IS NULL`
 
 ### Key Files
 
-- `PHASE9-SYNC-SPEC.md` — implementation spec for sync domain
+- `PHASE9-SYNC-SPEC.md` (in this directory) — implementation spec for sync domain
 - `apps/api/src/sync/` — sanitizer v2, alias mapper, signing, policies
 - `apps/api/src/jobs/sync-delivery.processor.ts` — outbox delivery processor
 - `apps/api/test/sync-no-reverse-route.e2e-spec.ts` — boundary test
