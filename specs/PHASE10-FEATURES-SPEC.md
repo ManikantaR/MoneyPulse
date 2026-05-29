@@ -51,11 +51,11 @@
 - **Repo**: MyMoney + moneypulse-web
 - **Description**: New dashboard section showing monthly credit card payments per card. Query transactions with `is_transfer = true` categories, group by account + month.
 - **Files to create/modify**:
-  - [ ] `apps/api/src/analytics/analytics.service.ts` — add `creditCardPayments()` method
-  - [ ] `apps/api/src/analytics/analytics.controller.ts` — add `GET /analytics/cc-payments` endpoint
-  - [ ] `apps/web/src/lib/hooks/useAnalytics.ts` — add `useCreditCardPayments()` hook
-  - [ ] `apps/web/src/components/charts/CreditCardPaymentsTable.tsx` — new component
-  - [ ] `apps/web/src/app/(protected)/page.tsx` — add section to dashboard
+  - [x] `apps/api/src/analytics/analytics.service.ts` — add `creditCardPayments()` method
+  - [x] `apps/api/src/analytics/analytics.controller.ts` — add `GET /analytics/cc-payments` endpoint
+  - [x] `apps/web/src/lib/hooks/useAnalytics.ts` — add `useCreditCardPayments()` hook
+  - [x] `apps/web/src/components/charts/CreditCardPaymentsTable.tsx` — new component
+  - [x] `apps/web/src/app/(protected)/page.tsx` — add section to dashboard
   - [ ] Sync to moneypulse-web via outbox (projected data)
   - [ ] `moneypulse-web/apps/web` — add matching component using Firestore queries
 

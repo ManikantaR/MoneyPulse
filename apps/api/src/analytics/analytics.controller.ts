@@ -184,4 +184,21 @@ export class AnalyticsController {
     );
     return { data };
   }
+
+  /**
+   * GET /analytics/cc-payments — Monthly credit card payment totals per account.
+   */
+  @Get('cc-payments')
+  @ApiOperation({ summary: 'Monthly credit card payments per account' })
+  async creditCardPayments(
+    @Query(new ZodValidationPipe(analyticsQuerySchema)) query: AnalyticsQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.analyticsService.creditCardPayments(
+      user.sub,
+      query,
+      user.householdId,
+    );
+    return { data };
+  }
 }

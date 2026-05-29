@@ -420,4 +420,48 @@ export class AnalyticsService {
       transactionCount: Number(r.txn_count),
     }));
   }
+
+  /**
+   * Returns monthly credit card payment totals per account.
+   * Only includes transactions categorized with `is_transfer = true` categories
+   * on credit card accounts, showing how much was paid toward each card per month.
+   */
+  async creditCardPayments(
+    userId: string,
+    query: AnalyticsQuery,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`a.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`a.user_id = ${userId}`;
+
+    const result = await this.db.execute(sql`
+      SELECT
+        to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
+        a.id::text AS account_id,
+        a.nickname AS account_name,
+        SUM(t.amount_cents) AS total_cents,
+        COUNT(*) AS payment_count
+      FROM ${schema.transactions} t
+      JOIN ${schema.accounts} a ON t.account_id = a.id
+      JOIN ${schema.categories} c ON t.category_id = c.id
+      WHERE t.is_split_parent = false
+        AND t.deleted_at IS NULL
+        AND c.is_transfer = true
+        AND a.account_type = 'credit_card'
+        AND ${userScope}
+        ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
+        ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
+      GROUP BY date_trunc('month', t.date), a.id, a.nickname
+      ORDER BY month DESC, a.nickname
+    `);
+
+    return this.extractRows(result).map((r: any) => ({
+      month: r.month,
+      accountId: r.account_id,
+      accountName: r.account_name,
+      totalCents: Number(r.total_cents),
+      paymentCount: Number(r.payment_count),
+    }));
+  }
 }

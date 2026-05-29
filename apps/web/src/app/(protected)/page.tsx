@@ -14,6 +14,7 @@ import { CreditUtilization } from '@/components/charts/CreditUtilization';
 import { NetWorthCard } from '@/components/charts/NetWorthCard';
 import { TopMerchantsBar } from '@/components/charts/TopMerchantsBar';
 import { TopTransactionsCard } from '@/components/charts/TopTransactionsCard';
+import { CreditCardPaymentsTable } from '@/components/charts/CreditCardPaymentsTable';
 import { NetWorthDrilldown } from '@/components/NetWorthDrilldown';
 import {
   useIncomeVsExpenses,
@@ -23,6 +24,7 @@ import {
   useCreditUtilization,
   useNetWorth,
   useTopMerchants,
+  useCreditCardPayments,
 } from '@/lib/hooks/useAnalytics';
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { formatCents } from '@/lib/format';
@@ -59,6 +61,7 @@ export default function DashboardPage() {
   const { data: credit, isLoading: creditLoading } = useCreditUtilization(params);
   const { data: netWorthData, isLoading: nwLoading } = useNetWorth(params);
   const { data: merchants, isLoading: merchLoading } = useTopMerchants(params);
+  const { data: ccPayments, isLoading: ccLoading } = useCreditCardPayments(params);
   const { data: topTxData, isLoading: topTxLoading } = useTransactions({
     from,
     to,
@@ -92,7 +95,7 @@ export default function DashboardPage() {
 
   const isLoading =
     ieLoading || catLoading || trendLoading || balLoading ||
-    creditLoading || nwLoading || merchLoading || topTxLoading;
+    creditLoading || nwLoading || merchLoading || topTxLoading || ccLoading;
 
   return (
     <div className="space-y-8">
@@ -206,10 +209,15 @@ export default function DashboardPage() {
         {balances?.data && <AccountBalanceHistory data={balances.data} />}
       </div>
 
-      {/* Credit Utilization */}
-      {credit?.data && credit.data.length > 0 && (
-        <CreditUtilization data={credit.data} />
-      )}
+      {/* Credit Utilization + CC Payments */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {credit?.data && credit.data.length > 0 && (
+          <CreditUtilization data={credit.data} />
+        )}
+        {ccPayments?.data && ccPayments.data.length > 0 && (
+          <CreditCardPaymentsTable data={ccPayments.data} />
+        )}
+      </div>
 
       {/* Loading spinner */}
       {isLoading && (

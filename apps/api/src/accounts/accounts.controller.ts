@@ -15,11 +15,16 @@ import { AccountsService } from './accounts.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
+import { z } from 'zod/v4';
 import {
   createAccountSchema,
   updateAccountSchema,
   csvFormatConfigSchema,
 } from '@moneypulse/shared';
+
+const reconcileSchema = z.object({
+  actualBalanceCents: z.number().int(),
+});
 import type {
   AuthTokenPayload,
   CreateAccountInput,
@@ -129,7 +134,7 @@ export class AccountsController {
   @ApiOperation({ summary: 'Reconcile account balance' })
   async reconcile(
     @Param('id') id: string,
-    @Body() body: { actualBalanceCents: number },
+    @Body(new ZodValidationPipe(reconcileSchema)) body: { actualBalanceCents: number },
     @CurrentUser() user: AuthTokenPayload,
   ) {
     const result = await this.accountsService.reconcile(

@@ -70,6 +70,15 @@ export interface TopMerchantItem {
   transactionCount: number;
 }
 
+/** Credit card payment row. */
+export interface CreditCardPaymentItem {
+  month: string;
+  accountId: string;
+  accountName: string;
+  totalCents: number;
+  paymentCount: number;
+}
+
 /** Fetch monthly income vs expenses for a date range. */
 export function useIncomeVsExpenses(params: AnalyticsParams = {}) {
   return useQuery({
@@ -132,5 +141,14 @@ export function useTopMerchants(params: AnalyticsParams = {}) {
     queryKey: ['analytics', 'top-merchants', params],
     queryFn: () =>
       api.get<{ data: TopMerchantItem[] }>('/analytics/top-merchants', { params }),
+  });
+}
+
+/** Fetch monthly credit card payment totals per account. */
+export function useCreditCardPayments(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'cc-payments', params],
+    queryFn: () =>
+      api.get<{ data: CreditCardPaymentItem[] }>('/analytics/cc-payments', { params }),
   });
 }

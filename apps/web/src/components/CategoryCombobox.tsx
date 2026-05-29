@@ -125,6 +125,10 @@ export function CategoryCombobox({
       {/* Trigger button */}
       <button
         type="button"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={placeholder}
         onClick={() => setOpen(!open)}
         className={cn(
           'flex w-full items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] font-medium transition-all',
@@ -167,7 +171,7 @@ export function CategoryCombobox({
           </div>
 
           {/* Options list */}
-          <div ref={listRef} className="max-h-[280px] overflow-y-auto p-1">
+          <div ref={listRef} role="listbox" className="max-h-[280px] overflow-y-auto p-1">
             {/* Extra options (All Categories, Uncategorized, etc.) */}
             {extraOptions && !search && extraOptions.map((opt) => (
               <button
