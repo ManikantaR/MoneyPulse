@@ -45,6 +45,22 @@ export function useUpdateAccount() {
   });
 }
 
+/** Reconcile account — set starting balance so computed balance matches actual bank balance. */
+export function useReconcileAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, actualBalanceCents }: { id: string; actualBalanceCents: number }) =>
+      api.post<{ data: Account & { netTransactionCents: number } }>(
+        `/accounts/${id}/reconcile`,
+        { actualBalanceCents },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
 /** Delete an account. */
 export function useDeleteAccount() {
   const queryClient = useQueryClient();

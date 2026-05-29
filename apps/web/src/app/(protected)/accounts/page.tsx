@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Landmark, Trash2 } from 'lucide-react';
-import { useAccounts, useCreateAccount, useDeleteAccount } from '@/lib/hooks/useAccounts';
+import { Plus, Landmark, Trash2, Pencil } from 'lucide-react';
+import { useAccounts, useCreateAccount, useDeleteAccount, useReconcileAccount } from '@/lib/hooks/useAccounts';
 import { formatCents } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { BankLogo } from '@/components/BankLogo';
@@ -13,7 +13,11 @@ export default function AccountsPage() {
   const { data: accountsData, isLoading } = useAccounts();
   const createAccount = useCreateAccount();
   const deleteAccount = useDeleteAccount();
+  const reconcileAccount = useReconcileAccount();
   const [showForm, setShowForm] = useState(false);
+  const [reconcileTarget, setReconcileTarget] = useState<{ id: string; nickname: string; accountType: string } | null>(null);
+  const [reconcileAmount, setReconcileAmount] = useState('');
+  const [reconcileMsg, setReconcileMsg] = useState('');
   const [form, setForm] = useState({
     institution: 'boa' as Institution,
     accountType: 'checking' as AccountType,
@@ -215,17 +219,35 @@ export default function AccountsPage() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      if (confirm('Delete this account?')) {
-                        deleteAccount.mutate(account.id);
-                      }
-                    }}
-                    className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)] transition-colors"
-                    aria-label="Delete account"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        setReconcileTarget({
+                          id: account.id,
+                          nickname: account.nickname,
+                          accountType: account.accountType,
+                        });
+                        setReconcileAmount('');
+                        setReconcileMsg('');
+                      }}
+                      className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)] transition-colors"
+                      aria-label="Reconcile balance"
+                      title="Adjust balance to match bank"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('Delete this account?')) {
+                          deleteAccount.mutate(account.id);
+                        }
+                      }}
+                      className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)] transition-colors"
+                      aria-label="Delete account"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
                 <p className="mt-4 text-3xl font-extrabold tracking-tight tabular-nums">
                   {formatCents(account.startingBalanceCents)}
@@ -240,6 +262,81 @@ export default function AccountsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+      {/* Reconcile Modal */}
+      {reconcileTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-1">Reconcile Balance</h2>
+            <p className="text-sm text-[var(--muted-foreground)] mb-4">
+              Enter the <strong>current balance</strong> shown on your bank or credit card statement for{' '}
+              <strong>{reconcileTarget.nickname}</strong>.
+              {reconcileTarget.accountType === 'credit_card'
+                ? ' Enter the amount you owe as a positive number.'
+                : ' Enter the balance as a positive number.'}
+            </p>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const dollars = parseFloat(reconcileAmount);
+                if (isNaN(dollars)) return;
+                // For credit cards, user enters what they owe (positive) but the internal
+                // balance is negative (liability), so we negate it.
+                const cents =
+                  reconcileTarget.accountType === 'credit_card'
+                    ? -Math.round(dollars * 100)
+                    : Math.round(dollars * 100);
+                const res = await reconcileAccount.mutateAsync({
+                  id: reconcileTarget.id,
+                  actualBalanceCents: cents,
+                });
+                const newStarting = res.data.startingBalanceCents;
+                setReconcileMsg(
+                  `Balance reconciled. Starting balance set to ${formatCents(Math.abs(newStarting))}.`,
+                );
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  {reconcileTarget.accountType === 'credit_card'
+                    ? 'Amount owed ($)'
+                    : 'Current balance ($)'}
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  autoFocus
+                  value={reconcileAmount}
+                  onChange={(e) => setReconcileAmount(e.target.value)}
+                  placeholder="e.g. 48000.00"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm font-mono focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReconcileTarget(null)}
+                  className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--muted)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reconcileAccount.isPending}
+                  className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+                >
+                  {reconcileAccount.isPending ? 'Reconciling...' : 'Reconcile'}
+                </button>
+              </div>
+              {reconcileMsg && (
+                <p className="text-sm text-green-600 dark:text-green-400">{reconcileMsg}</p>
+              )}
+            </form>
+          </div>
         </div>
       )}
     </div>
