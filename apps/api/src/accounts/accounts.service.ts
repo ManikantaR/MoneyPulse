@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { WATCH_FOLDER_DIR } from '@moneypulse/shared';
@@ -160,6 +160,47 @@ export class AccountsService {
     const updated = this.decryptAccount(rows[0]);
     await this.enqueueAccountEvent(updated);
     return updated;
+  }
+
+  /**
+   * Reconcile an account: set starting_balance so that
+   * starting_balance + sum(transactions) = actualBalanceCents.
+   *
+   * @param id - Account UUID
+   * @param userId - Requesting user's ID
+   * @param actualBalanceCents - The real bank balance right now
+   * @returns The updated account with corrected starting balance
+   */
+  async reconcile(id: string, userId: string, actualBalanceCents: number) {
+    const account = await this.findById(id);
+    if (!account) throw new NotFoundException('Account not found');
+    if (account.userId !== userId)
+      throw new NotFoundException('Account not found');
+
+    // Compute net transaction total for this account
+    const result = await this.db.execute(sql`
+      SELECT COALESCE(SUM(
+        CASE WHEN t.is_credit THEN t.amount_cents ELSE -t.amount_cents END
+      ), 0) AS net_cents
+      FROM ${schema.transactions} t
+      WHERE t.account_id = ${id}::uuid
+        AND t.is_split_parent = false
+        AND t.deleted_at IS NULL
+    `);
+    const netCents = Number((result.rows ?? result)[0]?.net_cents ?? 0);
+
+    // starting_balance = actual_balance - net_transactions
+    const startingBalanceCents = actualBalanceCents - netCents;
+
+    const rows = await this.db
+      .update(schema.accounts)
+      .set({ startingBalanceCents, updatedAt: new Date() })
+      .where(eq(schema.accounts.id, id))
+      .returning();
+
+    const updated = this.decryptAccount(rows[0]);
+    await this.enqueueAccountEvent(updated);
+    return { ...updated, netTransactionCents: netCents };
   }
 
   /**

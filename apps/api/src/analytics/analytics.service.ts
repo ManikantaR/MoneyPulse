@@ -34,24 +34,26 @@ export class AnalyticsService {
     householdId?: string | null,
   ) {
     const userScope = householdId && query.household
-      ? sql`${schema.transactions.userId} IN (
+      ? sql`t.user_id IN (
           SELECT id FROM ${schema.users} WHERE household_id = ${householdId}
         )`
-      : sql`${schema.transactions.userId} = ${userId}`;
+      : sql`t.user_id = ${userId}`;
 
     const result = await this.db.execute(sql`
       SELECT
-        to_char(date_trunc('month', ${schema.transactions.date}), 'YYYY-MM') AS month,
-        SUM(CASE WHEN ${schema.transactions.isCredit} = true THEN ${schema.transactions.amountCents} ELSE 0 END) AS income_cents,
-        SUM(CASE WHEN ${schema.transactions.isCredit} = false THEN ${schema.transactions.amountCents} ELSE 0 END) AS expense_cents
-      FROM ${schema.transactions}
-      WHERE ${schema.transactions.isSplitParent} = false
-        AND ${schema.transactions.deletedAt} IS NULL
+        to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
+        SUM(CASE WHEN t.is_credit = true THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
+      FROM ${schema.transactions} t
+      LEFT JOIN ${schema.categories} c ON t.category_id = c.id
+      WHERE t.is_split_parent = false
+        AND t.deleted_at IS NULL
+        AND COALESCE(c.is_transfer, false) = false
         AND ${userScope}
-        ${query.from ? sql`AND ${schema.transactions.date} >= ${query.from}::date` : sql``}
-        ${query.to ? sql`AND ${schema.transactions.date} <= ${query.to}::date` : sql``}
-        ${query.accountId ? sql`AND ${schema.transactions.accountId} = ${query.accountId}` : sql``}
-      GROUP BY date_trunc('month', ${schema.transactions.date})
+        ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
+        ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
+        ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
+      GROUP BY date_trunc('month', t.date)
       ORDER BY month ASC
     `);
     return this.extractRows(result).map((r: any) => ({
@@ -98,6 +100,7 @@ export class AnalyticsService {
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND t.is_credit = false
+        AND COALESCE(c.is_transfer, false) = false
         AND ${userScope}
         ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
         ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
@@ -157,8 +160,10 @@ export class AnalyticsService {
         SUM(CASE WHEN t.is_credit = true THEN t.amount_cents ELSE 0 END) AS income_cents,
         SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
       FROM ${schema.transactions} t
+      LEFT JOIN ${schema.categories} c ON t.category_id = c.id
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
+        AND COALESCE(c.is_transfer, false) = false
         AND ${userScope}
         ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
         ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
@@ -396,9 +401,11 @@ export class AnalyticsService {
         SUM(t.amount_cents) AS total_cents,
         COUNT(*) AS txn_count
       FROM ${schema.transactions} t
+      LEFT JOIN ${schema.categories} c ON t.category_id = c.id
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND t.is_credit = false
+        AND COALESCE(c.is_transfer, false) = false
         AND ${userScope}
         ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
         ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}

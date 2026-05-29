@@ -95,6 +95,7 @@ export interface Category {
   color: string;
   parentId: string | null;
   sortOrder: number;
+  isTransfer: boolean;
   createdAt: string;
   updatedAt: string;
 }

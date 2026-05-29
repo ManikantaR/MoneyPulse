@@ -47,6 +47,7 @@ async function seed() {
         color: cat.color,
         parentId: null,
         sortOrder: cat.sortOrder,
+        isTransfer: cat.isTransfer ?? false,
       })
       .returning();
     if (rows[0]) {
@@ -76,6 +77,7 @@ async function seed() {
         color: cat.color,
         parentId,
         sortOrder: cat.sortOrder,
+        isTransfer: cat.isTransfer ?? false,
       })
       .returning();
     if (rows[0]) {
@@ -84,8 +86,23 @@ async function seed() {
     }
   }
 
+  // Pass 3: update is_transfer flag on existing categories that need it
+  const transferNames = DEFAULT_CATEGORIES
+    .filter((c) => c.isTransfer)
+    .map((c) => c.name);
+  let updated = 0;
+  if (transferNames.length > 0) {
+    for (const name of transferNames) {
+      const result = await db.execute(
+        sql`UPDATE categories SET is_transfer = true WHERE name = ${name} AND is_transfer = false`,
+      );
+      const count = (result as any).rowCount ?? (result as any).length ?? 0;
+      updated += count;
+    }
+  }
+
   console.log(
-    `Seed complete: ${inserted} inserted, ${skipped} already existed (${DEFAULT_CATEGORIES.length} total defined)`,
+    `Seed complete: ${inserted} inserted, ${skipped} already existed, ${updated} updated is_transfer (${DEFAULT_CATEGORIES.length} total defined)`,
   );
 
   await client.end();

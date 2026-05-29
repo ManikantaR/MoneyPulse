@@ -117,6 +117,30 @@ export class AccountsController {
   }
 
   /**
+   * POST /accounts/:id/reconcile — Set starting balance to match actual bank balance.
+   * Computes: starting_balance = actual_balance - sum(all transactions).
+   *
+   * @param id - Account UUID
+   * @param body - `{ actualBalanceCents: number }`
+   * @param user - JWT token payload
+   */
+  @Post(':id/reconcile')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Reconcile account balance' })
+  async reconcile(
+    @Param('id') id: string,
+    @Body() body: { actualBalanceCents: number },
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const result = await this.accountsService.reconcile(
+      id,
+      user.sub,
+      body.actualBalanceCents,
+    );
+    return { data: result };
+  }
+
+  /**
    * DELETE /accounts/:id — Soft-delete an account.
    * Sets `deletedAt`; does not physically remove the row.
    *

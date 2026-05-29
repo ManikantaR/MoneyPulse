@@ -11,6 +11,7 @@ export type SeedCategory = {
   color: string;
   parentName?: string; // if set, this category is nested under the named parent
   sortOrder: number;
+  isTransfer?: boolean; // if true, excluded from income/expense reports (e.g. CC payments, transfers)
 };
 
 export const DEFAULT_CATEGORIES: SeedCategory[] = [
@@ -141,10 +142,10 @@ export const DEFAULT_CATEGORIES: SeedCategory[] = [
   { name: 'Savings & Investments', icon: '📈', color: '#059669', sortOrder: 24 },
 
   // ── Transfers ─────────────────────────────────────────────
-  { name: 'Transfers',           icon: '🔄', color: '#6b7280', sortOrder: 25 },
+  { name: 'Transfers',           icon: '🔄', color: '#6b7280', sortOrder: 25, isTransfer: true },
 
   // ── Credit Card Payment ───────────────────────────────────
-  { name: 'Credit Card Payment', icon: '💳', color: '#0891b2', sortOrder: 26 },
+  { name: 'Credit Card Payment', icon: '💳', color: '#0891b2', sortOrder: 26, isTransfer: true },
 ];
 
 export const INSTITUTIONS: { value: Institution; label: string }[] = [

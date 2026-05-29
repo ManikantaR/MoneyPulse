@@ -141,6 +141,7 @@ export const categories: any = pgTable(
     color: varchar('color', { length: 7 }).notNull(),
     parentId: uuid('parent_id').references((): any => categories.id),
     sortOrder: integer('sort_order').notNull().default(0),
+    isTransfer: boolean('is_transfer').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
