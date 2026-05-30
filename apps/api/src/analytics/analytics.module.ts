@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsController } from './analytics.controller';
+import { AnomalyDetectorService } from './anomaly-detector.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  providers: [AnalyticsService],
+  imports: [NotificationsModule],
+  providers: [AnalyticsService, AnomalyDetectorService],
   controllers: [AnalyticsController],
-  exports: [AnalyticsService],
+  exports: [AnalyticsService, AnomalyDetectorService],
 })
 export class AnalyticsModule {}

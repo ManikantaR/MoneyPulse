@@ -18,6 +18,7 @@ import { CategorizationService } from '../categorization/categorization.service'
 import { MerchantNormalizerService } from '../categorization/merchant-normalizer.service';
 import { OutboxService } from '../sync/outbox.service';
 import { AliasMapperService } from '../sync/alias-mapper.service';
+import { AnomalyDetectorService } from '../analytics/anomaly-detector.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
 import { encryptField } from '../common/crypto';
 
@@ -44,6 +45,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly merchantNormalizer: MerchantNormalizerService,
     private readonly outbox: OutboxService,
     private readonly aliasMapper: AliasMapperService,
+    private readonly anomalyDetector: AnomalyDetectorService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
     @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {
@@ -155,6 +157,13 @@ export class IngestionProcessor extends WorkerHost {
             this.logger.warn(
               `PDF categorization failed (transactions still imported): ${err.message}`,
             );
+          }
+
+          // Run anomaly detection (best-effort, never blocks import)
+          try {
+            await this.anomalyDetector.detectAnomalies(userId, insertedIds);
+          } catch (err: any) {
+            this.logger.warn(`Anomaly detection failed: ${err.message}`);
           }
         }
 
@@ -283,6 +292,13 @@ export class IngestionProcessor extends WorkerHost {
           this.logger.warn(
             `Categorization failed (transactions still imported): ${err.message}`,
           );
+        }
+
+        // Run anomaly detection (best-effort, never blocks import)
+        try {
+          await this.anomalyDetector.detectAnomalies(userId, insertedIds);
+        } catch (err: any) {
+          this.logger.warn(`Anomaly detection failed: ${err.message}`);
         }
       }
 

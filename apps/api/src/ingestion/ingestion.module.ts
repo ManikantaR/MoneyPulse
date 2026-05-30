@@ -11,6 +11,7 @@ import { PdfProxyService } from './parsers/pdf-proxy.service';
 import { AuditModule } from '../audit/audit.module';
 import { CategorizationModule } from '../categorization/categorization.module';
 import { SyncModule } from '../sync/sync.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { SyncModule } from '../sync/sync.module';
     AuditModule,
     CategorizationModule,
     SyncModule,
+    AnalyticsModule,
   ],
   controllers: [IngestionController],
   providers: [
