@@ -491,6 +491,16 @@ Raw bank descriptions ("SAMPAY DUNKIN GLEN ALLEN VA", "HLU*HULUPLUS HULU.COM/BIL
   created_at: timestamp
   ```
 
+#### Merchant Aliases Management UI
+- [ ] API CRUD controller: `apps/api/src/categorization/merchant-alias.controller.ts`
+- [ ] Frontend hook: `apps/web/src/lib/hooks/useMerchantAliases.ts`
+- [ ] Merchants page: `apps/web/src/app/(protected)/merchants/page.tsx`
+- [ ] Sidebar nav entry: "Merchants" with Store icon
+- [ ] Self-learning: `learnAlias()` method creates user alias on merchant name edit
+- [ ] Re-normalize prompt after adding/editing aliases
+
+See `specs/IMPLEMENTATION-PROMPTS.md` → Prompt 1 for full implementation spec.
+
 ---
 
 ### F.2 Account Balance History Snapshots
