@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Paperclip } from 'lucide-react';
 import { CategoryCombobox, type CategoryOption } from '@/components/CategoryCombobox';
 import {
   useTransactions,
@@ -12,9 +12,11 @@ import {
 } from '@/lib/hooks/useTransactions';
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
+import { TransactionDetailPanel } from '@/components/TransactionDetailPanel';
 import { formatCents, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { TransactionQueryParams } from '@/lib/hooks/useTransactions';
+import type { Transaction } from '@moneypulse/shared';
 
 /** Transactions page — searchable, filterable, paginated transaction grid with bulk actions. */
 export default function TransactionsPage() {
@@ -42,6 +44,7 @@ export default function TransactionsPage() {
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   const [autoCategResult, setAutoCategResult] = useState<string | null>(null);
   const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
+  const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
 
   const { data, isLoading } = useTransactions({
     ...query,
@@ -483,8 +486,12 @@ export default function TransactionsPage() {
                     'cursor-pointer hover:bg-[var(--surface-container-low)] transition-colors',
                     selectedIds.has(txn.id) && 'bg-[var(--accent)]',
                   )}
+                  onClick={() => setSelectedTxn(txn as Transaction)}
                 >
-                  <td className="w-10 px-3 py-4">
+                  <td
+                    className="w-10 px-3 py-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <input
                       type="checkbox"
                       checked={selectedIds.has(txn.id)}
@@ -504,11 +511,23 @@ export default function TransactionsPage() {
                         {txn.merchantName}
                       </span>
                     )}
+                    {(txn as Transaction).attachmentCount ? (
+                      <span
+                        className="ml-2 inline-flex items-center gap-0.5 text-xs text-[var(--primary)]"
+                        title={`${(txn as Transaction).attachmentCount} attachment(s)`}
+                      >
+                        <Paperclip className="h-3 w-3" />
+                        {(txn as Transaction).attachmentCount}
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap text-[var(--muted-foreground)]">
                     {accountMap[txn.accountId] ?? '—'}
                   </td>
-                  <td className="px-6 py-5">
+                  <td
+                    className="px-6 py-5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <CategoryCombobox
                       categories={categoryOptions}
                       value={txn.categoryId ?? ''}
@@ -585,6 +604,22 @@ export default function TransactionsPage() {
           </button>
         </div>
       </div>
+
+      {/* Transaction detail slide-over panel */}
+      {selectedTxn && (
+        <TransactionDetailPanel
+          transaction={selectedTxn}
+          categoryLabel={
+            selectedTxn.categoryId
+              ? categoryMap[selectedTxn.categoryId]
+                ? `${categoryMap[selectedTxn.categoryId].icon} ${categoryMap[selectedTxn.categoryId].name}`
+                : undefined
+              : undefined
+          }
+          accountLabel={accountMap[selectedTxn.accountId]}
+          onClose={() => setSelectedTxn(null)}
+        />
+      )}
     </div>
   );
 }

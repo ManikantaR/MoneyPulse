@@ -229,6 +229,33 @@ export const transactions = pgTable(
   ],
 );
 
+// ── Transaction Attachments ─────────────────────────────────
+
+export const transactionAttachments = pgTable(
+  'transaction_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    transactionId: uuid('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    filename: varchar('filename', { length: 255 }).notNull(),
+    originalFilename: varchar('original_filename', { length: 255 }).notNull(),
+    mimeType: varchar('mime_type', { length: 100 }).notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    storagePath: varchar('storage_path', { length: 500 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_attachment_txn').on(table.transactionId),
+    index('idx_attachment_user').on(table.userId),
+  ],
+);
+
 // ── Merchant Aliases ────────────────────────────────────────
 
 export const merchantAliases = pgTable(
@@ -547,6 +574,21 @@ export const transactionRelations = relations(
       relationName: 'splitChildren',
     }),
     children: many(transactions, { relationName: 'splitChildren' }),
+    attachments: many(transactionAttachments),
+  }),
+);
+
+export const transactionAttachmentRelations = relations(
+  transactionAttachments,
+  ({ one }) => ({
+    transaction: one(transactions, {
+      fields: [transactionAttachments.transactionId],
+      references: [transactions.id],
+    }),
+    user: one(users, {
+      fields: [transactionAttachments.userId],
+      references: [users.id],
+    }),
   }),
 );
 

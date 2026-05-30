@@ -19,6 +19,7 @@ import {
   sql,
   between,
   count,
+  inArray,
 } from 'drizzle-orm';
 import type {
   CreateTransactionInput,
@@ -188,8 +189,34 @@ export class TransactionsService {
       .limit(query.pageSize)
       .offset(offset);
 
+    // Enrich with attachment counts scoped to the requesting user
+    const txnIds: string[] = data.map((t: any) => t.id);
+    let attachmentCountMap: Record<string, number> = {};
+    if (txnIds.length > 0) {
+      const counts = await this.db
+        .select({
+          transactionId: schema.transactionAttachments.transactionId,
+          attachmentCount: count(),
+        })
+        .from(schema.transactionAttachments)
+        .where(
+          and(
+            inArray(schema.transactionAttachments.transactionId, txnIds),
+            eq(schema.transactionAttachments.userId, userId),
+          ),
+        )
+        .groupBy(schema.transactionAttachments.transactionId);
+
+      attachmentCountMap = Object.fromEntries(
+        counts.map((c: any) => [c.transactionId, Number(c.attachmentCount)]),
+      );
+    }
+
     return {
-      data: data.map((t: any) => this.decryptTxn(t)),
+      data: data.map((t: any) => ({
+        ...this.decryptTxn(t),
+        attachmentCount: attachmentCountMap[t.id] ?? 0,
+      })),
       total,
       page: query.page,
       pageSize: query.pageSize,

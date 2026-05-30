@@ -87,6 +87,20 @@ export interface Transaction {
   isSplitParent: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Number of receipt/bill attachments. Only present on list responses. */
+  attachmentCount?: number;
+}
+
+export interface TransactionAttachment {
+  id: string;
+  transactionId: string;
+  userId: string;
+  filename: string;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  createdAt: string;
 }
 
 export interface Category {
