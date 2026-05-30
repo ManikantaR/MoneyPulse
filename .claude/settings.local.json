@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gitleaks version *)",
+      "Bash(pre-commit --version)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm --filter @moneypulse/api test -- sync)",
+      "Bash(pnpm --filter @moneypulse/api test)",
+      "Bash(pnpm test *)"
+    ]
+  }
+}

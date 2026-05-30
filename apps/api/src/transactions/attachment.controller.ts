@@ -2,13 +2,17 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   HttpCode,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { AttachmentService } from './attachment.service';
@@ -64,7 +68,7 @@ export class AttachmentController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: 25 * 1024 * 1024 }, // 25MB — receipts, bills, statements
       fileFilter: attachmentFileFilter,
     }),
   )
@@ -104,5 +108,43 @@ export class AttachmentController {
       user.sub,
     );
     return { data: attachments };
+  }
+
+  /**
+   * GET /attachments/:id/download — Download an attachment file.
+   * Verifies ownership before serving.
+   */
+  @Get('/attachments/:id/download')
+  @ApiOperation({ summary: 'Download an attachment file' })
+  async download(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthTokenPayload,
+    @Res() res: Response,
+  ) {
+    const attachment = await this.attachmentService.findById(id);
+    if (!attachment || attachment.userId !== user.sub) {
+      throw new NotFoundException('Attachment not found');
+    }
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${attachment.originalFilename}"`,
+    );
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.sendFile(attachment.storagePath);
+  }
+
+  /**
+   * DELETE /attachments/:id — Delete an attachment (file + DB record).
+   * Verifies ownership before deleting.
+   */
+  @Delete('/attachments/:id')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Delete an attachment' })
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    await this.attachmentService.deleteAttachment(id, user.sub);
+    return { data: { deleted: true } };
   }
 }

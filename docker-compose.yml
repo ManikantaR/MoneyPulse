@@ -60,6 +60,7 @@ services:
     volumes:
       - ~/moneypulse-data/uploads:/data/uploads
       - ~/moneypulse-data/watch-folder:/config/watch-folder
+      - ~/moneypulse-data/attachments:/config/attachments
     depends_on:
       postgres:
         condition: service_healthy
