@@ -78,6 +78,7 @@ export interface Transaction {
   amountCents: number;
   categoryId: string | null;
   merchantName: string | null;
+  normalizedMerchantName: string | null;
   isCredit: boolean;
   isManual: boolean;
   tags: string[];

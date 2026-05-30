@@ -10,6 +10,7 @@ import {
   useReplayDeadLetters,
   type OutboxEvent,
 } from '@/lib/hooks/useSync';
+import { useNormalizeMerchants } from '@/lib/hooks/useTransactions';
 import {
   RefreshCw,
   AlertTriangle,
@@ -192,6 +193,7 @@ export default function SyncPage() {
   const trigger = useTriggerSync();
   const replay = useReplayDeadLetters();
   const backfillCategories = useBackfillCategories();
+  const normalizeMerchants = useNormalizeMerchants();
 
   const status = statusData?.data;
   const events = eventsData?.data ?? [];
@@ -247,6 +249,16 @@ export default function SyncPage() {
             <Tags className={`h-4 w-4 ${backfillCategories.isPending ? 'animate-spin' : ''}`} />
             {backfillCategories.isPending ? 'Syncing…' : 'Backfill Categories'}
           </button>
+          <button
+            onClick={async () => {
+              await normalizeMerchants.mutateAsync();
+            }}
+            disabled={normalizeMerchants.isPending}
+            className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium hover:bg-[var(--muted)] disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`h-4 w-4 ${normalizeMerchants.isPending ? 'animate-spin' : ''}`} />
+            {normalizeMerchants.isPending ? 'Normalizing…' : 'Normalize Merchants'}
+          </button>
           {(status?.counts.dead_letter ?? 0) > 0 && (
             <button
               onClick={handleReplay}
@@ -274,6 +286,11 @@ export default function SyncPage() {
       {backfillCategories.isSuccess && (
         <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-600 dark:text-green-400">
           Categories backfill complete — enqueued {backfillCategories.data?.data.enqueued} · errors {backfillCategories.data?.data.errors}.
+        </div>
+      )}
+      {normalizeMerchants.isSuccess && (
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-600 dark:text-green-400">
+          Merchant normalization complete — {normalizeMerchants.data?.data.updated} of {normalizeMerchants.data?.data.total} transactions updated.
         </div>
       )}
 

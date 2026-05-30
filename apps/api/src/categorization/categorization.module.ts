@@ -3,6 +3,7 @@ import { RuleEngineService } from './rule-engine.service';
 import { AiCategorizerService } from './ai-categorizer.service';
 import { LearningService } from './learning.service';
 import { CategorizationService } from './categorization.service';
+import { MerchantNormalizerService } from './merchant-normalizer.service';
 import { AiLogsModule } from '../ai-logs/ai-logs.module';
 
 @Module({
@@ -12,7 +13,8 @@ import { AiLogsModule } from '../ai-logs/ai-logs.module';
     AiCategorizerService,
     LearningService,
     CategorizationService,
+    MerchantNormalizerService,
   ],
-  exports: [CategorizationService, RuleEngineService, LearningService],
+  exports: [CategorizationService, RuleEngineService, LearningService, MerchantNormalizerService],
 })
 export class CategorizationModule {}

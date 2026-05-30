@@ -15,6 +15,7 @@ import { IngestionService } from '../ingestion/ingestion.service';
 import { PdfProxyService } from '../ingestion/parsers/pdf-proxy.service';
 import { AuditService } from '../audit/audit.service';
 import { CategorizationService } from '../categorization/categorization.service';
+import { MerchantNormalizerService } from '../categorization/merchant-normalizer.service';
 import { OutboxService } from '../sync/outbox.service';
 import { AliasMapperService } from '../sync/alias-mapper.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
@@ -40,6 +41,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly pdfProxyService: PdfProxyService,
     private readonly auditService: AuditService,
     private readonly categorizationService: CategorizationService,
+    private readonly merchantNormalizer: MerchantNormalizerService,
     private readonly outbox: OutboxService,
     private readonly aliasMapper: AliasMapperService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
@@ -504,6 +506,9 @@ export class IngestionProcessor extends WorkerHost {
             amountCents: txn.amountCents,
             isCredit: txn.isCredit,
             merchantName: txn.merchantName,
+            normalizedMerchantName: this.merchantNormalizer.ruleBasedNormalize(
+              txn.merchantName || txn.description,
+            ),
             sourceFileId,
             tags: [],
           })),

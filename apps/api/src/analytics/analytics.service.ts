@@ -397,7 +397,7 @@ export class AnalyticsService {
     const limit = query.limit ?? 10;
     const result = await this.db.execute(sql`
       SELECT
-        COALESCE(t.merchant_name, t.description) AS merchant,
+        COALESCE(t.normalized_merchant_name, t.merchant_name, t.description) AS merchant,
         SUM(t.amount_cents) AS total_cents,
         COUNT(*) AS txn_count
       FROM ${schema.transactions} t
@@ -410,7 +410,7 @@ export class AnalyticsService {
         ${query.from ? sql`AND t.date >= ${query.from}::date` : sql``}
         ${query.to ? sql`AND t.date <= ${query.to}::date` : sql``}
         ${query.accountId ? sql`AND t.account_id = ${query.accountId}` : sql``}
-      GROUP BY COALESCE(t.merchant_name, t.description)
+      GROUP BY COALESCE(t.normalized_merchant_name, t.merchant_name, t.description)
       ORDER BY total_cents DESC
       LIMIT ${limit}
     `);

@@ -470,17 +470,19 @@ Raw bank descriptions ("SAMPAY DUNKIN GLEN ALLEN VA", "HLU*HULUPLUS HULU.COM/BIL
 **Powers**: Tier 1.2 (recurring detection), 1.3 (anomaly alerts), 2.1 (receipt matching), 3.5 (subscription manager)
 
 #### Implementation
-- [ ] New service: `apps/api/src/categorization/merchant-normalizer.service.ts`
-- [ ] Phase 1 — Rule-based: regex strip common suffixes (city/state, card network prefixes like "SQ *", "TST *", "PAYPAL *")
+- [x] New service: `apps/api/src/categorization/merchant-normalizer.service.ts`
+- [x] Phase 1 — Rule-based: regex strip common suffixes (city/state, card network prefixes like "SQ *", "TST *", "PAYPAL *")
 - [ ] Phase 2 — AI-assisted: Ollama batch normalizes unrecognized merchants
-- [ ] New column on transactions: `normalized_merchant_name` (derived, not user-editable)
-- [ ] Post-ingestion hook: normalize after import
-- [ ] Backfill command for existing transactions
-- [ ] Merchant alias table for user overrides: "AMZN*" → "Amazon"
+- [x] New column on transactions: `normalized_merchant_name` (derived, not user-editable)
+- [x] Post-ingestion hook: normalize after import
+- [x] Backfill command for existing transactions (`POST /transactions/normalize-merchants`)
+- [x] Merchant alias table for user overrides: "AMZN*" → "Amazon"
+- [x] Top merchants analytics uses normalized names
+- [x] Normalize Merchants button on Sync Admin page
 
 #### Schema
-- [ ] Add `normalized_merchant_name: varchar(200)` to transactions table
-- [ ] New table `merchant_aliases`:
+- [x] Add `normalized_merchant_name: varchar(200)` to transactions table
+- [x] New table `merchant_aliases`:
   ```
   id: uuid PK
   user_id: uuid FK

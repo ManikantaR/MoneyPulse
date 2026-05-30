@@ -202,6 +202,7 @@ export const transactions = pgTable(
     amountCents: integer('amount_cents').notNull(),
     categoryId: uuid('category_id').references(() => categories.id),
     merchantName: varchar('merchant_name', { length: 200 }),
+    normalizedMerchantName: varchar('normalized_merchant_name', { length: 200 }),
     isCredit: boolean('is_credit').notNull().default(false),
     isManual: boolean('is_manual').notNull().default(false),
     tags: text('tags').array().default([]),
@@ -225,6 +226,25 @@ export const transactions = pgTable(
     index('idx_txn_user_date').on(table.userId, table.date),
     index('idx_txn_category').on(table.categoryId),
     index('idx_txn_parent').on(table.parentTransactionId),
+  ],
+);
+
+// ── Merchant Aliases ────────────────────────────────────────
+
+export const merchantAliases = pgTable(
+  'merchant_aliases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').references(() => users.id),
+    pattern: varchar('pattern', { length: 200 }).notNull(),
+    matchType: varchar('match_type', { length: 20 }).notNull().default('contains'),
+    displayName: varchar('display_name', { length: 200 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_merchant_alias_user').on(table.userId),
   ],
 );
 

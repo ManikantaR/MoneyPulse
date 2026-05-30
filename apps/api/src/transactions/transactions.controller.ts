@@ -19,6 +19,7 @@ import { ExportService } from './export.service';
 import { AuditService } from '../audit/audit.service';
 import { CategorizationService } from '../categorization/categorization.service';
 import { LearningService } from '../categorization/learning.service';
+import { MerchantNormalizerService } from '../categorization/merchant-normalizer.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -48,6 +49,7 @@ export class TransactionsController {
     private readonly auditService: AuditService,
     private readonly categorizationService: CategorizationService,
     private readonly learningService: LearningService,
+    private readonly merchantNormalizer: MerchantNormalizerService,
   ) {}
 
   /**
@@ -308,5 +310,17 @@ export class TransactionsController {
     });
 
     return { data: stats };
+  }
+
+  /**
+   * POST /transactions/normalize-merchants — Backfill normalized merchant names
+   * for all transactions that don't have one yet.
+   */
+  @Post('normalize-merchants')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Backfill normalized merchant names' })
+  async normalizeMerchants() {
+    const result = await this.merchantNormalizer.backfillAll();
+    return { data: result };
   }
 }

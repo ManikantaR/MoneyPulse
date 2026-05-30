@@ -85,6 +85,22 @@ export function useBulkCategorize() {
   });
 }
 
+/** Backfill normalized merchant names for all transactions. */
+export function useNormalizeMerchants() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ data: { updated: number; total: number } }>(
+        '/transactions/normalize-merchants',
+        {},
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
 /** Auto-categorize all uncategorized transactions via AI + rule engine. */
 export function useAutoCategorize() {
   const queryClient = useQueryClient();
