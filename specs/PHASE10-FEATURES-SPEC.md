@@ -238,6 +238,8 @@ Auto-detect recurring charges and alert when expected bills are missing.
 - [ ] FCM notifications for missed bills
 - [ ] Web app Bills page (read-only projection)
 
+> **Implementation**: missed-bill *alerts* reach the phone via the notification backbone (`IMPLEMENTATION-PROMPTS.md` → Prompt 6a/6b). The read-only upcoming-bills *glance* on web is the optional `IMPLEMENTATION-PROMPTS.md` → Prompt 22 (22a NAS emits `bill.projected.v1`; 22b web fan-out + page).
+
 ---
 
 ### 1.3 Spending Anomaly Alerts

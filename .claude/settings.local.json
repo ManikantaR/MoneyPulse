@@ -8,7 +8,10 @@
       "Bash(pnpm --filter @moneypulse/api test)",
       "Bash(pnpm test *)",
       "Read(//Users/manikantaradhakrishna/repo/moneypulse-web/**)",
-      "Read(//Users/manikantaradhakrishna/repo/**)"
+      "Read(//Users/manikantaradhakrishna/repo/**)",
+      "WebSearch",
+      "WebFetch(domain:www.home-assistant.io)",
+      "WebFetch(domain:support.nabucasa.com)"
     ]
   }
 }

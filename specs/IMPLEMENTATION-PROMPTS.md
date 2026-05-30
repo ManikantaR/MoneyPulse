@@ -1062,6 +1062,7 @@ Grep for direct inserts into the notifications table (e.g. `anomaly-detector.ser
 - `isUrlSafe()` returns true for a host in `HA_WEBHOOK_ALLOWED_HOSTS`, false for a non-allowlisted `192.168.x.x`.
 ### Step 3: Rubber duck — enqueue NOT in a tx; every legacy notification insert migrated; allowlist doesn't permit arbitrary LAN hosts; payload matches the web contract (field is `body`).
 ### Step 4: Deploy — `cd ~/repo/MyMoney && ./deploy-to-nas.sh`, then set `HA_WEBHOOK_ALLOWED_HOSTS` on the NAS env.
+> **HA voice notifications**: if you use the Home Assistant webhook (voice announcements / home automations — see `docs/home-assistant-notifications.md`), `HA_WEBHOOK_ALLOWED_HOSTS` MUST include your HA host IP (e.g. `192.168.30.10`) or the webhook stays blocked by `isUrlSafe()`. Then set the webhook URL in MoneyPulse Settings (`http://<HA_IP>:8123/api/webhook/<id>`).
 ### Step 5: No NAS schema change.
 ### Step 6: Manual
 - [ ] Trigger an anomaly (import a >$500 debit) → notification row created
