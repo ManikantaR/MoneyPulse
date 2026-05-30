@@ -313,14 +313,14 @@ export class TransactionsController {
   }
 
   /**
-   * POST /transactions/normalize-merchants — Backfill normalized merchant names
-   * for all transactions that don't have one yet.
+   * POST /transactions/normalize-merchants — Backfill normalized merchant names.
+   * Pass { force: true } to re-normalize ALL transactions (useful after adding aliases).
    */
   @Post('normalize-merchants')
   @HttpCode(200)
   @ApiOperation({ summary: 'Backfill normalized merchant names' })
-  async normalizeMerchants() {
-    const result = await this.merchantNormalizer.backfillAll();
+  async normalizeMerchants(@Body() body?: { force?: boolean }) {
+    const result = await this.merchantNormalizer.backfillAll(body?.force ?? false);
     return { data: result };
   }
 }

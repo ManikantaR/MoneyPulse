@@ -156,6 +156,79 @@ export const INSTITUTIONS: { value: Institution; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
+/**
+ * Default merchant aliases seeded as global (userId=NULL) entries.
+ * Users can add their own via the UI which take priority.
+ * The normalizer checks aliases BEFORE falling back to rule-based cleanup.
+ */
+export type SeedMerchantAlias = {
+  pattern: string;
+  matchType: 'contains' | 'startsWith' | 'exact';
+  displayName: string;
+};
+
+export const DEFAULT_MERCHANT_ALIASES: SeedMerchantAlias[] = [
+  // Grocery & Retail
+  { pattern: 'costco', matchType: 'contains', displayName: 'Costco' },
+  { pattern: 'walmart', matchType: 'contains', displayName: 'Walmart' },
+  { pattern: 'target', matchType: 'contains', displayName: 'Target' },
+  { pattern: 'whole foods', matchType: 'contains', displayName: 'Whole Foods' },
+  { pattern: 'trader joe', matchType: 'contains', displayName: "Trader Joe's" },
+  { pattern: 'aldi', matchType: 'contains', displayName: 'ALDI' },
+  { pattern: 'kroger', matchType: 'contains', displayName: 'Kroger' },
+  { pattern: 'publix', matchType: 'contains', displayName: 'Publix' },
+  { pattern: 'safeway', matchType: 'contains', displayName: 'Safeway' },
+  { pattern: 'sam\'s club', matchType: 'contains', displayName: "Sam's Club" },
+  { pattern: 'bj\'s', matchType: 'contains', displayName: "BJ's Wholesale" },
+  { pattern: 'cvs', matchType: 'contains', displayName: 'CVS' },
+  { pattern: 'walgreens', matchType: 'contains', displayName: 'Walgreens' },
+  // Food & Dining
+  { pattern: 'starbucks', matchType: 'contains', displayName: 'Starbucks' },
+  { pattern: 'dunkin', matchType: 'contains', displayName: "Dunkin'" },
+  { pattern: 'chick-fil-a', matchType: 'contains', displayName: 'Chick-fil-A' },
+  { pattern: 'mcdonalds', matchType: 'contains', displayName: "McDonald's" },
+  { pattern: "mcdonald's", matchType: 'contains', displayName: "McDonald's" },
+  { pattern: 'chipotle', matchType: 'contains', displayName: 'Chipotle' },
+  { pattern: 'panera', matchType: 'contains', displayName: 'Panera Bread' },
+  { pattern: 'chilis', matchType: 'contains', displayName: "Chili's" },
+  { pattern: 'dominos', matchType: 'contains', displayName: "Domino's" },
+  { pattern: 'doordash', matchType: 'contains', displayName: 'DoorDash' },
+  { pattern: 'uber eats', matchType: 'contains', displayName: 'Uber Eats' },
+  { pattern: 'grubhub', matchType: 'contains', displayName: 'Grubhub' },
+  // Tech & Subscriptions
+  { pattern: 'amazon web services', matchType: 'contains', displayName: 'AWS' },
+  { pattern: 'amzn', matchType: 'startsWith', displayName: 'Amazon' },
+  { pattern: 'amazon', matchType: 'contains', displayName: 'Amazon' },
+  { pattern: 'netflix', matchType: 'contains', displayName: 'Netflix' },
+  { pattern: 'spotify', matchType: 'contains', displayName: 'Spotify' },
+  { pattern: 'hulu', matchType: 'contains', displayName: 'Hulu' },
+  { pattern: 'disney+', matchType: 'contains', displayName: 'Disney+' },
+  { pattern: 'apple', matchType: 'startsWith', displayName: 'Apple' },
+  { pattern: 'google', matchType: 'startsWith', displayName: 'Google' },
+  { pattern: 'microsoft', matchType: 'contains', displayName: 'Microsoft' },
+  { pattern: 'openai', matchType: 'contains', displayName: 'OpenAI' },
+  { pattern: 'chatgpt', matchType: 'contains', displayName: 'ChatGPT' },
+  { pattern: 'github', matchType: 'contains', displayName: 'GitHub' },
+  { pattern: 'youtube', matchType: 'contains', displayName: 'YouTube' },
+  // Transportation
+  { pattern: 'uber', matchType: 'startsWith', displayName: 'Uber' },
+  { pattern: 'lyft', matchType: 'contains', displayName: 'Lyft' },
+  { pattern: 'shell', matchType: 'startsWith', displayName: 'Shell' },
+  { pattern: 'exxon', matchType: 'contains', displayName: 'Exxon' },
+  { pattern: 'chevron', matchType: 'contains', displayName: 'Chevron' },
+  { pattern: 'wawa', matchType: 'contains', displayName: 'Wawa' },
+  // Utilities & Services
+  { pattern: 'comcast', matchType: 'contains', displayName: 'Comcast/Xfinity' },
+  { pattern: 'xfinity', matchType: 'contains', displayName: 'Comcast/Xfinity' },
+  { pattern: 'verizon', matchType: 'contains', displayName: 'Verizon' },
+  { pattern: 'at&t', matchType: 'contains', displayName: 'AT&T' },
+  { pattern: 't-mobile', matchType: 'contains', displayName: 'T-Mobile' },
+  // Home & Hardware
+  { pattern: 'home depot', matchType: 'contains', displayName: 'Home Depot' },
+  { pattern: 'lowes', matchType: 'contains', displayName: "Lowe's" },
+  { pattern: 'ikea', matchType: 'contains', displayName: 'IKEA' },
+];
+
 export const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 export const UPLOAD_DIR = '/tmp/moneypulse/uploads';
 export const WATCH_FOLDER_DIR = '/config/watch-folder';

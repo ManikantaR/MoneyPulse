@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
-import { categories } from './schema';
-import { DEFAULT_CATEGORIES } from '@moneypulse/shared';
+import { categories, merchantAliases } from './schema';
+import { DEFAULT_CATEGORIES, DEFAULT_MERCHANT_ALIASES } from '@moneypulse/shared';
 
 async function seed() {
   const connectionString = process.env.DATABASE_URL;
@@ -102,7 +102,36 @@ async function seed() {
   }
 
   console.log(
-    `Seed complete: ${inserted} inserted, ${skipped} already existed, ${updated} updated is_transfer (${DEFAULT_CATEGORIES.length} total defined)`,
+    `Categories: ${inserted} inserted, ${skipped} already existed, ${updated} updated is_transfer (${DEFAULT_CATEGORIES.length} total defined)`,
+  );
+
+  // ── Seed default merchant aliases (global, userId=NULL) ───
+  console.log('Seeding default merchant aliases...');
+  const existingAliases = await db.select().from(merchantAliases);
+  const existingPatterns = new Set(
+    existingAliases
+      .filter((a: any) => a.userId === null)
+      .map((a: any) => `${a.pattern}::${a.matchType}`),
+  );
+
+  let aliasInserted = 0;
+  let aliasSkipped = 0;
+  for (const alias of DEFAULT_MERCHANT_ALIASES) {
+    const key = `${alias.pattern}::${alias.matchType}`;
+    if (existingPatterns.has(key)) {
+      aliasSkipped++;
+      continue;
+    }
+    await db.insert(merchantAliases).values({
+      userId: null,
+      pattern: alias.pattern,
+      matchType: alias.matchType,
+      displayName: alias.displayName,
+    });
+    aliasInserted++;
+  }
+  console.log(
+    `Merchant aliases: ${aliasInserted} inserted, ${aliasSkipped} already existed (${DEFAULT_MERCHANT_ALIASES.length} total defined)`,
   );
 
   await client.end();

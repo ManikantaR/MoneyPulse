@@ -132,42 +132,41 @@ export class MerchantNormalizerService {
       name = name.charAt(0).toUpperCase() + name.slice(1);
     }
 
-    // Known brand name corrections (post title-case)
-    const brandFixes: Record<string, string> = {
-      'costco': 'Costco',
-      'walmart': 'Walmart',
-      'amazon': 'Amazon',
-      'target': 'Target',
-      'netflix': 'Netflix',
-      'spotify': 'Spotify',
-      'hulu': 'Hulu',
-      'apple': 'Apple',
-      'google': 'Google',
-      'uber': 'Uber',
-      'lyft': 'Lyft',
-      'starbucks': 'Starbucks',
-      'dunkin': "Dunkin'",
-      'chick-fil-a': 'Chick-fil-A',
-      'mcdonalds': "McDonald's",
-      "mcdonald's": "McDonald's",
-      'chipotle': 'Chipotle',
-      'whole foods': 'Whole Foods',
-      'trader joe': "Trader Joe's",
-      'aldi': 'ALDI',
-      'costco whse': 'Costco',
-      'aws': 'AWS',
-      'amazon web services': 'AWS',
-    };
-
-    const lower = name.toLowerCase();
-    for (const [key, brand] of Object.entries(brandFixes)) {
-      if (lower === key || lower.startsWith(key + ' ')) {
-        name = brand;
-        break;
-      }
-    }
+    // Brand name corrections are handled by merchant_aliases table (seeded from DEFAULT_MERCHANT_ALIASES).
+    // The normalize() method checks aliases BEFORE calling this rule-based method. (seeded from DEFAULT_MERCHANT_ALIASES).
+    // The normalize() method checks aliases BEFORE calling this rule-based method.
+    // ruleBasedNormalize() focuses on cleanup only; alias matching happens in normalize().
 
     return name || raw.trim();
+  }
+
+  /**
+   * Synchronous alias matching against a pre-loaded alias list.
+   * Used by backfillAll for performance (avoids N+1 DB queries).
+   */
+  private matchAlias(
+    raw: string,
+    allAliases: any[],
+    userId?: string,
+  ): string | null {
+    const rawLower = raw.toLowerCase();
+    const filtered = userId
+      ? allAliases.filter((a: any) => a.userId === userId)
+      : allAliases.filter((a: any) => a.userId === null);
+
+    for (const alias of filtered) {
+      const pattern = alias.pattern.toLowerCase();
+      const matchType = alias.matchType || 'contains';
+      let matched = false;
+      if (matchType === 'exact') matched = rawLower === pattern;
+      else if (matchType === 'startsWith') matched = rawLower.startsWith(pattern);
+      else if (matchType === 'contains') matched = rawLower.includes(pattern);
+      else if (matchType === 'regex') {
+        try { matched = new RegExp(alias.pattern, 'i').test(raw); } catch { /* skip */ }
+      }
+      if (matched) return alias.displayName;
+    }
+    return null;
   }
 
   /**
@@ -213,29 +212,85 @@ export class MerchantNormalizerService {
   }
 
   /**
-   * Backfill normalized_merchant_name for all transactions that don't have one.
-   * Uses rule-based normalization only (no async alias lookup for performance).
-   * Returns count of updated rows.
+   * Self-learning: create a user-scoped alias from a raw merchant string → display name.
+   * Called when a user manually confirms or edits a normalized merchant name.
+   * Skips if an identical alias already exists.
    */
-  async backfillAll(): Promise<{ updated: number; total: number }> {
+  async learnAlias(
+    userId: string,
+    rawPattern: string,
+    displayName: string,
+  ): Promise<boolean> {
+    if (!rawPattern || !displayName) return false;
+
+    // Check if an alias already exists for this pattern + user
+    const existing = await this.db
+      .select()
+      .from(schema.merchantAliases)
+      .where(
+        and(
+          eq(schema.merchantAliases.userId, userId),
+          eq(schema.merchantAliases.pattern, rawPattern.toLowerCase()),
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Update display name if different
+      if (existing[0].displayName !== displayName) {
+        await this.db
+          .update(schema.merchantAliases)
+          .set({ displayName })
+          .where(eq(schema.merchantAliases.id, existing[0].id));
+        this.logger.log(`Updated merchant alias: "${rawPattern}" → "${displayName}"`);
+      }
+      return false;
+    }
+
+    await this.db.insert(schema.merchantAliases).values({
+      userId,
+      pattern: rawPattern.toLowerCase(),
+      matchType: 'contains',
+      displayName,
+    });
+
+    this.logger.log(`Learned merchant alias: "${rawPattern}" → "${displayName}" for user ${userId}`);
+    return true;
+  }
+
+  /**
+   * Backfill normalized_merchant_name for all transactions.
+   * When force=false (default), only fills NULL values.
+   * When force=true, re-normalizes ALL transactions (useful after adding new aliases).
+   */
+  async backfillAll(force = false): Promise<{ updated: number; total: number }> {
+    const whereClause = force
+      ? sql`deleted_at IS NULL`
+      : sql`normalized_merchant_name IS NULL AND deleted_at IS NULL`;
+
     const rows = await this.db.execute(sql`
-      SELECT id, merchant_name, description
+      SELECT id, user_id, merchant_name, description
       FROM ${schema.transactions}
-      WHERE normalized_merchant_name IS NULL
-        AND deleted_at IS NULL
+      WHERE ${whereClause}
     `);
 
     const txns = (rows.rows ?? rows) as Array<{
       id: string;
+      user_id: string;
       merchant_name: string | null;
       description: string;
     }>;
 
+    // Pre-load all aliases once for performance
+    const allAliases = await this.db.select().from(schema.merchantAliases);
+
     let updated = 0;
     for (const txn of txns) {
-      const normalized = this.ruleBasedNormalize(
-        txn.merchant_name || txn.description,
-      );
+      const raw = txn.merchant_name || txn.description;
+      // Check aliases (user-specific first, then global)
+      let normalized = this.matchAlias(raw, allAliases, txn.user_id)
+        ?? this.matchAlias(raw, allAliases)
+        ?? this.ruleBasedNormalize(raw);
       await this.db
         .update(schema.transactions)
         .set({ normalizedMerchantName: normalized })
