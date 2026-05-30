@@ -27,6 +27,8 @@ import {
   useCreditCardPayments,
 } from '@/lib/hooks/useAnalytics';
 import { useTransactions } from '@/lib/hooks/useTransactions';
+import { UpcomingBillsCard } from '@/components/charts/UpcomingBillsCard';
+import { useUpcomingBills } from '@/lib/hooks/useBills';
 import { formatCents } from '@/lib/format';
 
 /** Dashboard page — main financial overview with KPI cards and charts. */
@@ -62,6 +64,7 @@ export default function DashboardPage() {
   const { data: netWorthData, isLoading: nwLoading } = useNetWorth(params);
   const { data: merchants, isLoading: merchLoading } = useTopMerchants(params);
   const { data: ccPayments, isLoading: ccLoading } = useCreditCardPayments(params);
+  const { data: upcomingBills } = useUpcomingBills();
   const { data: topTxData, isLoading: topTxLoading } = useTransactions({
     from,
     to,
@@ -219,6 +222,11 @@ export default function DashboardPage() {
           <CreditCardPaymentsTable data={ccPayments.data} />
         )}
       </div>
+
+      {/* Upcoming Bills widget */}
+      {upcomingBills?.data && (
+        <UpcomingBillsCard bills={upcomingBills.data} />
+      )}
 
       {/* Loading spinner */}
       {isLoading && (

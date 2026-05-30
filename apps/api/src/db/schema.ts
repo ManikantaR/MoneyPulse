@@ -338,6 +338,41 @@ export const savingsGoals = pgTable('savings_goals', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
+// ── Recurring Bills ─────────────────────────────────────────
+
+export const recurringBills = pgTable(
+  'recurring_bills',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    merchantPattern: varchar('merchant_pattern', { length: 200 }).notNull(),
+    normalizedName: varchar('normalized_name', { length: 200 }).notNull(),
+    categoryId: uuid('category_id').references(() => categories.id),
+    expectedAmountCents: integer('expected_amount_cents').notNull(),
+    amountTolerancePercent: integer('amount_tolerance_percent')
+      .notNull()
+      .default(15),
+    frequency: varchar('frequency', { length: 20 }).notNull().default('monthly'),
+    nextExpectedDate: timestamp('next_expected_date', { withTimezone: true }),
+    lastSeenDate: timestamp('last_seen_date', { withTimezone: true }),
+    lastAmountCents: integer('last_amount_cents'),
+    isActive: boolean('is_active').notNull().default(true),
+    isConfirmed: boolean('is_confirmed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('uq_bills_user_merchant').on(table.userId, table.merchantPattern),
+    index('idx_bills_user').on(table.userId),
+    index('idx_bills_next_date').on(table.nextExpectedDate),
+    index('idx_bills_active').on(table.userId, table.isActive, table.nextExpectedDate),
+  ],
+);
+
 // ── Notifications ───────────────────────────────────────────
 
 export const notifications = pgTable('notifications', {
@@ -615,6 +650,17 @@ export const budgetRelations = relations(budgets, ({ one }) => ({
   }),
   category: one(categories, {
     fields: [budgets.categoryId],
+    references: [categories.id],
+  }),
+}));
+
+export const recurringBillRelations = relations(recurringBills, ({ one }) => ({
+  user: one(users, {
+    fields: [recurringBills.userId],
+    references: [users.id],
+  }),
+  category: one(categories, {
+    fields: [recurringBills.categoryId],
     references: [categories.id],
   }),
 }));

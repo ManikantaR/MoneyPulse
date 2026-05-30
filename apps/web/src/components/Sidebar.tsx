@@ -20,6 +20,7 @@ import {
   Brain,
   RefreshCw,
   Store,
+  CalendarClock,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { UserAvatar } from './UserAvatar';
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { href: '/imports', label: 'Imports', icon: FileBarChart },
   { href: '/accounts', label: 'Accounts', icon: Landmark },
   { href: '/budgets', label: 'Budgets', icon: Wallet },
+  { href: '/bills', label: 'Bills', icon: CalendarClock },
   { href: '/categories', label: 'Categories', icon: Tags },
   { href: '/merchants', label: 'Merchants', icon: Store },
   { href: '/ai-logs', label: 'AI Logs', icon: Brain },

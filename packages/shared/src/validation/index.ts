@@ -251,3 +251,24 @@ export type UploadFileInput = z.infer<typeof uploadFileSchema>;
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type SpendingTrendQuery = z.infer<typeof spendingTrendQuerySchema>;
 export type TopMerchantsQuery = z.infer<typeof topMerchantsQuerySchema>;
+
+// ── Recurring Bills ──────────────────────────────────────────
+
+export const billFrequencyEnum = z.enum([
+  'weekly',
+  'biweekly',
+  'monthly',
+  'quarterly',
+  'semi_annual',
+  'annual',
+]);
+
+export const updateBillSchema = z.object({
+  normalizedName: z.string().min(1).max(200).optional(),
+  expectedAmountCents: z.number().int().positive().optional(),
+  amountTolerancePercent: z.number().int().min(0).max(50).optional(),
+  frequency: billFrequencyEnum.optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+});
+
+export type UpdateBillInput = z.infer<typeof updateBillSchema>;

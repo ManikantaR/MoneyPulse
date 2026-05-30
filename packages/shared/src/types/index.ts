@@ -103,6 +103,32 @@ export interface TransactionAttachment {
   createdAt: string;
 }
 
+export type BillFrequency =
+  | 'weekly'
+  | 'biweekly'
+  | 'monthly'
+  | 'quarterly'
+  | 'semi_annual'
+  | 'annual';
+
+export interface RecurringBill {
+  id: string;
+  userId: string;
+  merchantPattern: string;
+  normalizedName: string;
+  categoryId: string | null;
+  expectedAmountCents: number;
+  amountTolerancePercent: number;
+  frequency: BillFrequency;
+  nextExpectedDate: string | null;
+  lastSeenDate: string | null;
+  lastAmountCents: number | null;
+  isActive: boolean;
+  isConfirmed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Category {
   id: string;
   name: string;

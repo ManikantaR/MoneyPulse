@@ -20,6 +20,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AiLogsModule } from './ai-logs/ai-logs.module';
 import { SyncModule } from './sync/sync.module';
+import { BillsModule } from './bills/bills.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { SyncModule } from './sync/sync.module';
     SyncModule,
     JobsModule,
     AiLogsModule,
+    BillsModule,
     HealthModule,
   ],
   providers: [
