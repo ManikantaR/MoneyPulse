@@ -186,15 +186,20 @@ export class AnalyticsController {
   }
 
   /**
-   * GET /analytics/cc-payments — Monthly credit card payment totals per account.
+   * GET /analytics/budget-progress — Budget vs actual spending per category.
+   * Defaults to current month when no date range is specified.
+   *
+   * @param query - Validated date/account/household filter parameters.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: Array<BudgetProgressItem> }` sorted by spentCents descending.
    */
-  @Get('cc-payments')
-  @ApiOperation({ summary: 'Monthly credit card payments per account' })
-  async creditCardPayments(
+  @Get('budget-progress')
+  @ApiOperation({ summary: 'Budget vs actual progress per category' })
+  async budgetProgress(
     @Query(new ZodValidationPipe(analyticsQuerySchema)) query: AnalyticsQuery,
     @CurrentUser() user: AuthTokenPayload,
   ) {
-    const data = await this.analyticsService.creditCardPayments(
+    const data = await this.analyticsService.budgetProgress(
       user.sub,
       query,
       user.householdId,

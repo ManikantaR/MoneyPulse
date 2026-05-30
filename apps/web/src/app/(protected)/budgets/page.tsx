@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { BudgetCard } from '@/components/BudgetCard';
 import { SavingsGoalCard } from '@/components/SavingsGoalCard';
+import { BudgetProgressCard } from '@/components/charts/BudgetProgressCard';
 import {
   useBudgets,
   useCreateBudget,
@@ -12,11 +13,13 @@ import {
   useContributeSavingsGoal,
 } from '@/lib/hooks/useBudgets';
 import { useCategories } from '@/lib/hooks/useCategories';
+import { useBudgetProgress } from '@/lib/hooks/useAnalytics';
 
 export default function BudgetsPage() {
   const { data: budgets } = useBudgets();
   const { data: goals } = useSavingsGoals();
   const { data: categoriesData } = useCategories();
+  const { data: budgetProgressData } = useBudgetProgress();
   const createBudget = useCreateBudget();
   const deleteBudget = useDeleteBudget();
   const createGoal = useCreateSavingsGoal();
@@ -183,6 +186,11 @@ export default function BudgetsPage() {
           </p>
         )}
       </div>
+
+      {/* Budget Progress visualization */}
+      {budgetProgressData?.data && budgetProgressData.data.length > 0 && (
+        <BudgetProgressCard data={budgetProgressData.data} />
+      )}
 
       {/* Savings Goals */}
       <div className="flex items-center justify-between mt-8">

@@ -295,4 +295,101 @@ describe('AnalyticsService', () => {
       expect(mockDb.execute).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('budgetProgress', () => {
+    it('returns percentUsed=70 and status=warning when 70% spent', async () => {
+      mockDb.execute.mockResolvedValue({
+        rows: [
+          {
+            budget_id: 'bgt-1',
+            category_id: 'cat-1',
+            category_name: 'Groceries',
+            category_icon: '🛒',
+            category_color: '#16a34a',
+            budget_cents: '50000',
+            period: 'monthly',
+            spent_cents: '35000',
+          },
+        ],
+      });
+
+      const result = await service.budgetProgress(TEST_USER_ID, {});
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        budgetId: 'bgt-1',
+        categoryName: 'Groceries',
+        budgetCents: 50000,
+        spentCents: 35000,
+        percentUsed: 70,
+        remainingCents: 15000,
+        status: 'warning',
+      });
+    });
+
+    it('returns empty array when no budgets exist', async () => {
+      mockDb.execute.mockResolvedValue({ rows: [] });
+
+      const result = await service.budgetProgress(TEST_USER_ID, {});
+
+      expect(result).toEqual([]);
+    });
+
+    it('returns status=over_budget and negative remainingCents when spending exceeds budget', async () => {
+      mockDb.execute.mockResolvedValue({
+        rows: [
+          {
+            budget_id: 'bgt-2',
+            category_id: 'cat-2',
+            category_name: 'Gas/Auto',
+            category_icon: '⛽',
+            category_color: '#ef4444',
+            budget_cents: '25000',
+            period: 'monthly',
+            spent_cents: '35000',
+          },
+        ],
+      });
+
+      const result = await service.budgetProgress(TEST_USER_ID, {});
+
+      expect(result[0].status).toBe('over_budget');
+      expect(result[0].remainingCents).toBe(-10000);
+      expect(result[0].percentUsed).toBe(140);
+    });
+
+    it('returns status=on_track when spending is below 70% of budget', async () => {
+      mockDb.execute.mockResolvedValue({
+        rows: [
+          {
+            budget_id: 'bgt-3',
+            category_id: 'cat-3',
+            category_name: 'Dining',
+            category_icon: '🍽️',
+            category_color: '#f59e0b',
+            budget_cents: '60000',
+            period: 'monthly',
+            spent_cents: '20000',
+          },
+        ],
+      });
+
+      const result = await service.budgetProgress(TEST_USER_ID, {});
+
+      expect(result[0].status).toBe('on_track');
+      expect(result[0].percentUsed).toBe(33);
+    });
+
+    it('uses provided date range instead of current month default', async () => {
+      mockDb.execute.mockResolvedValue({ rows: [] });
+
+      await service.budgetProgress(TEST_USER_ID, {
+        from: '2025-01-01',
+        to: '2025-01-31',
+      });
+
+      // Verify the SQL was called once (date params are embedded in the sql template)
+      expect(mockDb.execute).toHaveBeenCalledTimes(1);
+    });
+  });
 });

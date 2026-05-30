@@ -6,7 +6,9 @@
       "Bash(pnpm build *)",
       "Bash(pnpm --filter @moneypulse/api test -- sync)",
       "Bash(pnpm --filter @moneypulse/api test)",
-      "Bash(pnpm test *)"
+      "Bash(pnpm test *)",
+      "Read(//Users/manikantaradhakrishna/repo/moneypulse-web/**)",
+      "Read(//Users/manikantaradhakrishna/repo/**)"
     ]
   }
 }

@@ -464,4 +464,90 @@ export class AnalyticsService {
       paymentCount: Number(r.payment_count),
     }));
   }
+
+  /**
+   * Returns budget vs actual spending progress per category for a given period.
+   * Defaults to start-of-current-month → today when no date range is provided.
+   * Excludes transfer categories and deleted budgets/categories.
+   * Scoped to the authenticated user (and optionally their household).
+   */
+  async budgetProgress(
+    userId: string,
+    query: AnalyticsQuery,
+    householdId?: string | null,
+  ) {
+    const now = new Date();
+    const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1)
+      .toISOString()
+      .slice(0, 10);
+    const defaultTo = now.toISOString().slice(0, 10);
+
+    const periodStart = query.from ?? defaultFrom;
+    const periodEnd = query.to ?? defaultTo;
+
+    // Transaction user scope for spending calculation
+    const txnUserScope = householdId && query.household
+      ? sql`t.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`t.user_id = ${userId}`;
+
+    // Budget ownership scope (personal or household)
+    const budgetScope = householdId && query.household
+      ? sql`(b.user_id = ${userId} OR b.household_id = ${householdId})`
+      : sql`b.user_id = ${userId}`;
+
+    const result = await this.db.execute(sql`
+      SELECT
+        b.id::text                 AS budget_id,
+        b.category_id::text        AS category_id,
+        c.name                     AS category_name,
+        c.icon                     AS category_icon,
+        c.color                    AS category_color,
+        b.amount_cents             AS budget_cents,
+        b.period,
+        COALESCE(SUM(t.amount_cents), 0) AS spent_cents
+      FROM ${schema.budgets} b
+      JOIN ${schema.categories} c ON b.category_id = c.id
+      LEFT JOIN ${schema.transactions} t
+        ON  t.category_id    = b.category_id
+        AND t.is_credit      = false
+        AND t.is_split_parent = false
+        AND t.deleted_at     IS NULL
+        AND ${txnUserScope}
+        AND t.date >= ${periodStart}::date
+        AND t.date <= ${periodEnd}::date
+      WHERE ${budgetScope}
+        AND b.deleted_at IS NULL
+        AND c.deleted_at IS NULL
+        AND c.is_transfer = false
+      GROUP BY b.id, b.category_id, c.name, c.icon, c.color, b.amount_cents, b.period
+      ORDER BY spent_cents DESC
+    `);
+
+    return this.extractRows(result).map((r: any) => {
+      const budgetCents = Number(r.budget_cents);
+      const spentCents = Number(r.spent_cents);
+      const percentUsed = budgetCents > 0
+        ? Math.round((spentCents / budgetCents) * 100)
+        : 0;
+      const remainingCents = budgetCents - spentCents;
+      const status: 'on_track' | 'warning' | 'over_budget' =
+        percentUsed > 100 ? 'over_budget'
+          : percentUsed >= 70 ? 'warning'
+          : 'on_track';
+
+      return {
+        budgetId: r.budget_id,
+        categoryId: r.category_id,
+        categoryName: r.category_name,
+        categoryIcon: r.category_icon,
+        categoryColor: r.category_color,
+        budgetCents,
+        spentCents,
+        period: r.period as 'monthly' | 'weekly',
+        percentUsed,
+        remainingCents,
+        status,
+      };
+    });
+  }
 }

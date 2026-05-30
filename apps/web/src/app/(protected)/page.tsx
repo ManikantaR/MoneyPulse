@@ -16,6 +16,7 @@ import { TopMerchantsBar } from '@/components/charts/TopMerchantsBar';
 import { TopTransactionsCard } from '@/components/charts/TopTransactionsCard';
 import { CreditCardPaymentsTable } from '@/components/charts/CreditCardPaymentsTable';
 import { NetWorthDrilldown } from '@/components/NetWorthDrilldown';
+import { BudgetProgressCard } from '@/components/charts/BudgetProgressCard';
 import {
   useIncomeVsExpenses,
   useCategoryBreakdown,
@@ -25,6 +26,7 @@ import {
   useNetWorth,
   useTopMerchants,
   useCreditCardPayments,
+  useBudgetProgress,
 } from '@/lib/hooks/useAnalytics';
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { UpcomingBillsCard } from '@/components/charts/UpcomingBillsCard';
@@ -65,6 +67,7 @@ export default function DashboardPage() {
   const { data: merchants, isLoading: merchLoading } = useTopMerchants(params);
   const { data: ccPayments, isLoading: ccLoading } = useCreditCardPayments(params);
   const { data: upcomingBills } = useUpcomingBills();
+  const { data: budgetProgressData } = useBudgetProgress(params);
   const { data: topTxData, isLoading: topTxLoading } = useTransactions({
     from,
     to,
@@ -226,6 +229,16 @@ export default function DashboardPage() {
       {/* Upcoming Bills widget */}
       {upcomingBills?.data && (
         <UpcomingBillsCard bills={upcomingBills.data} />
+      )}
+
+      {/* Budget Progress — top 5 by percentUsed, with link to /budgets */}
+      {budgetProgressData?.data && budgetProgressData.data.length > 0 && (
+        <BudgetProgressCard
+          data={[...budgetProgressData.data]
+            .sort((a, b) => b.percentUsed - a.percentUsed)
+            .slice(0, 5)}
+          showViewAll
+        />
       )}
 
       {/* Loading spinner */}

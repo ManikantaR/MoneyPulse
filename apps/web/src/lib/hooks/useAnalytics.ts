@@ -79,6 +79,21 @@ export interface CreditCardPaymentItem {
   paymentCount: number;
 }
 
+/** Budget vs actual progress per category. */
+export interface BudgetProgressItem {
+  budgetId: string;
+  categoryId: string;
+  categoryName: string;
+  categoryIcon: string;
+  categoryColor: string;
+  budgetCents: number;
+  spentCents: number;
+  period: 'monthly' | 'weekly';
+  percentUsed: number;
+  remainingCents: number;
+  status: 'on_track' | 'warning' | 'over_budget';
+}
+
 /** Fetch monthly income vs expenses for a date range. */
 export function useIncomeVsExpenses(params: AnalyticsParams = {}) {
   return useQuery({
@@ -150,5 +165,14 @@ export function useCreditCardPayments(params: AnalyticsParams = {}) {
     queryKey: ['analytics', 'cc-payments', params],
     queryFn: () =>
       api.get<{ data: CreditCardPaymentItem[] }>('/analytics/cc-payments', { params }),
+  });
+}
+
+/** Fetch budget vs actual spending progress per category (defaults to current month). */
+export function useBudgetProgress(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'budget-progress', params],
+    queryFn: () =>
+      api.get<{ data: BudgetProgressItem[] }>('/analytics/budget-progress', { params }),
   });
 }

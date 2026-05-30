@@ -8,13 +8,43 @@
 
 ## Execution Order
 
-| # | Feature | Prompt | Deploy Steps |
-|---|---------|--------|--------------|
-| 1 | Merchant Aliases UI | [Prompt 1](#prompt-1--merchant-aliases-management-page) | Deploy + seed |
-| 2 | Receipt/Bill Attachment | [Prompt 2](#prompt-2--receiptbill-attachment-on-transactions) | Deploy + SQL migration |
-| 3 | Recurring Bill Detection | [Prompt 3](#prompt-3--recurring-bill-detection--missed-payment-alerts) | Deploy + SQL migration |
-| 4 | Spending Anomaly Alerts | [Prompt 4](#prompt-4--spending-anomaly-alerts) | Deploy only |
-| 5 | Budget vs Actual Dashboard | [Prompt 5](#prompt-5--budget-vs-actual-variance-dashboard) | Deploy only |
+| # | Feature | Prompt | Deploy Steps | Status |
+|---|---------|--------|--------------|--------|
+| 1 | Merchant Aliases UI | [Prompt 1](#prompt-1--merchant-aliases-management-page) | Deploy + seed | ✅ done |
+| 2 | Receipt/Bill Attachment | [Prompt 2](#prompt-2--receiptbill-attachment-on-transactions) | Deploy + SQL migration | ✅ done |
+| 3 | Recurring Bill Detection | [Prompt 3](#prompt-3--recurring-bill-detection--missed-payment-alerts) | Deploy + SQL migration | ✅ done |
+| 4 | Spending Anomaly Alerts | [Prompt 4](#prompt-4--spending-anomaly-alerts) | Deploy only | ✅ done |
+| 5 | Budget vs Actual Dashboard | [Prompt 5](#prompt-5--budget-vs-actual-variance-dashboard) | Deploy only | ✅ done |
+| **6** | **Notification Push Backbone (6a NAS + 6b Web)** | [Prompt 6](#prompt-6--notification-push-backbone-nas-emit--web-fcm-send--ha-lan-fix) | NAS deploy + web `firebase deploy` | prerequisite for alerts |
+| **7** | **Remote Mac-Ollama Resilience + Retry Queue** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience--retry-queue) | Config + deploy | prerequisite for AI |
+| 8 | Receipt Watch Folder + OCR Auto-Match | [Prompt 8](#prompt-8--receipt-watch-folder--ollama-vision-ocr-auto-match) | Deploy + SQL migration | Tier 2 |
+| 9 | Natural Language Finance Chat | [Prompt 9](#prompt-9--natural-language-finance-chat) | Deploy only | Tier 2 |
+| 10 | Cash Flow Forecasting | [Prompt 10](#prompt-10--cash-flow-forecasting) | Deploy only | Tier 2 |
+| 11 | Account Balance Snapshots (F.2) | [Prompt 11](#prompt-11--account-balance-history-snapshots-f2) | Deploy + SQL migration | foundational |
+| 12 | Import Deduplication Improvement (F.3) | [Prompt 12](#prompt-12--import-deduplication-improvement-f3) | Deploy + SQL migration | foundational |
+| 13 | Weekly/Monthly Digest | [Prompt 13](#prompt-13--weeklymonthly-financial-digest) | Deploy only | Tier 3 |
+| 14 | Year-over-Year Comparison | [Prompt 14](#prompt-14--year-over-year-comparison) | Deploy only | Tier 3 |
+| 15 | Home Assistant Dashboard Sensor | [Prompt 15](#prompt-15--home-assistant-dashboard-sensor) | Deploy only | Tier 3 |
+| 16 | Tax-Ready Export | [Prompt 16](#prompt-16--tax-ready-export) | Deploy + SQL migration | Tier 3 |
+| 17 | Subscription Manager | [Prompt 17](#prompt-17--subscription-manager) | Deploy only | Tier 3 |
+| 18 | PWA Mode + Camera Capture | [Prompt 18](#prompt-18--pwa-mode--camera-capture) | Deploy only | Tier 3 |
+| 19 | Quick-Add Transaction Widget | [Prompt 19](#prompt-19--quick-add-transaction-widget) | Deploy only | Tier 3 |
+| 20 | Spending Streaks & Gamification | [Prompt 20](#prompt-20--spending-streaks--gamification) | Deploy only | Tier 3 |
+| **21** | **moneypulse-web PWA (installable + iOS push)** | [Prompt 21](#prompt-21--moneypulse-web-pwa-installable--ios-background-push) | web `firebase deploy` | web only — pairs with 6 |
+| 22 | Web Bills Glance (`bill.projected.v1`) — OPTIONAL | [Prompt 22](#prompt-22--web-bills-glance-billprojectedv1--optional) | NAS deploy + web `firebase deploy` | optional — 22a NAS + 22b Web |
+
+> **Architecture rules (from PHASE10 spec §F.4/§F.5) every prompt below obeys:**
+> - **Web is essentials + push, not parity.** Each prompt states a **Sync verdict**: `web: none` (NAS-only), `web: field-only` (rides an existing projection), or `web: summary+push` (gets a projected summary + FCM). Do not port NAS management UIs to moneypulse-web.
+> - **AI is best-effort.** Rule engine runs on NAS; Ollama (on the dev Mac) enrichment queues + retries when unreachable. OCR/bill-parse results must go through the retry queue, never silently dropped.
+> - **NAS is LAN-only today.** No prompt assumes off-home reachability of the NAS.
+>
+> **Cross-repo convention (IMPORTANT):** Copilot can only edit files in its open workspace. From `~/repo/MyMoney` it CANNOT touch `~/repo/moneypulse-web`. So any feature that spans both repos is split into separately-copy-pasteable blocks:
+> - **`Prompt Na`** — paste into Copilot with `~/repo/MyMoney` open (NAS / NestJS).
+> - **`Prompt Nb`** — paste into Copilot with `~/repo/moneypulse-web` open (Firebase functions + Next.js web). That repo has its OWN Copilot agents (`mw-lead`…), specs, and TDD/data-boundary rules — the `b` block respects them.
+>
+> Run `a`, deploy the NAS, then run `b`, deploy the web. End-to-end tests that cross the boundary need both deployed. *(Alternative: open both repos as folders in one VS Code multi-root workspace and a single Copilot session can edit both — but the per-repo blocks above still apply.)*
+>
+> **Good news:** the web companion is already a mature Phase 0–6 app (notifications, transactions, budgets, categories, FCM token registration, messaging service worker all exist). Most prompts are **NAS-only** — they just emit correctly-shaped outbox events into the pipeline the web already consumes. Only Prompt 6 and Prompt 21 have a `b` (web) block.
 
 ---
 
@@ -955,6 +985,960 @@ No SQL migration needed — uses existing tables.
 - [ ] Navigate to /budgets → shows full budget progress for ALL categories
 - [ ] "View all" link on dashboard navigates to /budgets page
 - [ ] If no budgets exist, card does not render (no empty state error)
+```
+
+---
+
+## Prompt 6 — Notification Push Backbone (NAS emit + Web FCM send + HA LAN fix)
+
+> **Why first**: This is the backbone for EVERY alert feature (anomalies, missed bills, forecasts, digest, subscriptions, streaks). Once it lands, those features get phone push for free — they just call the NAS notification chokepoint.
+>
+> **Reality check (already built — do NOT rebuild):** moneypulse-web ALREADY handles `notification.projected.v1` (`functions/src/index.ts` → `fanOutNotification` writes `users/{userAliasId}/notifications/{notificationAliasId}`), ALREADY registers FCM device tokens (`apps/web/src/lib/fcm/use-fcm-token.ts` → `users/{uid}/deviceTokens/{tokenId}`), and ALREADY has the messaging service worker (`public/firebase-messaging-sw.js`). **The two real gaps:** (1) the NAS never *emits* the event, and (2) nothing ever *sends* an FCM push — device tokens are collected but never used, which is why alerts only show when the app is open.
+>
+> **This prompt has TWO copy-paste blocks. Run 6a from `~/repo/MyMoney`. Run 6b from `~/repo/moneypulse-web` (separate Copilot session, that repo has its own agents/specs).** Sync verdict: this IS the sync contract.
+
+### Prompt 6a — NAS side (copy this into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need MoneyPulse to emit notification events to the sync outbox in the EXACT shape the moneypulse-web companion already expects, and fix the Home Assistant webhook that's silently blocked for LAN addresses. Follow existing codebase patterns exactly. Do NOT read .env files or include secrets.
+
+## Critical contract — match the web fan-out EXACTLY
+The moneypulse-web `ingestSyncEvent` function (already deployed) expects `notification.projected.v1` payloads with these fields:
+- `notificationAliasId` (string) — the doc id; producer MUST set it via the alias mapper
+- `type` (string), `title` (string), `body` (string)  ← NOTE: the field is `body`, NOT `message`
+- `userAliasId` is added automatically by the delivery layer from the outbox row's `userId` — do NOT set it yourself.
+The web IGNORES `message`, `metadata`, and raw `id`. The sync sanitizer (`apps/api/src/sync/sanitizer-v2.service.ts`) will police the payload, so keep it to the fields above.
+
+How existing producers shape entity aliases: see `apps/api/src/sync/sync.controller.ts` (~line 210) — it sets `transactionAliasId: this.aliasMapper.toAliasId('transaction', txn.id)`. Do the same for notifications: `notificationAliasId: this.aliasMapper.toAliasId('notification', row.id)`.
+
+## 1. Notification chokepoint: `apps/api/src/notifications/notifications.service.ts` (NEW or extend)
+
+A single `create()` that ALL notification producers call:
+
+async create(input: { userId: string; type: string; title: string; message: string; metadata?: Record<string, unknown> }): Promise<Notification> {
+  // 1. Domain write — must always succeed
+  const [row] = await this.db.insert(schema.notifications).values({ ...input }).returning();
+
+  // 2. Best-effort outbox projection — NEVER inside a tx around the insert (alias/signing secrets may be absent in dev → would roll back the notification). Match the web contract:
+  try {
+    await this.outbox.enqueue({
+      eventType: 'notification.projected.v1',
+      aggregateType: 'notification',
+      aggregateId: row.id,
+      userId: input.userId,                       // delivery layer maps this → userAliasId
+      payload: {
+        notificationAliasId: this.aliasMapper.toAliasId('notification', row.id),
+        type: row.type,
+        title: row.title,
+        body: row.message,                        // web field is `body`
+      },
+    });
+  } catch (err) { this.logger.warn(`notification outbox enqueue failed: ${(err as Error).message}`); }
+
+  // 3. Best-effort HA webhook, then mark webhookSent
+  try {
+    await this.webhook.sendWebhook(input.userId, { title: input.title, message: input.message, type: input.type });
+    await this.db.update(schema.notifications).set({ webhookSent: true }).where(eq(schema.notifications.id, row.id));
+  } catch (err) { this.logger.warn(`HA webhook failed: ${(err as Error).message}`); }
+
+  return row;
+}
+
+Inject `OutboxService`, `AliasMapperService`, `WebhookService`. Register `NotificationsService` in the notifications module providers + exports, and import it wherever producers live.
+
+## 2. Migrate existing producers
+Grep for direct inserts into the notifications table (e.g. `anomaly-detector.service.ts`, `bills.service.ts`, any digest/forecast code) and route them ALL through `notificationsService.create(...)`. After this, every alert automatically reaches web + push + HA.
+
+## 3. HA webhook LAN allowlist fix — `apps/api/src/notifications/webhook.service.ts`
+`isUrlSafe()` currently blocks localhost/127.*/10.*/192.168.*/172.16-31.*/.local/.internal, so LAN Home Assistant webhooks are silently dropped.
+- Read `HA_WEBHOOK_ALLOWED_HOSTS` (comma-separated hostnames/IPs, e.g. `homeassistant.local,192.168.1.50`) from env.
+- In `isUrlSafe()`, BEFORE the private-IP rejection, return true if the URL's hostname is in the allowlist. Keep rejecting every other private/LAN host — this is a narrow, explicit exception, NOT removal of the SSRF guard.
+
+## After implementation — verification (MANDATORY)
+### Step 1: Build — `pnpm build`, fix all TS errors.
+### Step 2: Tests
+- `create()` inserts a row AND enqueues a `notification.projected.v1` event whose payload has `notificationAliasId`/`type`/`title`/`body` (and NOT `message`/`metadata`).
+- When `outbox.enqueue` throws, `create()` still returns the inserted row (no rollback).
+- `isUrlSafe()` returns true for a host in `HA_WEBHOOK_ALLOWED_HOSTS`, false for a non-allowlisted `192.168.x.x`.
+### Step 3: Rubber duck — enqueue NOT in a tx; every legacy notification insert migrated; allowlist doesn't permit arbitrary LAN hosts; payload matches the web contract (field is `body`).
+### Step 4: Deploy — `cd ~/repo/MyMoney && ./deploy-to-nas.sh`, then set `HA_WEBHOOK_ALLOWED_HOSTS` on the NAS env.
+### Step 5: No NAS schema change.
+### Step 6: Manual
+- [ ] Trigger an anomaly (import a >$500 debit) → notification row created
+- [ ] Sync Admin shows a `notification.projected.v1` event delivered
+- [ ] The doc appears in Firestore under `users/{alias}/notifications`
+- [ ] HA webhook fires to the LAN Home Assistant (check HA logbook)
+- [ ] A `192.168.x.x` URL NOT in the allowlist is still blocked
+```
+
+### Prompt 6b — Web side (copy this into Copilot Chat with `~/repo/moneypulse-web` open)
+
+```
+I need moneypulse-web to actually SEND an FCM push when a synced notification arrives, so alerts reach my phone even when the web app is closed. Today notifications are written to Firestore by `fanOutNotification` but no push is ever sent (device tokens at users/{uid}/deviceTokens are collected but never used). Follow this repo's TDD mandate and data-boundary contract (see CLAUDE.md). Read specs/ first.
+
+## What already exists (verify, don't rebuild)
+- `functions/src/index.ts` → `fanOutNotification` writes `users/{userAliasId}/notifications/{notificationAliasId}`.
+- `apps/web/src/lib/fcm/use-fcm-token.ts` registers tokens at `users/{uid}/deviceTokens/{tokenId}` (fields: token, platform, platformDetail, userAliasId, lastSeenAt).
+- `public/firebase-messaging-sw.js` is the background messaging service worker.
+
+## The gap: send FCM on new notification
+
+### Option (preferred): a Firestore onCreate trigger
+Add a new Cloud Function in `functions/src/` (e.g. `onNotificationCreated`) using Firebase Functions v2 `onDocumentCreated('users/{userAliasId}/notifications/{notificationId}', ...)`:
+1. Read the new notification doc (type, title, body).
+2. Read the user's tokens: `db.collection('users/{userAliasId}/deviceTokens')`.
+3. `getMessaging().sendEachForMulticast({ tokens, notification: { title, body }, webpush: { fcmOptions: { link: '/notifications' }, notification: { icon: '/icons/icon-192.png' } }, data: { type, notificationId } })`.
+4. Prune dead tokens: on `messaging/registration-token-not-registered` per-response errors, delete that deviceToken doc.
+Keep using Firebase Admin (server-side) — never expose messaging to the browser. No secrets in code.
+
+(If you prefer doing the send inside `fanOutNotification` instead of a separate trigger, that's acceptable — but a dedicated trigger keeps ingest fast and isolates push failures. Pick one; don't double-send.)
+
+### Ensure the service worker shows background pushes
+Verify `public/firebase-messaging-sw.js` has an `onBackgroundMessage` handler that calls `self.registration.showNotification(title, { body, icon, data })` and an `notificationclick` handler that focuses/open the `/notifications` route. Add if missing.
+
+## Verification (MANDATORY — this repo: pnpm test then pnpm build)
+### Tests
+- Unit test the trigger: given a notification doc + 2 device tokens, it calls `sendEachForMulticast` with the right title/body and token list.
+- A `token-not-registered` error deletes that token doc.
+- No PII beyond title/body/type is sent (data-boundary contract).
+### Rubber duck (use /rubber-duck) — no browser write path added; Firestore rules unchanged for deviceTokens; idempotent (don't resend on doc updates, only onCreate).
+### Deploy — `firebase deploy --only functions` (and rules if touched).
+### Manual
+- [ ] Trigger a NAS notification (Prompt 6a) → phone receives a real push with app CLOSED
+- [ ] Tapping the push opens the notifications view
+- [ ] Removing the device → its token is pruned on next send
+```
+
+> **Companion checklist for you (the human):** run 6a from MyMoney → deploy NAS → run 6b from moneypulse-web → `firebase deploy`. The end-to-end test (anomaly on NAS → push on phone) needs BOTH deployed. For real iOS background push, also do **Prompt 21** (installable PWA).
+
+---
+
+## Prompt 7 — Remote Mac-Ollama Resilience + Retry Queue
+
+> **Why second**: All AI features (phase-2 normalization, OCR, chat) assume Ollama. It now runs on the dev Mac (M1), which is intermittent. This prompt makes AI best-effort with a retry queue so OCR/bill-parse results are never lost and ingestion never blocks. **Sync verdict: `web: none`.**
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need to make MoneyPulse's AI (Ollama) calls resilient to Ollama running on a separate, intermittently-available machine (my dev Mac, reached over the LAN). Today Ollama is assumed local; I'm pointing it at the Mac. Follow existing patterns.
+
+## Background (current state — verify before coding)
+
+- `apps/api/src/categorization/ai-categorizer.service.ts` reads `OLLAMA_URL` (default `http://localhost:11434`), `OLLAMA_MODEL`, batch size, timeout. It already returns nulls gracefully when Ollama is unreachable.
+- `apps/api/src/health/health.controller.ts` already probes `${OLLAMA_URL}/api/tags`.
+- The app already uses BullMQ + Redis for the sync delivery queue (see `apps/api/src/sync/sync-delivery.service.ts` and the jobs module).
+
+## Goal
+
+Rule engine always runs on the NAS. AI enrichment is best-effort: when the Mac/Ollama is unreachable, work that needs AI is QUEUED and reprocessed when it returns — never dropped, never blocking ingestion.
+
+## Part A — Health gate
+
+### `apps/api/src/categorization/ollama-health.service.ts` (NEW)
+
+A small injectable that caches Ollama reachability (probe `${OLLAMA_URL}/api/tags`, cache result ~30s to avoid hammering). Expose `isAvailable(): Promise<boolean>`. Reuse this in the AI categorizer and the new queue processor so we skip AI work fast instead of waiting for per-item timeouts when the Mac is asleep.
+
+## Part B — AI enrichment retry queue (BullMQ)
+
+### `apps/api/src/jobs/ai-enrichment.queue.ts` + processor (NEW)
+
+Register a new BullMQ queue `ai-enrichment` (follow the existing queue registration pattern in the jobs module). Job types:
+- `normalize-merchant` — { transactionIds: string[] } (lossy-OK: rule engine already gave a usable name; AI just improves it)
+- `ocr-receipt` — { receiptQueueId: string } (MUST-RETRY: no result without AI — used by Prompt 8)
+- `parse-bill` — { ... } (MUST-RETRY)
+
+Processor behavior:
+1. Check `ollamaHealth.isAvailable()`. If false → throw a retryable error so BullMQ backs off (do NOT mark the job failed permanently).
+2. If available → run the AI step, persist the result.
+3. Backoff: exponential, e.g. `{ attempts: 10, backoff: { type: 'exponential', delay: 60_000 } }`. After max attempts, move to a dead-letter state that is VISIBLE (log + a queryable status), not a silent drop. For must-retry jobs, prefer a longer/again-schedulable strategy over hard failure.
+
+### Enqueue points
+
+- In `ingestion.processor.ts`: after the rule-engine + (attempted) inline AI categorization, enqueue `normalize-merchant` for any transactions whose merchant wasn't confidently normalized — instead of relying solely on the inline call. If Ollama was up and inline succeeded, no job needed.
+- Receipt OCR (Prompt 8) and bill parsing enqueue their must-retry jobs here.
+
+## Part C — Reconcile-on-return
+
+Add a lightweight scheduled check (the app already runs scheduled jobs — follow that pattern) that, when Ollama transitions unreachable→reachable, ensures the `ai-enrichment` queue is being drained (BullMQ retries handle most of this; the scheduled nudge re-promotes any delayed jobs). Keep it simple — do not build a custom queue.
+
+## Part D — Config & docs
+
+- `OLLAMA_URL=http://<mac-hostname>.local:11434` (mDNS). Add a short doc note (e.g. in `docs/`) on:
+  - Setting `OLLAMA_HOST=0.0.0.0:11434` on the Mac so it listens on the LAN.
+  - DHCP reservation / static IP fallback if the NAS Docker container can't resolve `.local` (document a docker-compose `extra_hosts: ["machost:192.168.x.x"]` example).
+  - Firewall: restrict 11434 to the LAN subnet; never expose to WAN.
+- Do NOT hardcode the Mac's IP in code. It's env-only.
+
+## Important
+- Do NOT read .env files or include secrets.
+- Categorization/normalization are lossy-OK (rule engine fallback). Receipt OCR + bill parsing are must-retry.
+- Do NOT block ingestion waiting on AI — enqueue and move on.
+
+## After implementation — verification steps (MANDATORY)
+
+### Step 1: Build
+`pnpm build` from repo root. Fix ALL TypeScript errors.
+
+### Step 2: Tests
+- `OllamaHealthService.isAvailable()` returns false when the probe fails, true when it returns ok; result is cached within the TTL.
+- AI-enrichment processor throws a retryable error (does NOT permanently fail) when Ollama is unavailable.
+- Enqueue: importing transactions when Ollama is down enqueues `normalize-merchant` jobs.
+Run `pnpm test` — all pass.
+
+### Step 3: Rubber duck code review
+Review for: ingestion never blocks on AI; must-retry jobs never silently dropped; health probe cached (not hammered); no hardcoded Mac IP; backoff sane. Fix issues.
+
+### Step 4: Deploy
+```bash
+cd ~/repo/MyMoney && ./deploy-to-nas.sh
+# On the NAS, set OLLAMA_URL to the Mac's mDNS/IP. On the Mac: OLLAMA_HOST=0.0.0.0:11434 ollama serve
+```
+
+### Step 5: Manual test checklist
+- [ ] With the Mac AWAKE: import a statement → transactions get AI-normalized merchant names
+- [ ] Put the Mac to SLEEP, import again → ingestion completes immediately, `ai-enrichment` jobs are queued (rule-engine names used meanwhile)
+- [ ] Wake the Mac → queued jobs drain, merchant names get AI-improved
+- [ ] `GET /health` shows ollama: connected when Mac is up, unavailable when asleep
+```
+
+---
+
+## Prompt 8 — Receipt Watch Folder + Ollama Vision OCR Auto-Match
+
+> Builds on Prompt 2 (manual attachments) and Prompt 7 (AI resilience). Adds the "drop a receipt in a folder, it auto-links to a transaction" pipeline, modeled on DocuPulse (`~/repo/smartocrprocess`) but with Ollama vision instead of Tesseract. **Sync verdict: `web: field-only`** (web shows the existing "has attachment" indicator; review queue is NAS-only).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need a watch-folder receipt pipeline for MoneyPulse: drop a receipt image/PDF into a folder → Ollama vision OCR extracts merchant/date/amount → auto-match to an existing transaction → link as attachment if confident, else queue for review. Follow existing patterns. AI must be resilient (Ollama runs on my Mac and may be asleep — use the ai-enrichment retry queue from Prompt 7).
+
+## Schema
+
+### New table: `receipt_queue`
+
+Add to `apps/api/src/db/schema.ts`:
+
+```typescript
+export const receiptQueue = pgTable('receipt_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  originalFilename: varchar('original_filename', { length: 255 }).notNull(),
+  stagingPath: varchar('staging_path', { length: 500 }).notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('processing'), // processing|matched|pending_review|linked|failed
+  ocrMerchant: varchar('ocr_merchant', { length: 200 }),
+  ocrDate: timestamp('ocr_date', { withTimezone: true }),
+  ocrAmountCents: integer('ocr_amount_cents'),
+  ocrConfidence: real('ocr_confidence'),
+  matchedTransactionId: uuid('matched_transaction_id').references(() => transactions.id),
+  matchCandidates: jsonb('match_candidates'), // top 3 {transactionId, score}
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+Add a `ReceiptQueueItem` interface to `packages/shared/src/types/index.ts`.
+
+## Watch folder service: `apps/api/src/receipts/receipt-watcher.service.ts` (NEW)
+
+- Watch `/config/receipts/incoming/` (use `chokidar` or `fs.watch`; DocuPulse uses a stability check — wait until the file size is stable for ~2s before processing, so partial uploads aren't picked up).
+- On a stable new file: move it to `/config/receipts/staging/{uuid}_{filename}`, insert a `receipt_queue` row (status `processing`), and enqueue an `ocr-receipt` job on the `ai-enrichment` queue (Prompt 7). Do NOT OCR inline — the Mac may be asleep.
+- Note: which user owns a watch-folder drop? For a single-user NAS, default to the primary user; document this. (Multi-user: use per-user subfolders `/config/receipts/incoming/{userId}/`.)
+
+## OCR + match: `apps/api/src/receipts/receipt-scanner.service.ts` (NEW)
+
+`processReceipt(receiptQueueId)` — invoked by the `ocr-receipt` queue processor:
+1. Check `ollamaHealth.isAvailable()` (Prompt 7). If down → throw retryable (job backs off).
+2. Read the staged file. Call Ollama vision (`OLLAMA_VISION_MODEL`, e.g. `llama3.2-vision` or `llava`) via `/api/generate` with the image base64-encoded and prompt:
+   `Extract from this receipt and return ONLY JSON: { "merchant": string, "date": "YYYY-MM-DD", "totalCents": number, "items": [{ "name": string, "amountCents": number }] }`
+3. Parse JSON robustly (reuse the JSON-extraction approach in `ai-categorizer.service.ts`). Store ocrMerchant/ocrDate/ocrAmountCents/ocrConfidence.
+4. **Match** against the user's transactions:
+   - Date within ±3 days, amount within ±5%, merchant fuzzy match (Levenshtein or compare against `normalized_merchant_name`).
+   - Score each candidate; keep top 3 in `matchCandidates`.
+   - Confidence > 0.85 (all three strong) → auto-link: create a `transaction_attachments` row (move file to `/config/attachments/{userId}/{txnId}/`), set status `linked`, and create a notification via `NotificationsService.create()` ("Receipt auto-linked to {merchant} {amount}").
+   - 2 of 3 → status `pending_review` with candidates.
+   - Else → status `pending_review` with no strong candidate.
+
+## API: `apps/api/src/receipts/receipts.controller.ts` (NEW)
+
+```typescript
+@ApiTags('Receipts') @Controller('receipts') @UseGuards(JwtAuthGuard)
+```
+- `GET /receipts/queue` — list pending-review items for the current user. `{ data: ReceiptQueueItem[] }`
+- `POST /receipts/queue/:id/link` — body `{ transactionId }`; verify ownership of both; create attachment, set status `linked`. `{ data: { linked: true } }`
+- `POST /receipts/queue/:id/dismiss` — set status `failed`/dismissed, optionally delete staged file. `{ data: { dismissed: true } }`
+
+Register controller + services in a `receipts.module.ts`; register module in `app.module.ts`. Import the ai-enrichment queue.
+
+## Frontend (NAS app only)
+
+### Hook `apps/web/src/lib/hooks/useReceipts.ts` (NEW): `useReceiptQueue()`, `useLinkReceipt()`, `useDismissReceipt()` — follow useBills pattern.
+
+### Page `apps/web/src/app/(protected)/receipts/page.tsx` (NEW)
+- Header "Receipt Review" + count of pending items.
+- Card per pending receipt: thumbnail, OCR'd merchant/date/amount + confidence, and a "Link to transaction" dropdown pre-filled with the top candidates (show date/amount/merchant per candidate). Confirm or Dismiss.
+- Bulk approve/dismiss optional.
+
+### Sidebar: add `{ href: '/receipts', label: 'Receipts', icon: ReceiptText }` after Bills. Import `ReceiptText` from lucide-react.
+
+## Important
+- OCR MUST go through the Prompt 7 retry queue (must-retry — no result without AI). Never drop a receipt because the Mac was asleep.
+- Files stay on NAS; only attachment metadata syncs (web shows the paperclip indicator from Prompt 2). Do NOT sync receipt images.
+- `/config/receipts/incoming|staging` must exist and be volume-mounted (under `/config`, already mounted).
+- Do NOT read .env files or include secrets.
+
+## After implementation — verification steps (MANDATORY)
+
+### Step 1: Build — `pnpm build`, fix all TS errors.
+### Step 2: Tests
+- Match scoring: a transaction within date/amount/merchant tolerance scores high → auto-link path; a far-off one → pending_review.
+- Processor throws retryable when Ollama down (does not lose the receipt).
+- `link` endpoint enforces ownership of both receipt and transaction.
+### Step 3: Rubber duck review — file stability check, ownership on link/dismiss, retry-not-drop, module registration.
+### Step 4: Deploy — `./deploy-to-nas.sh`
+### Step 5: Post-deploy SQL
+```bash
+ssh nas
+docker exec -i moneypulse-db psql -U moneypulse -d moneypulse -c "
+  CREATE TABLE IF NOT EXISTS receipt_queue (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    original_filename VARCHAR(255) NOT NULL,
+    staging_path VARCHAR(500) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'processing',
+    ocr_merchant VARCHAR(200), ocr_date TIMESTAMPTZ, ocr_amount_cents INTEGER, ocr_confidence REAL,
+    matched_transaction_id UUID REFERENCES transactions(id),
+    match_candidates JSONB, error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_receipt_queue_user ON receipt_queue(user_id);
+  CREATE INDEX IF NOT EXISTS idx_receipt_queue_status ON receipt_queue(status);
+"
+docker exec -i moneypulse-api mkdir -p /config/receipts/incoming /config/receipts/staging
+# Pull the vision model on the Mac: ollama pull llama3.2-vision
+```
+### Step 6: Manual test checklist
+- [ ] Drop a receipt JPG into `/config/receipts/incoming/` (via SMB) → appears in queue
+- [ ] With Mac awake: OCR runs, strong match auto-links + notification fires
+- [ ] Ambiguous receipt → lands in /receipts review with candidate dropdown
+- [ ] With Mac asleep: receipt stays queued, processes when Mac wakes (not lost)
+- [ ] Linked receipt shows as attachment (paperclip) on the transaction
+```
+
+---
+
+## Prompt 9 — Natural Language Finance Chat
+
+> "How much did I spend on groceries last quarter?" → Ollama → safe read-only SQL → answer + chart. NAS-only. **Sync verdict: `web: none`** (chat is a heavy NAS feature; not projected).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need a natural-language finance chat for MoneyPulse: the user asks a question, Ollama (on my Mac) translates it to a READ-ONLY SQL query against my finance DB, the API runs it safely and returns a formatted answer with an optional chart. Local/private only. Follow existing patterns. Ollama may be asleep — degrade gracefully.
+
+## Module: `apps/api/src/chat/` (NEW)
+
+### `chat.service.ts`
+- `ask(userId, question)`:
+  1. If `ollamaHealth.isAvailable()` is false → return `{ answer: "AI assistant is offline (the model host is unreachable). Try again shortly.", offline: true }`. (Chat is interactive — do NOT queue; just degrade.)
+  2. Build a system prompt containing the DB SCHEMA SUMMARY ONLY (table + column names for transactions, categories, budgets, accounts — NEVER actual data). Instruct: "Generate a single read-only PostgreSQL SELECT. The query MUST filter `user_id = $1`. No INSERT/UPDATE/DELETE/DDL. No semicolons beyond one statement."
+  3. Send to Ollama (`/api/generate`), extract the SQL.
+  4. **Safety gate (critical)** before executing:
+     - Reject if it doesn't start with `SELECT` (case-insensitive, after trim).
+     - Reject if it contains `INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|;.*\S|--|/*` (any second statement or comment).
+     - Force the `user_id` bind to the authenticated user (pass as a parameter; do NOT trust the model to inject the right id — append/validate a `user_id = $1` predicate).
+     - Wrap execution in a read-only transaction with a statement timeout (e.g. `SET LOCAL statement_timeout = '5s'`).
+  5. Format the result rows into a concise natural-language answer + a `chartData` payload when the result is numeric/groupable (e.g. category → amount).
+
+### `chat.controller.ts`
+```typescript
+@ApiTags('Chat') @Controller('chat') @UseGuards(JwtAuthGuard)
+```
+- `POST /chat` — body `{ question: string }` (Zod-validated, max length). Returns `{ data: { answer, sql, chartData?, offline? } }`. Include the generated SQL in the response (transparency/debug), but NEVER expose other users' data.
+
+Register module in `app.module.ts`.
+
+## Frontend (NAS app)
+
+### Hook `apps/web/src/lib/hooks/useChat.ts` — `useAskChat()` mutation POST `/chat`.
+
+### Page `apps/web/src/app/(protected)/chat/page.tsx` (NEW)
+- Message history within the session (local state).
+- Input box + send. Show the answer; if `chartData` present, render with the existing chart library used elsewhere (check `apps/web/src/components/charts/`).
+- Suggested-question chips: "What's my biggest expense this month?", "Am I on track with my grocery budget?", "How much did I spend on dining last quarter?"
+- If `offline`, show a muted "assistant offline" state.
+
+### Sidebar: `{ href: '/chat', label: 'Ask', icon: MessageCircle }`.
+
+## Important
+- READ-ONLY enforcement is non-negotiable: SELECT-only, single statement, forced user scoping, statement timeout, read-only tx. Add a unit test for each rejection case.
+- Schema summary in the prompt must contain NO real data — only structure.
+- Do NOT read .env files or include secrets.
+
+## After implementation — verification steps (MANDATORY)
+### Step 1: Build — fix all TS errors.
+### Step 2: Tests
+- Safety gate rejects: a query with `DELETE`, a second statement (`; DROP`), a comment (`--`), a query missing user scoping.
+- A valid SELECT is allowed and parameterized with the authenticated user id.
+- When Ollama is down, `ask()` returns `offline: true` and does NOT execute anything.
+### Step 3: Rubber duck review — can the model ever read another user's rows? statement timeout set? no write path? Fix.
+### Step 4: Deploy — `./deploy-to-nas.sh`
+### Step 5: Manual test checklist
+- [ ] Ask "How much did I spend on groceries last month?" → correct number + chart
+- [ ] Ask something that would need a write → refused safely
+- [ ] Mac asleep → graceful "assistant offline" message
+```
+
+---
+
+## Prompt 10 — Cash Flow Forecasting
+
+> Project future account balances from recurring bills (Prompt 3) + average spending + known income. **Sync verdict: `web: summary+push`** (dashboard widget glance + low-balance push alert).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need cash-flow forecasting in MoneyPulse: project each account's daily balance for the next 30/60/90 days using recurring bills, average daily spending, and known income, and alert if a projected balance drops below a threshold. Follow existing analytics patterns.
+
+## Service: `apps/api/src/analytics/forecast.service.ts` (NEW)
+
+`forecast(userId, days = 90)`:
+1. Start from each account's current balance.
+2. Subtract upcoming recurring bills (from `recurring_bills`, active+confirmed, by `nextExpectedDate` and `frequency`, rolling forward within the window).
+3. Subtract average daily discretionary spend (compute from the last ~90 days of non-transfer debits, excluding amounts already represented by recurring bills to avoid double-counting).
+4. Add known recurring income (recurring credits detected the same way as bills).
+5. Produce a daily series per account: `[{ date, projectedCents }]`, plus a combined net-worth projection.
+6. Flag the first date (if any) each account drops below `forecastLowBalanceThresholdCents` (default 100000 = $1000; document as a future user setting, hardcode default for now).
+
+Return `{ accounts: [{ accountId, accountName, series, lowBalanceDate? }], netWorthSeries, alerts: [{ accountId, date, projectedCents }] }`.
+
+## Controller: add to `apps/api/src/analytics/analytics.controller.ts`
+- `GET /analytics/forecast?days=` → `{ data }` (Zod-validate days ∈ {30,60,90}). Use `@CurrentUser()`.
+
+## Alert integration
+- A scheduled daily job runs `forecast()` for each user; for any new low-balance alert, call `NotificationsService.create({ type: 'cashflow_low', ... })` (Prompt 6 → projects to web + FCM + HA). De-dupe: don't re-alert the same account/threshold crossing within the same window.
+
+## Frontend (NAS app)
+### Hook: add `useForecast(days)` to `useAnalytics.ts`.
+### Component `apps/web/src/components/charts/CashFlowForecastChart.tsx` (NEW)
+- Line chart: solid line = historical/actual balance, dashed = forecast. Highlight a red "danger zone" band below the threshold; mark the low-balance date.
+### Dashboard: add a "Projected balance" widget to `apps/web/src/app/(protected)/page.tsx` — "Checking projected to drop below $1,000 by {date}" or "On track for next 90 days."
+
+## Sync verdict: web: summary+push
+- The low-balance NOTIFICATION rides Prompt 6's `notification.projected.v1` → FCM. (No separate forecast-series projection — the full chart stays on NAS.)
+
+## Important
+- Avoid double-counting recurring bills in the discretionary average.
+- Use `is_transfer = false` non-credit txns for discretionary spend.
+- Do NOT read .env files or secrets.
+
+## After implementation — verification steps (MANDATORY)
+### Step 1: Build. ### Step 2: Tests
+- Deterministic: given 1 monthly $1000 bill + $50/day spend + $5000 balance → projected series decreases correctly and low-balance date is right.
+- No recurring bills → forecast still works from spending average.
+- Threshold crossing produces exactly one alert (de-dupe).
+### Step 3: Rubber duck — double-counting, timezone/date math, empty-account handling.
+### Step 4: Deploy. ### Step 5: No SQL migration (uses existing tables).
+### Step 6: Manual
+- [ ] Dashboard shows projected balance widget
+- [ ] Forecast chart shows dashed projection + danger zone
+- [ ] A low projected balance triggers a notification + FCM push
+```
+
+---
+
+## Prompt 11 — Account Balance History Snapshots (F.2)
+
+> Store periodic balance snapshots so net-worth/trend charts use real data points. Foundational for Prompt 10 (forecast) and Prompt 14 (YoY). **Sync verdict: `web: field-only`** (net-worth trend rides existing account projection; no new web UI).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need account balance history snapshots in MoneyPulse so net-worth and trend charts use stored data points instead of always recomputing. Follow existing patterns.
+
+## Schema — new table `account_balance_snapshots`
+
+Add to `apps/api/src/db/schema.ts`:
+```typescript
+export const accountBalanceSnapshots = pgTable('account_balance_snapshots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  accountId: uuid('account_id').notNull().references(() => accounts.id),
+  balanceCents: integer('balance_cents').notNull(),
+  snapshotDate: date('snapshot_date').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uniq: unique().on(t.accountId, t.snapshotDate) }));
+```
+
+## Service: `apps/api/src/analytics/balance-snapshot.service.ts` (NEW)
+- `snapshotAll()` — for each account, compute current balance (reuse the existing balance computation in `accounts.service.ts`), upsert a row for today (`ON CONFLICT (account_id, snapshot_date) DO UPDATE`).
+- `backfill(accountId)` — replay transaction history to compute end-of-month (and end-of-day for the recent window) balances historically; insert snapshots. Idempotent.
+- `history(userId, { accountId?, from, to })` — return the time series.
+
+## Triggers
+- Post-import hook in `ingestion.processor.ts`: after a successful import, call `snapshotAll()` for the affected user (best-effort).
+- Daily scheduled job: `snapshotAll()` (follow existing scheduled-job pattern).
+
+## Controller: add to `analytics.controller.ts`
+- `GET /analytics/balance-history?accountId=&from=&to=` → `{ data }`.
+
+## Frontend
+- Update the net-worth/trend chart on the dashboard to consume `/analytics/balance-history` instead of recomputing client-side. Keep the existing chart component; just swap the data source.
+
+## Important
+- Backfill must be idempotent (NOT EXISTS / upsert — see the project's backfill lessons).
+- Do NOT read .env files or secrets.
+
+## After implementation — verification steps (MANDATORY)
+### Step 1: Build. ### Step 2: Tests
+- `snapshotAll` upserts one row per account per day (running twice doesn't duplicate).
+- `backfill` produces monotonic month-end snapshots for a known transaction set.
+- `history` returns the series within range.
+### Step 3: Rubber duck — unique constraint upsert, idempotent backfill, timezone of snapshot_date.
+### Step 4: Deploy. ### Step 5: Post-deploy SQL
+```bash
+ssh nas
+docker exec -i moneypulse-db psql -U moneypulse -d moneypulse -c "
+  CREATE TABLE IF NOT EXISTS account_balance_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(id),
+    balance_cents INTEGER NOT NULL,
+    snapshot_date DATE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(account_id, snapshot_date)
+  );
+  CREATE INDEX IF NOT EXISTS idx_snapshot_account ON account_balance_snapshots(account_id, snapshot_date);
+"
+# Then trigger a backfill via the new endpoint/command.
+```
+### Step 6: Manual
+- [ ] Net-worth chart shows real historical points
+- [ ] New import adds today's snapshot
+- [ ] Backfill populates past months
+```
+
+---
+
+## Prompt 12 — Import Deduplication Improvement (F.3)
+
+> Make re-imports of overlapping statements graceful: external-id matching, fuzzy-window dedup, import preview, and undo-import. **Sync verdict: `web: none`** (import is a NAS-only operation).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need to improve MoneyPulse import deduplication. Today dedup uses txn_hash = SHA256(accountId|date|amount|description), which misses near-duplicates after reconciling/overlapping statements. Follow existing import patterns in `apps/api/src/jobs/ingestion.processor.ts` and the dedup logic.
+
+## Enhancements
+
+### 1. external_id matching (primary key when available)
+- Add `external_id varchar(200)` to the `transactions` table (bank reference number) if not present. When the source file provides a bank reference, dedup on (account_id, external_id) FIRST — it's authoritative. Fall back to txn_hash otherwise.
+
+### 2. Fuzzy-window dedup
+- Same account + amount within ±0 (exact cents) + date within ±1 day + description similarity > 80% (Levenshtein ratio or trigram) → treat as a probable duplicate.
+- Classify each incoming row as: `new` | `exact_duplicate` (skip) | `potential_conflict` (needs decision).
+
+### 3. Import preview (before committing)
+- Add a preview step: parse the file, classify every row, return `{ new: n, duplicates: n, conflicts: [{ incoming, existingCandidate }] }` WITHOUT inserting.
+- New endpoint: `POST /imports/preview` (multipart) → returns the classification. The existing import endpoint gains a `?commit=true` (or a separate confirm call) that performs the insert using the preview's decisions.
+
+### 4. Conflict resolution + import history
+- New table `import_batches` (id, user_id, filename, source, row counts, created_at). Tag each inserted transaction with `import_batch_id`.
+- `POST /imports/:batchId/undo` → soft-delete all transactions from that batch (set deleted_at). Idempotent.
+
+## Frontend (NAS app)
+- Import flow: after selecting a file, show the preview summary ("X new, Y duplicates will be skipped, Z conflicts"). For conflicts, show side-by-side incoming vs existing with keep/skip toggles. Confirm to commit.
+- Import history list with an "Undo import" button per batch.
+
+## Important
+- Soft-delete only for undo (set deleted_at); never hard-delete imported transactions.
+- Outbox: undo should emit `transaction.projected.v1` updates so web reflects the soft-deletes.
+- Do NOT read .env files or secrets.
+
+## After implementation — verification steps (MANDATORY)
+### Step 1: Build. ### Step 2: Tests
+- external_id present → dedup on it, ignores hash differences.
+- Fuzzy: same amount, +1 day, 90%-similar description → flagged potential_conflict, not auto-inserted.
+- Preview returns correct counts without inserting.
+- Undo soft-deletes exactly the batch's rows and is idempotent.
+### Step 3: Rubber duck — preview/commit consistency, similarity threshold, batch tagging, outbox on undo.
+### Step 4: Deploy. ### Step 5: Post-deploy SQL
+```bash
+ssh nas
+docker exec -i moneypulse-db psql -U moneypulse -d moneypulse -c "
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_id VARCHAR(200);
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS import_batch_id UUID;
+  CREATE TABLE IF NOT EXISTS import_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    filename VARCHAR(255), source VARCHAR(50),
+    rows_new INTEGER, rows_duplicate INTEGER, rows_conflict INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_txn_external ON transactions(account_id, external_id);
+  CREATE INDEX IF NOT EXISTS idx_txn_batch ON transactions(import_batch_id);
+"
+```
+### Step 6: Manual
+- [ ] Re-import an overlapping statement → preview shows duplicates as skip
+- [ ] A near-duplicate shows as conflict with side-by-side
+- [ ] Undo import soft-deletes the batch and web reflects it
+```
+
+---
+
+## Prompt 13 — Weekly/Monthly Financial Digest
+
+> Automated summary pushed to the user. Builds on Prompts 3/4/5/10. **Sync verdict: `web: summary+push`** (the digest is a notification → FCM; optional email).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need an automated weekly/monthly financial digest in MoneyPulse. Generate a summary (top categories, budget status, unusual charges, upcoming bills, net-worth change) and deliver via in-app notification + FCM push + optional email. Use Ollama (on my Mac) to write the natural-language summary, but degrade gracefully to a templated summary if it's offline. Follow existing patterns.
+
+## Service: `apps/api/src/analytics/digest.service.ts` (NEW)
+- `buildDigest(userId, period: 'weekly'|'monthly')`: gather top spending categories, budget progress (reuse `budgetProgress`), anomalies in the period, upcoming bills (next 7 days), net-worth change (reuse balance snapshots from Prompt 11).
+- Narrative: if `ollamaHealth.isAvailable()`, ask Ollama to turn the structured data into a friendly paragraph; else fall back to a deterministic template. NEVER block on AI.
+- Deliver via `NotificationsService.create({ type: 'digest', title, message })` (→ web + FCM via Prompt 6). If `notificationEmail` is set, also send email (reuse any existing mailer; if none, skip with a TODO).
+
+## Trigger
+- Scheduled job honoring the existing `weeklyDigestEnabled` user setting. Weekly on a fixed day (e.g. Monday 8am in the user's `timezone`); monthly on the 1st. Use the user's `timezone` from user_settings.
+
+## Frontend (NAS app)
+- Optional: a "Digests" view or just rely on the notification bell. Add a "Send digest now" button on the settings/dashboard for testing.
+
+## Important
+- Respect `weeklyDigestEnabled`. Degrade to template if Ollama offline. Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — buildDigest returns all sections from mock data; falls back to template when Ollama down; respects weeklyDigestEnabled. ### 3: Rubber duck — timezone scheduling, no AI block, dedupe per period. ### 4: Deploy. ### 5: No SQL. ### 6: Manual — [ ] "Send digest now" produces a notification + FCM push; [ ] content accurate; [ ] disabled setting suppresses it.
+```
+
+---
+
+## Prompt 14 — Year-over-Year Comparison
+
+> Compare this month vs the same month last year, by category, plus a net-worth growth timeline. Needs Prompt 11 snapshots + 12+ months of data. **Sync verdict: `web: none`** (analytical deep-dive stays on NAS).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need year-over-year comparison analytics in MoneyPulse. Compare a period to the same period last year by category, and show net-worth growth over time. Follow existing analytics patterns.
+
+## Service: add to `apps/api/src/analytics/analytics.service.ts`
+- `yearOverYear(userId, { month })`: for each category, sum non-transfer debits for {month, this year} vs {month, last year}; return `[{ categoryName, thisYearCents, lastYearCents, deltaCents, deltaPercent }]` sorted by absolute delta.
+- `netWorthTimeline(userId, { months })`: monthly net-worth points from `account_balance_snapshots` (Prompt 11).
+
+## Controller: add to `analytics.controller.ts`
+- `GET /analytics/year-over-year?month=YYYY-MM` and `GET /analytics/net-worth-timeline?months=`.
+
+## Frontend (NAS app)
+- Hook additions in `useAnalytics.ts`.
+- A YoY section (could live on an Analytics/Insights page or the budgets page): per-category bars or a table with up/down deltas ("Groceries up 12% vs May 2025"). Net-worth growth line chart.
+- Gracefully handle <12 months of data ("Not enough history yet for year-over-year").
+
+## Important — exclude is_transfer; use normalized data. Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — YoY deltas correct for a two-year mock set; insufficient-history path returns empty/flag; transfers excluded. ### 3: Rubber duck — month boundary/timezone, divide-by-zero on deltaPercent. ### 4: Deploy. ### 5: No SQL (uses snapshots from Prompt 11). ### 6: Manual — [ ] YoY shows correct deltas; [ ] net-worth timeline renders; [ ] graceful with little history.
+```
+
+---
+
+## Prompt 15 — Home Assistant Dashboard Sensor
+
+> Expose finance metrics as an HA-friendly REST sensor for the home dashboard. **Sync verdict: `web: none`** (HA pulls directly from the NAS on the LAN).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need a Home Assistant REST sensor endpoint in MoneyPulse exposing finance metrics for my home dashboard. Follow existing patterns.
+
+## Endpoint: `GET /api/ha/sensor`
+- Returns HA-friendly JSON: `{ today_spending_cents, month_spending_cents, budget_remaining_cents, account_balances: [{ name, balanceCents }], upcoming_bills: [{ name, amountCents, dueDate }], overdue_bill_count }`.
+- AUTH: HA can't easily send a JWT cookie. Use a long-lived API token (header `X-HA-Token`) validated against an env var `HA_SENSOR_TOKEN`, scoped to the primary user. Do NOT expose this without the token. Rate-limit.
+- Put it in a small `ha.controller.ts` (new `ha` module) — NOT behind the cookie JwtAuthGuard, but behind a dedicated token guard.
+
+## Docs
+- Provide a `docs/home-assistant.md` with: the REST sensor YAML, a template sensor example, and two automation examples (notify on big purchase, daily 9pm spending summary). Use `homeassistant.local`/LAN host placeholders, no real tokens.
+
+## Important
+- Token in env only (`HA_SENSOR_TOKEN`), never committed. This endpoint is LAN-only by deployment; document not exposing it to WAN. Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — endpoint returns 401 without/with wrong token; returns correct aggregates with valid token. ### 3: Rubber duck — token comparison constant-time-ish, no PII leakage, rate limit. ### 4: Deploy (set HA_SENSOR_TOKEN on NAS). ### 5: No SQL. ### 6: Manual — [ ] curl with token returns JSON; [ ] HA sensor populates; [ ] no token → 401.
+```
+
+---
+
+## Prompt 16 — Tax-Ready Export
+
+> Tag transactions as tax-deductible by tax category; export a year-end CSV/PDF with attached receipts for audit. Builds on Prompt 2 (attachments). **Sync verdict: `web: field-only`** (the tax flag rides the transaction projection; export is NAS-only).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need tax-ready export in MoneyPulse: tag transactions with a tax category and export a year-end report grouped by tax category, including attached receipts. Follow existing patterns.
+
+## Schema
+- Add to `transactions`: `tax_category varchar(50)` nullable (values: medical|charitable|business|education|home_office|other), `is_tax_deductible boolean default false`.
+
+## API
+- `PATCH /transactions/:id/tax` — set tax_category / is_tax_deductible (ownership-checked, Zod-validated). Emits `transaction.projected.v1`.
+- `GET /tax/export?year=YYYY&format=csv|pdf` — returns transactions where is_tax_deductible=true in that tax year, grouped by tax_category, with totals. CSV: one row per txn + group subtotals. PDF: grouped report (reuse any existing PDF/report util; if none, CSV first and stub PDF).
+- `GET /tax/summary?year=YYYY` — totals per tax category for a dashboard card.
+
+## Frontend (NAS app)
+- Transaction detail panel (from Prompt 2): add a "Tax" toggle + tax-category select.
+- A `/tax` page: per-category deductible totals for the selected year, list of tagged transactions (with receipt links), and Export CSV/PDF buttons.
+- Sidebar: `{ href: '/tax', label: 'Tax', icon: FileText }`.
+
+## Important — receipts stay on NAS; the export bundles them by reference/path locally (optionally zip with the CSV). Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — tax tagging persists + emits outbox; export includes only deductible txns in the year, grouped with correct subtotals; ownership enforced. ### 3: Rubber duck — tax-year boundary, format validation, attachment path safety. ### 4: Deploy. ### 5: Post-deploy SQL:
+```bash
+ssh nas
+docker exec -i moneypulse-db psql -U moneypulse -d moneypulse -c "
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tax_category VARCHAR(50);
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_tax_deductible BOOLEAN NOT NULL DEFAULT false;
+"
+```
+### 6: Manual — [ ] tag a txn deductible; [ ] /tax shows totals; [ ] CSV export correct; [ ] receipts referenced.
+```
+
+---
+
+## Prompt 17 — Subscription Manager
+
+> Dedicated view over recurring-bill data (Prompt 3) focused on subscriptions: annual cost, price-increase flags. **Sync verdict: `web: summary+push`** (price-increase alert → FCM; subscription glance card).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need a Subscription Manager in MoneyPulse built on the recurring-bills data. Show service, amount, frequency, annualized cost, and flag price increases. Follow existing patterns.
+
+## API
+- Reuse `recurring_bills`. Add a derived `GET /subscriptions` that returns active recurring bills classified as subscriptions (heuristic: monthly/annual frequency + known subscription merchants, OR just expose all recurring with annualized cost). Each item: `{ name, amountCents, frequency, annualCostCents, lastAmountCents, priceIncreased: boolean, category }`.
+- `annualCostCents`: monthly×12, weekly×52, etc.
+- Price-increase detection: compare `last_amount_cents` vs `expected_amount_cents` (or previous occurrence). If it rose beyond tolerance, set `priceIncreased` and create a `NotificationsService.create({ type: 'subscription_price_increase', ... })` (→ FCM via Prompt 6). De-dupe per subscription per change.
+
+## Frontend (NAS app)
+- `/subscriptions` page: list with annual cost, total annual subscription spend, category breakdown, price-increase badges ("Netflix $15.99 → $17.99").
+- Dashboard glance card: "Subscriptions: $X/mo ($Y/yr)".
+- Sidebar: `{ href: '/subscriptions', label: 'Subscriptions', icon: Repeat }`.
+
+## Important — no new table (derive from recurring_bills). Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — annualization math per frequency; price-increase flagged when amount rises beyond tolerance and alert de-duped; empty when no recurring bills. ### 3: Rubber duck — double-alerting, annualization rounding. ### 4: Deploy. ### 5: No SQL. ### 6: Manual — [ ] subscriptions listed with annual cost; [ ] a price bump flags + pushes; [ ] dashboard card shows monthly/annual total.
+```
+
+---
+
+## Prompt 18 — PWA Mode + Camera Capture
+
+> Make the NAS web app installable; enable camera receipt capture; prep for push. Pairs with Prompts 2/8 (receipts) and 6 (push). **Sync verdict: n/a (NAS web app shell).** Note: NAS is LAN-only today, so the PWA is installable/usable on the home network now; off-home use awaits Tailscale.
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need to turn the MoneyPulse NAS web app into an installable PWA with camera receipt capture and an offline app shell. Next.js app in `apps/web`. Follow existing patterns.
+
+## PWA basics
+- `apps/web/public/manifest.json`: name, short_name, theme_color, background_color, `display: standalone`, icons 192/512.
+- App icons (192x192, 512x512) + `apple-touch-icon`. Add `<link rel="manifest">`, `<meta name="theme-color">`, iOS `apple-mobile-web-app-capable` meta in the root layout.
+- Service worker for an app-shell cache (cache the shell/static assets; DO NOT aggressively cache API data — the NAS may be unreachable off-LAN). Use `next-pwa` or a hand-written SW; keep it minimal.
+
+## Camera capture
+- Receipt upload button uses `<input type="file" accept="image/*" capture="environment">` on mobile → opens the camera → uploads to the watch-folder/attachment pipeline (Prompts 2/8). Preview before submit.
+
+## Offline shell
+- Cache last dashboard payload in IndexedDB; when the NAS is unreachable show stale data with a "Last updated X ago" badge; auto-refresh on reconnect.
+
+## (Optional, document only) PIN/biometric lock
+- Note WebAuthn / PIN auto-lock as a follow-up; do not fully implement unless quick.
+
+## Important — do NOT cache sensitive API responses beyond the IndexedDB stale-dashboard shell; clear on logout. Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — manifest served, SW registers (or a smoke test of the offline cache util). ### 3: Rubber duck — no sensitive data over-cached, logout clears cache, iOS meta present. ### 4: Deploy. ### 5: No SQL. ### 6: Manual — [ ] "Add to Home Screen" works on phone (on home network); [ ] camera capture opens + uploads a receipt; [ ] offline shows stale dashboard with timestamp.
+```
+
+---
+
+## Prompt 19 — Quick-Add Transaction Widget
+
+> Fast manual transaction entry from the PWA/dashboard. Builds on Prompt 18. **Sync verdict: `web: field-only`** (manual txn rides the transaction projection).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need a quick-add manual transaction widget in MoneyPulse. Follow existing patterns.
+
+## API
+- Reuse the existing create-transaction path; ensure it accepts `isManual: true`. If a manual-create endpoint doesn't exist, add `POST /transactions` (Zod-validated: amountCents, merchant, categoryId?, date default today, accountId). Emits `transaction.projected.v1` (already wired in transactions.service).
+
+## Frontend (NAS app)
+- Floating "+" FAB on mobile (and a button on the dashboard). Minimal form: amount, merchant, category typeahead (reuse the existing category combobox), date (default today), account select. Optional: snap a receipt inline (Prompt 18 capture → attaches via Prompt 2).
+- On submit, invalidate `['transactions']` and relevant analytics queries.
+
+## Important — runs through normal categorization/normalization (rule engine + best-effort AI). Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — manual create persists with isManual=true + emits outbox; validation rejects bad input. ### 3: Rubber duck — account ownership, date/timezone, optimistic UI. ### 4: Deploy. ### 5: No SQL (unless isManual column missing — then add it). ### 6: Manual — [ ] FAB opens form; [ ] add a txn; [ ] appears in list + analytics; [ ] optional receipt attaches.
+```
+
+---
+
+## Prompt 20 — Spending Streaks & Gamification
+
+> Lightweight behavioral nudges tied to real budgets. Builds on Prompt 5. **Sync verdict: `web: summary+push`** (streak milestone → optional FCM; streak glance on dashboard).
+
+### Prompt (copy this into Copilot Chat)
+
+```
+I need lightweight spending streaks / gamification in MoneyPulse, tied to real budget goals (not vanity points). Follow existing patterns.
+
+## Service: `apps/api/src/analytics/streaks.service.ts` (NEW)
+- `computeStreaks(userId)`:
+  - No-spend-day streak: consecutive days (ending today) with zero non-transfer discretionary debits.
+  - Under-budget streak per category: consecutive periods within budget (reuse budgetProgress).
+  - Savings milestones: net-worth increase thresholds (reuse balance snapshots, Prompt 11).
+- Return `{ noSpendStreakDays, underBudgetStreaks: [{ category, periods }], milestones: [...] }`.
+
+## Controller: add `GET /analytics/streaks` to analytics.controller.
+
+## Notifications (optional, opt-in)
+- On a streak milestone (e.g. 5 consecutive no-spend days), `NotificationsService.create({ type: 'streak', ... })` (→ FCM via Prompt 6). De-dupe per milestone. Keep it gentle/infrequent.
+
+## Frontend (NAS app)
+- Dashboard streak card: "🔥 5 no-spend days", under-budget streaks, latest milestone badge.
+
+## Important — must reflect REAL budget/spend data, not arbitrary points. Opt-in pushes. Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — no-spend streak counts consecutive zero-debit days correctly; breaks on a spend day; under-budget streak per category; milestone de-duped. ### 3: Rubber duck — timezone day boundaries, transfer exclusion, off-by-one on streaks. ### 4: Deploy. ### 5: No SQL. ### 6: Manual — [ ] streak card shows on dashboard; [ ] a no-spend day increments; [ ] a milestone (opt-in) pushes once.
+```
+
+---
+
+## Prompt 21 — moneypulse-web PWA (installable + iOS background push)
+
+> **Why**: Today web notifications only show when you have the app open. Prompt 6b makes the server SEND a push; this prompt makes moneypulse-web an **installable PWA** so pushes land like a native app notification — and so iOS (16.4+) web push works at all (it requires the site be added to the Home Screen). **Web repo only — there is no NAS half.** Run from `~/repo/moneypulse-web`.
+
+### Prompt 21 (copy this into Copilot Chat with `~/repo/moneypulse-web` open)
+
+```
+I need to turn moneypulse-web into an installable PWA so FCM push notifications behave like native app notifications (especially on iOS, which only allows web push for Home-Screen-installed PWAs). Follow this repo's TDD mandate, data-boundary contract, and existing patterns (see CLAUDE.md). The Next.js app is in apps/web; the messaging service worker already exists at apps/web/public/firebase-messaging-sw.js.
+
+## 1. Web app manifest
+- Add `apps/web/public/manifest.webmanifest`: name "MoneyPulse", short_name "MoneyPulse", `display: standalone`, theme_color/background_color matching the app theme, `start_url: "/"`, scope "/", and icons (192x192, 512x512, plus a 512 maskable). Add the icon PNGs under `apps/web/public/icons/`.
+- Link it in the root layout `<head>` (apps/web/src/app/layout.tsx or equivalent): `<link rel="manifest" href="/manifest.webmanifest">`, `<meta name="theme-color">`, and iOS tags: `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `apple-touch-icon` (180x180).
+
+## 2. Service worker coexistence
+- The app already registers `/firebase-messaging-sw.js` (see apps/web/src/lib/fcm/use-fcm-token.ts). Ensure that SW handles `onBackgroundMessage` → `self.registration.showNotification(title, { body, icon: '/icons/icon-192.png', data })` and a `notificationclick` listener that opens/focuses `/notifications`. Add these if missing.
+- Keep ONE service worker (the firebase-messaging SW). If you add app-shell caching, do it inside the same SW or a clearly separate scope — do NOT cache authenticated API/Firestore responses. Clear caches on logout.
+
+## 3. Install affordance + iOS guidance
+- Add a small "Install app" prompt/button (listen for `beforeinstallprompt` on Android/desktop). For iOS, show brief "Add to Home Screen" instructions since iOS has no install event.
+- After install on iOS, the existing `useFcmToken` permission/token flow should run inside the installed PWA context.
+
+## Data boundary (non-negotiable, per CLAUDE.md)
+- The manifest/icons contain NO user data. Do not cache PII. No reverse-sync. No secrets in code (Firebase web config is public env only).
+
+## Verification (MANDATORY — pnpm test then pnpm build)
+### Tests — manifest is served and well-formed; SW registers; (if added) cache layer excludes Firestore/auth responses; logout clears caches.
+### Rubber duck (/rubber-duck) — single SW, no sensitive caching, iOS meta present, install prompt degrades gracefully.
+### Deploy — `firebase deploy --only hosting` (and functions if SW changes need it).
+### Manual
+- [ ] Android Chrome: "Install app" works; app opens standalone
+- [ ] iOS Safari: Add to Home Screen; open installed app; grant notifications
+- [ ] With app CLOSED/backgrounded: a NAS-triggered notification (Prompt 6) arrives as a system push
+- [ ] Tapping the push opens the notifications view
+```
+
+---
+
+## Prompt 22 — Web Bills Glance (`bill.projected.v1`) — OPTIONAL
+
+> **Why optional**: Bills are detected/managed on the NAS (Prompt 3, done). Missed-bill *alerts* already reach the phone via the Prompt 6 notification backbone. This adds a read-only "upcoming bills" glance to moneypulse-web so you can see the schedule (not just alerts) when away. Net-new on both sides → two blocks. **Sync verdict: `web: summary` (read-only projection, no push of its own).**
+>
+> **Run 22a from `~/repo/MyMoney`, then 22b from `~/repo/moneypulse-web`.**
+
+### Prompt 22a — NAS side (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need MoneyPulse to project confirmed recurring bills to the sync outbox so the moneypulse-web companion can show an upcoming-bills glance. Follow existing patterns (see how `sync.controller.ts` shapes `transaction.projected.v1` with `aliasMapper.toAliasId`, and how `bills.service.ts` already works). Do NOT read .env or include secrets.
+
+## Context (verify)
+- `recurring_bills` table (schema.ts ~line 343): id, userId, merchantPattern, normalizedName, categoryId, expectedAmountCents, amountTolerancePercent, frequency, nextExpectedDate, lastSeenDate, lastAmountCents, isActive, isConfirmed, createdAt, updatedAt.
+- `apps/api/src/bills/bills.service.ts` already manages bills and already injects `NotificationsService`. It does NOT currently emit outbox events.
+- Aliasing/userAliasId is auto-added at delivery; producers set entity aliases via `AliasMapperService.toAliasId(...)`.
+
+## Emit `bill.projected.v1`
+Inject `OutboxService` + `AliasMapperService` into `BillsService`. Add a private best-effort helper and call it whenever a bill becomes (or stays) confirmed & active — i.e. at the end of `confirm()`, `update()`, and after detection upserts that produce a confirmed bill:
+
+private async projectBill(bill: RecurringBillRow): Promise<void> {
+  if (!bill.isActive || !bill.isConfirmed) return; // only project live, confirmed bills
+  try {
+    await this.outbox.enqueue({
+      eventType: 'bill.projected.v1',
+      aggregateType: 'recurring_bill',
+      aggregateId: bill.id,
+      userId: bill.userId,                          // → userAliasId at delivery
+      payload: {
+        billAliasId: this.aliasMapper.toAliasId('bill', bill.id),
+        normalizedName: bill.normalizedName,
+        amountCents: bill.expectedAmountCents,
+        frequency: bill.frequency,
+        nextExpectedDate: bill.nextExpectedDate ? new Date(bill.nextExpectedDate).toISOString() : null,
+        categoryId: bill.categoryId ?? null,
+      },
+    });
+  } catch (err) { this.logger.warn(`bill projection enqueue failed: ${(err as Error).message}`); }
+}
+
+NOTES:
+- Best-effort: never wrap the enqueue in a tx around the domain write (same rule as transactions/notifications).
+- When a bill is deactivated/deleted, emit `bill.projected.v1` with a `deleted: true` flag (or a separate `bill.deleted.v1` — pick the simplest the web can honor; 22b removes the doc on that signal). Keep the chosen contract consistent.
+- The sanitizer (`sanitizer-v2.service.ts`) will police the payload. `normalizedName` is allowed (sanitized merchant data), no PII.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — confirming a bill enqueues a `bill.projected.v1` event with `billAliasId`/`normalizedName`/`amountCents`/`frequency`/`nextExpectedDate`; an unconfirmed or inactive bill is NOT projected; deactivate emits the delete signal; enqueue failure does not roll back the bill write. ### 3: Rubber duck — only confirmed+active projected, alias used, best-effort. ### 4: Deploy `./deploy-to-nas.sh`. ### 5: No SQL. ### 6: Manual — [ ] confirm a bill → Sync Admin shows `bill.projected.v1` delivered; [ ] doc lands in Firestore (after 22b).
+```
+
+### Prompt 22b — Web side (copy into Copilot Chat with `~/repo/moneypulse-web` open)
+
+```
+I need moneypulse-web to consume `bill.projected.v1` and show a read-only upcoming-bills glance. Follow this repo's TDD mandate + data-boundary contract (CLAUDE.md) and mirror the EXISTING budgets projection exactly (fanOutBudget, the budgets Firestore rule, use-budgets hook). Read specs/ first.
+
+## 1. Fan-out (functions/src/index.ts)
+Add `fanOutBill(db, body)` mirroring `fanOutBudget`, and an `else if (req.body.eventType === 'bill.projected.v1')` branch in `ingestSyncEvent`:
+- Require `billAliasId` + `userAliasId` (string) else return.
+- If `body.deleted === true` → `db.collection('bills').doc(`${userAliasId}_${billAliasId}`).delete()` and return.
+- Else upsert `db.collection('bills').doc(`${userAliasId}_${billAliasId}`).set({ billAliasId, normalizedName, amountCents, frequency, nextExpectedDate (string|null), categoryId (string|null), userAliasId, syncedAt: serverTimestamp() })`.
+Use the Admin SDK (bypasses rules), same as the other fan-outs.
+
+## 2. Firestore rules (firestore.rules)
+Add a block mirroring the `budgets` rule — read-only from browser, writes denied:
+  match /bills/{billDocId} {
+    allow read: if request.auth != null && resource.data.userAliasId == request.auth.uid;
+    allow write: if false;
+  }
+
+## 3. Index (firestore.indexes.json)
+Add a composite index: collectionGroup `bills`, fields `userAliasId` ASC + `nextExpectedDate` ASC.
+
+## 4. Types + hook
+- Add `BillDoc` to `apps/web/src/lib/types/firestore.ts`.
+- Add `apps/web/src/lib/queries/use-bills.ts` mirroring `use-budgets.ts`: query `collection(db, 'bills')` where `userAliasId == uid`, ordered/sorted by `nextExpectedDate`.
+
+## 5. UI (essentials glance — NOT management)
+- Add an "Upcoming Bills" card to the dashboard (and/or a `/bills` read-only route under `(dashboard)`): list next bills with normalizedName, amount (cents → currency), frequency, days-until-due; show an overdue count badge (nextExpectedDate in the past). NO add/edit/confirm/delete — management stays on the NAS.
+
+## Data boundary (CLAUDE.md) — only alias-based ids + sanitized merchant name + amount/frequency/date. No raw account data. No reverse sync. No browser writes to `bills`.
+
+## Verification (MANDATORY — pnpm test then pnpm build)
+### Tests — fanOutBill upserts the doc with the right fields; `deleted:true` removes it; rules deny browser writes to bills and cross-user reads; use-bills returns sorted bills. ### Rubber duck (/rubber-duck) — read-only collection, index present, no PII. ### Deploy — `firebase deploy --only functions,firestore:rules,firestore:indexes,hosting`. ### Manual — [ ] confirm a bill on NAS → appears in web Upcoming Bills; [ ] overdue bill shows the badge; [ ] deactivating on NAS removes it from web.
 ```
 
 ---

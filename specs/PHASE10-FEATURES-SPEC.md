@@ -12,7 +12,20 @@
 - **MyMoney (NAS)** = source of truth + heavy processing (AI, OCR, full data, all writes)
 - **moneypulse-web (Firebase)** = read-only projection + cloud-only overlays (FCM push, preferences, saved filters)
 - All sensitive data stays on NAS. Web gets sanitized projections via the existing outbox sync pipeline.
-- OCR and AI run on-device via Ollama — no data leaves the NAS.
+- OCR and AI run on **user-owned hardware** via Ollama — no data leaves the home network (see §F.5: Ollama may run on the dev Mac, not the NAS, but never on a third-party cloud).
+
+### Resolved architecture decisions (2026-05-30)
+
+These decisions are **authoritative** and govern every prompt below. See §F.4 and §F.5 for the full contracts.
+
+1. **Remote access**: The NAS is **LAN-only today** (not reachable off the home network). Tailscale/tunnel is a *future* setup, not assumed by any prompt. **Implication**: until that exists, moneypulse-web is the *only* off-home surface — but it stays **essentials + push**, not full parity.
+2. **Web scope = essentials + push** (NOT feature parity). The web companion shows glanceable read-only summaries (balances, budget status, upcoming/overdue bills, "has attachment" flags) and receives FCM push for alerts. Full management UIs (CRUD, detection, watch-folder review, chat) stay **NAS-only**. Every feature prompt below carries an explicit **Sync verdict** (`web: none | field-only | summary+push`). Do **not** port NAS dashboard/UI tweaks to web by default.
+3. **AI availability = best-effort + retry queue**. The rule engine always runs on the NAS. AI enrichment (phase-2 normalization, ambiguous categorization, vision OCR, bill parsing, NL chat) is best-effort: when Ollama is unreachable, work is **queued in BullMQ and reprocessed** when it returns — never silently dropped, never blocking ingestion.
+4. **Ollama runs on the dev Mac** (M1, far more capable than the NAS for vision/large models). The NAS reaches it via **mDNS `http://<mac-hostname>.local:11434`**, with a router DHCP reservation as the documented fallback. Addressed by `OLLAMA_URL`; no `isUrlSafe()` guard applies to that path.
+
+### ⚠️ Known blocker — HA webhook SSRF guard drops LAN alerts
+
+`apps/api/src/notifications/webhook.service.ts` `isUrlSafe()` rejects `localhost`, `127.*`, `10.*`, `192.168.*`, `172.16–31.*`, `*.local`, `*.internal`. Home Assistant almost always lives on one of those, so **every HA webhook the alert features depend on (missed bills, anomalies, forecasts) is currently silently blocked.** This MUST be fixed before any alert feature is meaningful — see §F.4 → "HA webhook LAN allowlist". Do not write more alert features assuming the webhook works until this lands.
 
 ---
 
@@ -541,6 +554,70 @@ When re-importing a statement that overlaps with previously imported transaction
 
 ---
 
+### F.4 Web Essentials Projection Contract (FCM Push + Glanceable Summaries)
+
+The web companion exists to do the one thing the LAN-only NAS cannot: **reach your phone when you're away from home.** This section is the authoritative contract for what crosses the sync boundary. Everything here is **NAS → Firebase, one-way, sanitized.**
+
+**Powers**: every alert feature (1.2 missed bills, 1.3 anomalies, 2.3 forecast, 3.1 digest) and the glance surfaces (1.4 budget status, balances).
+
+#### The gap this closes
+Today the outbox only emits `transaction|account|budget|category.projected.v1`. **Notifications are never projected**, so no alert ever reaches FCM. `user_settings.firebaseUid` already exists as the per-user web-identity anchor.
+
+#### New outbox event types
+- [ ] `notification.projected.v1` — emitted whenever a row is inserted into `notifications` (anomaly, bill_overdue, budget_threshold, digest). Payload: `{ id, type, title, message, metadata, createdAt }` (no raw amounts beyond what's already in the message; respect existing sanitization policy).
+- [ ] `bill.projected.v1` — recurring bill summary (normalizedName, amountCents, frequency, nextExpectedDate, status). Confirmed/active bills only.
+- [ ] `budget_progress.projected.v1` — per-category {categoryName, budgetCents, spentCents, percentUsed, status}, refreshed post-import.
+
+#### NAS side
+- [ ] A single `NotificationsService.create()` chokepoint that (a) inserts the row, (b) best-effort enqueues `notification.projected.v1` to the outbox, (c) best-effort fires the HA webhook. All three independent; outbox/webhook failures never roll back the insert (see [[feedback-approach]]).
+- [ ] Migrate existing ad-hoc `db.insert(notifications)` calls to go through this chokepoint so projection is automatic.
+
+#### moneypulse-web side (Firebase)
+- [ ] Extend the `ingestSyncEvent` Cloud Function fan-out to handle the new event types → write to Firestore collections (`notifications`, `bills`, `budgetProgress`) keyed by `firebaseUid`.
+- [ ] On `notification.projected.v1`, look up the user's FCM tokens and send a push (title/message). Store token(s) in a `fcmTokens` subcollection registered by the web client on load.
+- [ ] Firestore security rules: user can read only their own docs. No writes from client.
+- [ ] `firestore.indexes.json`: add indexes for notifications (by createdAt desc) and bills (by nextExpectedDate).
+- [ ] Web UI (essentials only): notification list/bell, upcoming-bills glance card, budget-status glance card, balances. **No CRUD, no detection, no watch-folder, no chat.**
+
+#### HA webhook LAN allowlist (the ⚠️ blocker fix)
+- [ ] Add `haWebhookAllowLan: boolean` (default false) to `user_settings`, OR derive trust from an explicit env allowlist `HA_WEBHOOK_ALLOWED_HOSTS`.
+- [ ] When enabled/allowlisted, `isUrlSafe()` permits the configured HA host (e.g. `homeassistant.local`, `192.168.x.x`) while still blocking everything else.
+- [ ] Keep the default-deny posture for arbitrary URLs — this is a deliberate, user-scoped exception, not a removal of the SSRF guard.
+
+#### Sync verdict legend (used by every feature below)
+- `web: none` — NAS-only. Never projected.
+- `web: field-only` — affects an already-projected aggregate's fields (e.g. normalized merchant name on transactions). No new event/UI.
+- `web: summary+push` — gets a projected summary doc and/or FCM push, read-only glance UI.
+
+---
+
+### F.5 Remote AI / Mac-Ollama Resilience
+
+Ollama runs on the **dev Mac (M1)**, not the NAS. The NAS API calls it over the LAN. Because a laptop is intermittent (sleep, lid, off-network), AI must be **best-effort with reprocessing** — never blocking, never lossy for the work that matters (OCR/bill-parse results).
+
+**Powers**: F.1 phase-2 normalization, AI categorization, 2.1 receipt OCR, 2.2 NL chat, 3.1 digest generation.
+
+#### Addressing & config
+- [ ] `OLLAMA_URL=http://<mac-hostname>.local:11434` (mDNS). Document a router **DHCP reservation → static IP** fallback for networks where `.local` doesn't resolve from the NAS container.
+- [ ] Confirm the NAS Docker container can resolve mDNS (may need host networking or an explicit `extra_hosts` entry mapping the hostname to the reserved IP — document both).
+- [ ] On the Mac: `OLLAMA_HOST=0.0.0.0:11434` so it listens on the LAN (default is loopback-only). Document firewall scoping to the LAN subnet.
+- [ ] Existing graceful fallback in `ai-categorizer.service.ts` (returns null on failure) and the health probe in `health.controller.ts` stay — they already model "Ollama optional."
+
+#### Availability-aware processing
+- [ ] **Health gate**: before a batch AI step, check Ollama reachability (reuse the `/api/tags` probe). If down, skip the AI step and enqueue a retry job rather than spinning through per-item timeouts.
+- [ ] **Retry queue (BullMQ, already in stack)**: a `ai-enrichment` queue holds jobs for work that needs AI but couldn't get it (unnormalized merchants, receipts awaiting OCR, bills awaiting parse). Backoff + a reasonable max-attempts; dead-letter to a visible state, not silent drop.
+- [ ] **Reconcile-on-return**: a lightweight scheduled check (or the health probe transitioning down→up) drains the `ai-enrichment` queue when the Mac reappears.
+- [ ] **Distinguish lossy-OK vs must-retry**: categorization/normalization are lossy-OK (rule engine already produced a usable result). Receipt OCR and bill parsing are **must-retry** (no result without AI) — these MUST go through the retry queue.
+
+#### Security & privacy
+- [ ] Data leaving the NAS now traverses the LAN to the Mac. Still within the "no third-party cloud" principle (both boxes are user-owned), but note: transaction descriptions travel in plaintext HTTP over the LAN. Acceptable on a trusted home network; documented as a known property.
+- [ ] Ollama has no auth. Bind to the LAN, rely on network trust + firewall. Do not expose `11434` to WAN.
+
+#### Sync verdict
+`web: none` — AI is a NAS-side concern; only its *outputs* (normalized names, categories, OCR-linked attachments) ride existing projections.
+
+---
+
 ## Cross-Cutting Concerns
 
 ### Security
@@ -568,10 +645,12 @@ For each feature that affects the web companion:
 
 ## Implementation Order
 
-| Order | Feature | Effort | Depends On |
-|-------|---------|--------|------------|
-| 0.5 | CC payment table | 1 day | 0.3 (is_transfer) |
-| F.1 | Merchant name normalization | 2 days | — (foundational, do early) |
+| Order | Feature | Effort | Depends On | Sync verdict |
+|-------|---------|--------|------------|--------------|
+| 0.5 | CC payment table | 1 day | 0.3 (is_transfer) | summary+push (later) |
+| **F.4** | **Web projection + FCM push + HA webhook LAN fix** | **2-3 days** | — (prerequisite for ALL alerts) | n/a (is the contract) |
+| **F.5** | **Mac-Ollama resilience + retry queue** | **2 days** | — (prerequisite for ALL AI) | none |
+| F.1 | Merchant name normalization | 2 days | — (foundational, do early) | field-only |
 | 1.1 | Receipt/bill attachment (upload + watch folder) | 3-4 days | — |
 | 1.2 | Recurring bill detection + alerts | 3-4 days | F.1 (clean merchant names) |
 | 1.3 | Spending anomaly alerts | 2 days | F.1, 1.2 |
