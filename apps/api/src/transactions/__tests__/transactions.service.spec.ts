@@ -143,4 +143,71 @@ describe('TransactionsService', () => {
       expect(result.updatedCount).toBe(0);
     });
   });
+
+  describe('isTransfer in outbox payload', () => {
+    let mockOutbox: any;
+
+    beforeEach(async () => {
+      mockOutbox = { enqueue: vi.fn().mockResolvedValue(undefined) };
+
+      mockDb = {
+        update: vi.fn().mockReturnThis(),
+        set: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([]),
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      mockAliasMapper = { toAliasId: vi.fn().mockReturnValue('alias-abc123') };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          TransactionsService,
+          { provide: DATABASE_CONNECTION, useValue: mockDb },
+          { provide: OutboxService, useValue: mockOutbox },
+          { provide: AliasMapperService, useValue: mockAliasMapper },
+        ],
+      }).compile();
+
+      service = module.get<TransactionsService>(TransactionsService);
+    });
+
+    it('includes isTransfer: true when the category is a transfer category', async () => {
+      const txnWithTransferCat = { ...baseTxn, categoryId: 'cat-transfer' };
+      vi.spyOn(service, 'findById').mockResolvedValue(txnWithTransferCat as any);
+      mockDb.returning.mockResolvedValue([txnWithTransferCat]);
+      // category lookup returns isTransfer: true
+      mockDb.limit.mockResolvedValue([{ isTransfer: true }]);
+
+      await service.update('txn-1', 'user-1', { categoryId: 'cat-transfer' });
+
+      expect(mockOutbox.enqueue).toHaveBeenCalledOnce();
+      const payload = mockOutbox.enqueue.mock.calls[0][0].payload;
+      expect(payload.isTransfer).toBe(true);
+    });
+
+    it('includes isTransfer: false when the category is not a transfer category', async () => {
+      const txnWithGroceryCat = { ...baseTxn, categoryId: 'cat-grocery' };
+      vi.spyOn(service, 'findById').mockResolvedValue(txnWithGroceryCat as any);
+      mockDb.returning.mockResolvedValue([txnWithGroceryCat]);
+      // category lookup returns isTransfer: false
+      mockDb.limit.mockResolvedValue([{ isTransfer: false }]);
+
+      await service.update('txn-1', 'user-1', { categoryId: 'cat-grocery' });
+
+      const payload = mockOutbox.enqueue.mock.calls[0][0].payload;
+      expect(payload.isTransfer).toBe(false);
+    });
+
+    it('includes isTransfer: false when categoryId is null (no category lookup performed)', async () => {
+      vi.spyOn(service, 'findById').mockResolvedValue(baseTxn as any);
+      mockDb.returning.mockResolvedValue([baseTxn]); // baseTxn.categoryId = null
+
+      await service.update('txn-1', 'user-1', {});
+
+      const payload = mockOutbox.enqueue.mock.calls[0][0].payload;
+      expect(payload.isTransfer).toBe(false);
+    });
+  });
 });

@@ -166,15 +166,19 @@ export class SyncController {
     const rows = body.force
       ? await this.db.execute(sql`
           SELECT t.id, t.account_id, t.user_id, t.amount_cents,
-                 t.date, t.is_credit, t.category_id, t.tags
+                 t.date, t.is_credit, t.category_id, t.tags,
+                 COALESCE(c.is_transfer, false) AS is_transfer
           FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id
           WHERE ${whereExpr}
           ORDER BY t.date ASC
         `)
       : await this.db.execute(sql`
           SELECT t.id, t.account_id, t.user_id, t.amount_cents,
-                 t.date, t.is_credit, t.category_id, t.tags
+                 t.date, t.is_credit, t.category_id, t.tags,
+                 COALESCE(c.is_transfer, false) AS is_transfer
           FROM transactions t
+          LEFT JOIN categories c ON c.id = t.category_id
           WHERE ${whereExpr}
             AND NOT EXISTS (
               SELECT 1 FROM outbox_events o
@@ -193,6 +197,7 @@ export class SyncController {
       is_credit: boolean;
       category_id: string | null;
       tags: string[] | null;
+      is_transfer: boolean;
     }>;
 
     let enqueued = 0;
@@ -213,6 +218,7 @@ export class SyncController {
             date: new Date(txn.date).toISOString(),
             categoryId: txn.category_id ?? null,
             isCredit: txn.is_credit,
+            isTransfer: txn.is_transfer,
             isManual: false,
             tags: txn.tags ?? [],
           },

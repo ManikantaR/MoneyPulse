@@ -560,6 +560,7 @@ export class IngestionProcessor extends WorkerHost {
             date: new Date(transactions[i].date).toISOString(),
             categoryId: null,
             isCredit: transactions[i].isCredit,
+            isTransfer: false, // no category at import time
             isManual: false,
             tags: [],
           },

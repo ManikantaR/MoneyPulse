@@ -241,3 +241,79 @@ describe('SyncController — GET /sync/events', () => {
     expect(res.page).toBe(2);
   });
 });
+
+// ── POST /sync/backfill — isTransfer ─────────────────────────────────────────
+
+describe('SyncController — backfill/replay includes isTransfer', () => {
+  it('includes isTransfer: true when the category has is_transfer=true', async () => {
+    const outboxEnqueueSpy = vi.fn().mockResolvedValue(undefined);
+    const { controller, mockDb } = makeController({ outboxEnqueueSpy });
+
+    const row = {
+      id: 'txn-1',
+      account_id: 'acc-1',
+      user_id: 'user-1',
+      amount_cents: 10000,
+      date: '2025-01-15T00:00:00Z',
+      is_credit: true,
+      category_id: 'cat-transfer',
+      tags: null,
+      is_transfer: true,
+    };
+    mockDb.execute.mockResolvedValue({ rows: [row] });
+
+    await controller.backfill({ force: true, userId: 'user-1' });
+
+    expect(outboxEnqueueSpy).toHaveBeenCalledOnce();
+    const payload = outboxEnqueueSpy.mock.calls[0][0].payload;
+    expect(payload.isTransfer).toBe(true);
+    expect(payload.isCredit).toBe(true);
+  });
+
+  it('includes isTransfer: false when the category has is_transfer=false', async () => {
+    const outboxEnqueueSpy = vi.fn().mockResolvedValue(undefined);
+    const { controller, mockDb } = makeController({ outboxEnqueueSpy });
+
+    const row = {
+      id: 'txn-2',
+      account_id: 'acc-1',
+      user_id: 'user-1',
+      amount_cents: 5000,
+      date: '2025-01-16T00:00:00Z',
+      is_credit: false,
+      category_id: 'cat-grocery',
+      tags: [],
+      is_transfer: false,
+    };
+    mockDb.execute.mockResolvedValue({ rows: [row] });
+
+    await controller.backfill({ force: true, userId: 'user-1' });
+
+    const payload = outboxEnqueueSpy.mock.calls[0][0].payload;
+    expect(payload.isTransfer).toBe(false);
+  });
+
+  it('includes isTransfer: false when category_id is null (COALESCE default)', async () => {
+    const outboxEnqueueSpy = vi.fn().mockResolvedValue(undefined);
+    const { controller, mockDb } = makeController({ outboxEnqueueSpy });
+
+    const row = {
+      id: 'txn-3',
+      account_id: 'acc-1',
+      user_id: 'user-1',
+      amount_cents: 3000,
+      date: '2025-01-17T00:00:00Z',
+      is_credit: false,
+      category_id: null,
+      tags: [],
+      is_transfer: false,
+    };
+    mockDb.execute.mockResolvedValue({ rows: [row] });
+
+    await controller.backfill({ force: true, userId: 'user-1' });
+
+    const payload = outboxEnqueueSpy.mock.calls[0][0].payload;
+    expect(payload.isTransfer).toBe(false);
+    expect(payload.categoryId).toBeNull();
+  });
+});

@@ -437,6 +437,23 @@ export class TransactionsService {
 
   /**
    * Enqueue a safe, PII-free projection event within an existing DB transaction.
+   * Look up the is_transfer flag for a category. Returns false when the
+   * transaction has no category or the category row is not found.
+   */
+  private async resolveIsTransfer(
+    executor: any,
+    categoryId: string | null | undefined,
+  ): Promise<boolean> {
+    if (!categoryId) return false;
+    const rows = await executor
+      .select({ isTransfer: schema.categories.isTransfer })
+      .from(schema.categories)
+      .where(eq(schema.categories.id, categoryId))
+      .limit(1);
+    return rows[0]?.isTransfer ?? false;
+  }
+
+  /**
    * Alias mapping errors propagate so the outer transaction can roll back atomically.
    * If ALIAS_SECRET is missing, the domain write is rolled back and the caller receives an error.
    */
@@ -445,6 +462,7 @@ export class TransactionsService {
     eventType: string,
     txn: any,
   ): Promise<void> {
+    const isTransfer = await this.resolveIsTransfer(tx, txn.categoryId);
     const payload: Record<string, unknown> = {
       transactionAliasId: this.aliasMapper.toAliasId('transaction', txn.id),
       accountAliasId: this.aliasMapper.toAliasId('account', txn.accountId),
@@ -452,6 +470,7 @@ export class TransactionsService {
       date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
       categoryId: txn.categoryId ?? null,
       isCredit: txn.isCredit,
+      isTransfer,
       isManual: txn.isManual ?? false,
       tags: txn.tags ?? [],
     };
@@ -476,6 +495,7 @@ export class TransactionsService {
     txn: any,
   ): Promise<void> {
     try {
+      const isTransfer = await this.resolveIsTransfer(this.db, txn.categoryId);
       const payload: Record<string, unknown> = {
         transactionAliasId: this.aliasMapper.toAliasId('transaction', txn.id),
         accountAliasId: this.aliasMapper.toAliasId('account', txn.accountId),
@@ -483,6 +503,7 @@ export class TransactionsService {
         date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
         categoryId: txn.categoryId ?? null,
         isCredit: txn.isCredit,
+        isTransfer,
         isManual: txn.isManual ?? false,
         tags: txn.tags ?? [],
       };
