@@ -4,8 +4,10 @@ import { NotificationsController } from './notifications.controller';
 import { AlertEngineService } from './alert-engine.service';
 import { WebhookService } from './webhook.service';
 import { EmailService } from './email.service';
+import { SyncModule } from '../sync/sync.module';
 
 @Module({
+  imports: [SyncModule],
   providers: [
     NotificationsService,
     AlertEngineService,

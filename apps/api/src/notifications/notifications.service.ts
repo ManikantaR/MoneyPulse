@@ -1,8 +1,10 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { WebhookService } from './webhook.service';
+import { OutboxService } from '../sync/outbox.service';
+import { AliasMapperService } from '../sync/alias-mapper.service';
 
 interface CreateNotificationInput {
   userId: string;
@@ -15,9 +17,13 @@ interface CreateNotificationInput {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
     private readonly webhookService: WebhookService,
+    private readonly outbox: OutboxService,
+    private readonly aliasMapper: AliasMapperService,
   ) {}
 
   async findByUser(userId: string, limit = 50) {
@@ -73,6 +79,7 @@ export class NotificationsService {
   }
 
   async createAndDispatch(input: CreateNotificationInput) {
+    // Domain write — must always succeed
     const [notification] = await this.db
       .insert(schema.notifications)
       .values({
@@ -87,16 +94,42 @@ export class NotificationsService {
       })
       .returning();
 
-    // Fire webhook asynchronously (don't block)
+    // Best-effort outbox projection — never blocks the domain write
+    try {
+      await this.outbox.enqueue({
+        eventType: 'notification.projected.v1',
+        aggregateType: 'notification',
+        aggregateId: notification.id,
+        userId: input.userId,
+        payload: {
+          notificationAliasId: this.aliasMapper.toAliasId('notification', notification.id),
+          type: notification.type,
+          title: notification.title,
+          body: notification.message, // web contract uses 'body', not 'message'
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`notification outbox enqueue failed: ${(err as Error).message}`);
+    }
+
+    // Best-effort HA webhook — fire-and-forget; webhookSent updated only on 2xx
+    const notificationId = notification.id;
     this.webhookService
       .sendWebhook(input.userId, {
-        event: input.type,
         title: input.title,
         message: input.message,
-        ...input.metadata,
+        type: input.type,
       })
-      .catch((err) => {
-        console.error('Webhook dispatch failed:', err.message);
+      .then((delivered) => {
+        if (delivered) {
+          return this.db
+            .update(schema.notifications)
+            .set({ webhookSent: true })
+            .where(eq(schema.notifications.id, notificationId));
+        }
+      })
+      .catch((err: Error) => {
+        this.logger.warn(`HA webhook dispatch error: ${err.message}`);
       });
 
     return notification;

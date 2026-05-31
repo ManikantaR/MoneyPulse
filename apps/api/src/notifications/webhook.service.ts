@@ -11,12 +11,26 @@ export class WebhookService {
 
   constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
 
-  private isUrlSafe(urlStr: string): boolean {
+  private getAllowedHosts(): Set<string> {
+    const raw = process.env.HA_WEBHOOK_ALLOWED_HOSTS ?? '';
+    return new Set(
+      raw
+        .split(',')
+        .map((h) => h.trim().toLowerCase())
+        .filter(Boolean),
+    );
+  }
+
+  isUrlSafe(urlStr: string): boolean {
     try {
       const url = new URL(urlStr);
       if (!this.ALLOWED_PROTOCOLS.includes(url.protocol)) return false;
-      // Block private/internal IPs
       const hostname = url.hostname.toLowerCase();
+
+      // Explicit HA allowlist takes priority over the private-IP block
+      if (this.getAllowedHosts().has(hostname)) return true;
+
+      // Block private/internal IPs (SSRF guard)
       if (
         hostname === 'localhost' ||
         hostname === '127.0.0.1' ||
@@ -40,7 +54,7 @@ export class WebhookService {
   async sendWebhook(
     userId: string,
     payload: Record<string, any>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const settings = await this.db
       .select()
       .from(schema.userSettings)
@@ -48,15 +62,15 @@ export class WebhookService {
       .limit(1);
 
     const webhookUrl = settings[0]?.haWebhookUrl;
-    if (!webhookUrl) return;
+    if (!webhookUrl) return false;
 
     // Decrypt the stored (encrypted) webhook URL
     const decryptedUrl = decryptField(webhookUrl);
-    if (!decryptedUrl) return;
+    if (!decryptedUrl) return false;
 
     if (!this.isUrlSafe(decryptedUrl)) {
       this.logger.warn(`Blocked unsafe webhook URL for user ${userId}`);
-      return;
+      return false;
     }
 
     try {
@@ -69,9 +83,12 @@ export class WebhookService {
 
       if (!res.ok) {
         this.logger.warn(`Webhook returned ${res.status} for user ${userId}`);
+        return false;
       }
+      return true;
     } catch (err: any) {
       this.logger.error(`Webhook failed for user ${userId}: ${err.message}`);
+      return false;
     }
   }
 }
