@@ -46,6 +46,14 @@ export class BillsController {
     return { data };
   }
 
+  @Post('redetect')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-detect recurring bills and deduplicate normalized-name variants' })
+  async redetect(@CurrentUser() user: AuthTokenPayload) {
+    const data = await this.billsService.redetectAndDedupe(user.sub);
+    return { data };
+  }
+
   @Post('check-missed')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Check for missed/overdue bills and send notifications' })

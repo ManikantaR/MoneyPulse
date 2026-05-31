@@ -369,6 +369,107 @@ export class BillsService {
       .limit(5);
   }
 
+  // ── Deduplicate ───────────────────────────────────────────
+
+  /**
+   * Merge duplicate bills that share the same normalizedName (case-insensitive).
+   * After re-normalization, previously distinct merchantPatterns may collapse to the same name.
+   * Survivor selection: confirmed > active > latest updatedAt.
+   * Merges lastSeenDate and lastAmountCents from the most recent duplicate into the survivor.
+   * Idempotent — safe to run multiple times.
+   */
+  async deduplicateBills(userId: string): Promise<{ deduped: number; removed: number }> {
+    const allBills = await this.db
+      .select()
+      .from(schema.recurringBills)
+      .where(eq(schema.recurringBills.userId, userId));
+
+    // Group by normalizedName (lowercased)
+    type Bill = (typeof allBills)[number];
+    const byName = new Map<string, Bill[]>();
+    for (const bill of allBills) {
+      const key = (bill.normalizedName ?? '').toLowerCase().trim();
+      if (!key) continue;
+      if (!byName.has(key)) byName.set(key, []);
+      byName.get(key)!.push(bill);
+    }
+
+    let deduped = 0;
+    let removed = 0;
+
+    for (const [, group] of byName) {
+      if (group.length <= 1) continue;
+
+      // Sort by survivor priority: confirmed first, then active, then latest updatedAt
+      group.sort((a, b) => {
+        if (a.isConfirmed !== b.isConfirmed) return a.isConfirmed ? -1 : 1;
+        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+
+      const survivor = group[0];
+      const duplicates = group.slice(1);
+
+      // Find the most recent lastSeenDate and corresponding amount across all group members
+      let mostRecentSeen = survivor.lastSeenDate ? new Date(survivor.lastSeenDate) : null;
+      let mostRecentAmount = survivor.lastAmountCents;
+
+      for (const dup of duplicates) {
+        if (dup.lastSeenDate) {
+          const dupDate = new Date(dup.lastSeenDate);
+          if (!mostRecentSeen || dupDate > mostRecentSeen) {
+            mostRecentSeen = dupDate;
+            mostRecentAmount = dup.lastAmountCents;
+          }
+        }
+      }
+
+      // Merge freshest detection data into survivor
+      await this.db
+        .update(schema.recurringBills)
+        .set({
+          lastSeenDate: mostRecentSeen ?? survivor.lastSeenDate,
+          lastAmountCents: mostRecentAmount ?? survivor.lastAmountCents,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.recurringBills.id, survivor.id));
+
+      // Deactivate duplicates (soft-disable, not hard-delete to preserve history)
+      for (const dup of duplicates) {
+        await this.db
+          .update(schema.recurringBills)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(schema.recurringBills.id, dup.id));
+        removed++;
+      }
+
+      deduped++;
+      this.logger.log(
+        `Deduped bills for "${survivor.normalizedName}": kept ${survivor.id}, deactivated ${duplicates.length} duplicate(s)`,
+      );
+    }
+
+    return { deduped, removed };
+  }
+
+  /**
+   * Re-detect recurring bills and deduplicate any variants that collapsed under the
+   * same normalizedName after merchant re-normalization.
+   */
+  async redetectAndDedupe(userId: string): Promise<{
+    detected: number;
+    newBills: number;
+    existingSkipped: number;
+    deduped: number;
+    removed: number;
+  }> {
+    const detectResult = await this.detectRecurring(userId);
+    const dedupeResult = await this.deduplicateBills(userId);
+    return { ...detectResult, ...dedupeResult };
+  }
+
   // ── Private ───────────────────────────────────────────────
 
   private async findOwned(id: string, userId: string) {

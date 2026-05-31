@@ -77,7 +77,7 @@ function BillMobileCard({
       fields={[
         { primary: true, value: bill.normalizedName },
         { amount: true, value: formatCents(bill.expectedAmountCents) },
-        { label: 'Pattern', value: bill.merchantPattern },
+        { label: 'Pattern', value: bill.merchantPattern !== bill.normalizedName ? bill.merchantPattern : undefined },
         {
           label: 'Frequency',
           value: FREQ_LABELS[bill.frequency as BillFrequency] ?? bill.frequency,
@@ -153,7 +153,9 @@ function BillRow({
     <tr className="border-b border-[var(--border)] hover:bg-[var(--muted)]/30 transition-colors">
       <td className="px-4 py-3">
         <p className="font-medium text-sm">{bill.normalizedName}</p>
-        <p className="text-xs text-[var(--muted-foreground)]">{bill.merchantPattern}</p>
+        {bill.merchantPattern !== bill.normalizedName && (
+          <p className="text-xs text-[var(--muted-foreground)]">{bill.merchantPattern}</p>
+        )}
       </td>
       <td className="px-4 py-3 text-sm tabular-nums">
         {formatCents(bill.expectedAmountCents)}
