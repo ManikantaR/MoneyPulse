@@ -140,6 +140,10 @@ export const DEFAULT_CATEGORIES: SeedCategory[] = [
 
   // ── Savings & Investments ─────────────────────────────────
   { name: 'Savings & Investments', icon: '📈', color: '#059669', sortOrder: 24 },
+  { name: '529 College Savings',   icon: '🎓', color: '#10b981', parentName: 'Savings & Investments', sortOrder: 1, isTransfer: true },
+  { name: 'Retirement (401k/IRA)', icon: '🏦', color: '#047857', parentName: 'Savings & Investments', sortOrder: 2, isTransfer: true },
+  { name: 'Brokerage',             icon: '📊', color: '#34d399', parentName: 'Savings & Investments', sortOrder: 3, isTransfer: true },
+  { name: 'Emergency Fund',        icon: '🛟', color: '#6ee7b7', parentName: 'Savings & Investments', sortOrder: 4, isTransfer: true },
 
   // ── Transfers ─────────────────────────────────────────────
   { name: 'Transfers',           icon: '🔄', color: '#6b7280', sortOrder: 25, isTransfer: true },
