@@ -42,3 +42,14 @@ export function useMarkAllRead() {
     },
   });
 }
+
+/** Send a test notification through the full pipeline (bell + outbox + HA webhook). */
+export function useSendTestNotification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ data: { id: string } }>('/notifications/test'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}

@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useSendTestNotification } from '@/lib/hooks/useNotifications';
 
 export default function SettingsPage() {
   const { user, settings, refetchUser, logout } = useAuth();
@@ -21,6 +22,7 @@ export default function SettingsPage() {
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const sendTest = useSendTestNotification();
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -147,6 +149,28 @@ export default function SettingsPage() {
               placeholder="Paste your Firebase Auth UID here"
               className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm font-mono placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
             />
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-2xl bg-[var(--surface-container-low)] p-6">
+          <h2 className="text-lg font-bold">Diagnostics</h2>
+          <div>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Send a test notification through the full pipeline — in-app bell, outbox sync, and Home Assistant webhook.
+            </p>
+            <button
+              type="button"
+              disabled={sendTest.isPending}
+              onClick={() =>
+                sendTest.mutate(undefined, {
+                  onSuccess: () => setMessage('Test sent — check your phone, Home Assistant, and the bell.'),
+                  onError: () => setMessage('Failed to send test notification'),
+                })
+              }
+              className="mt-3 rounded-full border border-[var(--primary)] px-5 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-[var(--primary)] hover:text-[var(--primary-foreground)] transition-colors disabled:opacity-50"
+            >
+              {sendTest.isPending ? 'Sending…' : 'Send test notification'}
+            </button>
           </div>
         </section>
 

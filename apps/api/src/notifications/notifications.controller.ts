@@ -50,4 +50,17 @@ export class NotificationsController {
     await this.notificationsService.markAllRead(user.sub);
     return { data: { read: true } };
   }
+
+  @Post('test')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Send a test notification through the full pipeline' })
+  async sendTest(@CurrentUser() user: AuthTokenPayload) {
+    const notification = await this.notificationsService.createAndDispatch({
+      userId: user.sub,
+      type: 'test',
+      title: 'MoneyPulse test',
+      message: `Test notification sent at ${new Date().toLocaleTimeString()}.`,
+    });
+    return { data: { id: notification.id } };
+  }
 }

@@ -32,6 +32,7 @@
 | 20 | Spending Streaks & Gamification | [Prompt 20](#prompt-20--spending-streaks--gamification) | Deploy only | Tier 3 |
 | **21** | **moneypulse-web PWA (installable + iOS push)** | [Prompt 21](#prompt-21--moneypulse-web-pwa-installable--ios-background-push) | web `firebase deploy` | web only — pairs with 6 |
 | 22 | Web Bills Glance (`bill.projected.v1`) — OPTIONAL | [Prompt 22](#prompt-22--web-bills-glance-billprojectedv1--optional) | NAS deploy + web `firebase deploy` | optional — 22a NAS + 22b Web |
+| 23 | Send Test Notification (Settings button) | [Prompt 23](#prompt-23--send-test-notification-settings-button) | NAS deploy | dev/test helper — NAS only |
 
 > **Architecture rules (from PHASE10 spec §F.4/§F.5) every prompt below obeys:**
 > - **Web is essentials + push, not parity.** Each prompt states a **Sync verdict**: `web: none` (NAS-only), `web: field-only` (rides an existing projection), or `web: summary+push` (gets a projected summary + FCM). Do not port NAS management UIs to moneypulse-web.
@@ -1940,6 +1941,70 @@ Add a composite index: collectionGroup `bills`, fields `userAliasId` ASC + `next
 
 ## Verification (MANDATORY — pnpm test then pnpm build)
 ### Tests — fanOutBill upserts the doc with the right fields; `deleted:true` removes it; rules deny browser writes to bills and cross-user reads; use-bills returns sorted bills. ### Rubber duck (/rubber-duck) — read-only collection, index present, no PII. ### Deploy — `firebase deploy --only functions,firestore:rules,firestore:indexes,hosting`. ### Manual — [ ] confirm a bill on NAS → appears in web Upcoming Bills; [ ] overdue bill shows the badge; [ ] deactivating on NAS removes it from web.
+```
+
+---
+
+## Prompt 23 — Send Test Notification (Settings button)
+
+> **Why**: There's no one-click way to verify the notification pipeline (in-app bell → outbox → FCM push → HA voice/webhook). Today you must import a >$500 debit to trigger an anomaly. This adds a Settings button that fires a dummy notification through the **real** `NotificationsService.createAndDispatch` chokepoint — so it exercises the entire stack at once. **Sync verdict: `web: none`** (the test notification rides the existing `notification.projected.v1` projection, so it also validates FCM + HA automatically — that's the point).
+
+### Prompt (copy this into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need a "Send test notification" feature in MoneyPulse to verify the full notification pipeline (in-app bell, outbox → FCM push, HA webhook/voice) with one click. It must go through the existing NotificationsService.createAndDispatch chokepoint so it exercises the real path. Follow existing patterns exactly. Do NOT read .env or include secrets.
+
+## API: add an endpoint to `apps/api/src/notifications/notifications.controller.ts`
+
+Match the existing controller patterns (it uses `@Controller('notifications')`, `@UseGuards(JwtAuthGuard)`, `@CurrentUser()`, `@ApiOperation`, and wraps responses in `{ data }`).
+
+Add:
+
+@Post('test')
+@HttpCode(200)
+@ApiOperation({ summary: 'Send a test notification through the full pipeline' })
+async sendTest(@CurrentUser() user: AuthTokenPayload) {
+  const notification = await this.notificationsService.createAndDispatch({
+    userId: user.sub,
+    type: 'test',
+    title: 'MoneyPulse test',
+    message: `Test notification sent at ${new Date().toLocaleTimeString()}.`,
+  });
+  return { data: { id: notification.id } };
+}
+
+- `createAndDispatch(input)` already exists and takes `{ userId, type, title, message, metadata? }`. It inserts the row, best-effort enqueues `notification.projected.v1` (→ web/FCM), and best-effort fires the HA webhook. Reuse it AS-IS — do not duplicate that logic.
+- No new Zod schema needed (no request body). Keep it `@UseGuards(JwtAuthGuard)` like the rest of the controller (current user only — not admin-restricted, since it only creates the caller's own notification).
+
+## Frontend: add a button to the MoneyPulse web Settings page
+
+Find the existing settings page under `apps/web/src/app/(protected)/settings/` (the one with the HA webhook URL field). Add a small "Notifications" / "Diagnostics" section with a **"Send test notification"** button.
+
+- Add a hook in `apps/web/src/lib/hooks/useNotifications.ts` (or the existing notifications hook file): `useSendTestNotification()` — a `useMutation` that POSTs to `/notifications/test` and on success invalidates `['notifications']` and `['notifications','unread-count']` so the bell updates.
+- Button behavior: on click, call the mutation; show a transient success message like "Test sent — check your phone, Home Assistant, and the bell." and a failure message on error. Use the existing button/feedback styling on that page.
+- Place it near the HA webhook URL setting so it reads as "configure webhook → test it".
+
+## Important
+- This intentionally hits the SAME code path as real alerts, so a successful test proves the in-app bell, the outbox projection (FCM push on the web companion), and the HA webhook/voice all work.
+- Type is `test` — the HA automation announces it by default (no `moneypulse_mute_test` toggle exists), which is the desired behavior for a test.
+- Do NOT bypass createAndDispatch (e.g., don't insert directly or call the webhook directly) — the whole value is testing the real chokepoint.
+
+## After implementation — verification (MANDATORY)
+
+### Step 1: Build — `pnpm build`, fix all TS errors.
+### Step 2: Tests
+- Controller test: `POST /notifications/test` calls `notificationsService.createAndDispatch` with `{ userId: <caller>, type: 'test', ... }` and returns `{ data: { id } }`.
+- Ownership: the created notification uses the authenticated user's id (not a passed-in one).
+### Step 3: Rubber duck — reuses createAndDispatch (no duplicated dispatch logic), guarded by JwtAuthGuard, response shape `{ data }`, hook invalidates the bell queries.
+### Step 4: Deploy — `./deploy-to-nas.sh`.
+### Step 5: No SQL migration (uses existing notifications table).
+### Step 6: Manual test checklist
+- [ ] Settings page shows a "Send test notification" button
+- [ ] Click it → success message appears
+- [ ] Notification bell shows the "MoneyPulse test" alert
+- [ ] Sync Admin shows a `notification.projected.v1` event delivered
+- [ ] Phone receives the FCM push (if a device token exists)
+- [ ] Home Assistant speaks it + creates a persistent notification (if not quiet hours)
 ```
 
 ---

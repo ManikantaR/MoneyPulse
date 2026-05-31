@@ -44,11 +44,11 @@ Until then you can still build and test the **HA side** with `curl` (see [Testin
 
 ## Facts to gather first
 
-| Need | Where to find it |
-|---|---|
-| **HA IP + port** | HA → Settings → System → Network (or router DHCP table). Default port `8123`. |
-| **Voice device entity_id** | HA → Settings → Devices & Services → Entities → search `assist_satellite`. Looks like `assist_satellite.home_assistant_voice_xxxxx`. |
-| **NAS → HA reachability** | From the NAS shell: `curl -v http://<HA_IP>:8123/` — a 404/401 is success (port open across VLANs). A hang = VLAN firewall rule needed (allow NAS_VLAN → HA_IP:8123/tcp). |
+| Need                       | Where to find it                                                                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HA IP + port**           | HA → Settings → System → Network (or router DHCP table). Default port `8123`.                                                                                             |
+| **Voice device entity_id** | HA → Settings → Devices & Services → Entities → search `assist_satellite`. Looks like `assist_satellite.home_assistant_voice_xxxxx`.                                      |
+| **NAS → HA reachability**  | From the NAS shell: `curl -v http://<HA_IP>:8123/` — a 404/401 is success (port open across VLANs). A hang = VLAN firewall rule needed (allow NAS_VLAN → HA_IP:8123/tcp). |
 
 Throughout this doc, replace `<HA_IP>`, `<webhook_id>`, and `assist_satellite.home_assistant_voice_xxxxx` with your real values.
 
@@ -65,18 +65,18 @@ alias: MoneyPulse - Incoming Notification
 description: Receives MoneyPulse webhook and routes to voice / light / notification / dashboard
 triggers:
   - trigger: webhook
-    webhook_id: "<webhook_id>"      # e.g. output of: openssl rand -hex 24
+    webhook_id: '<webhook_id>' # e.g. output of: openssl rand -hex 24
     allowed_methods:
       - POST
-    local_only: true                # NAS is on a local (RFC1918) VLAN — keep true
+    local_only: true # NAS is on a local (RFC1918) VLAN — keep true
 conditions: []
 actions:
   # (A) ALWAYS: persistent notification in HA's notification center (reliable backstop)
   - action: persistent_notification.create
     data:
-      title: "💰 {{ trigger.json.title }}"
-      message: "{{ trigger.json.message }}"
-      notification_id: "moneypulse_{{ trigger.json.type }}"
+      title: '💰 {{ trigger.json.title }}'
+      message: '{{ trigger.json.message }}'
+      notification_id: 'moneypulse_{{ trigger.json.type }}'
 
   # (B) ALWAYS: update the dashboard "latest alert" text helper (see step 4)
   - action: input_text.set_value
@@ -96,11 +96,11 @@ actions:
         sequence:
           - action: light.turn_on
             target:
-              entity_id: light.office_lamp      # ← change to your light
+              entity_id: light.office_lamp # ← change to your light
             data:
-              rgb_color: [255, 60, 0]           # alert orange
+              rgb_color: [255, 60, 0] # alert orange
               brightness_pct: 100
-          - delay: "00:00:03"
+          - delay: '00:00:03'
           - action: light.turn_off
             target:
               entity_id: light.office_lamp
@@ -110,8 +110,8 @@ actions:
       - conditions:
           # quiet hours: announce only between 08:00 and 21:00
           - condition: time
-            after: "08:00:00"
-            before: "21:00:00"
+            after: '08:00:00'
+            before: '21:00:00'
           # per-type mute: announce unless input_boolean.moneypulse_voice_<type> is explicitly 'off'
           # (a missing toggle = announces, so new types speak by default)
           - condition: template
@@ -120,15 +120,16 @@ actions:
         sequence:
           - action: assist_satellite.announce
             target:
-              entity_id: assist_satellite.home_assistant_voice_xxxxx   # ← your Voice PE
+              entity_id: assist_satellite.home_assistant_voice_xxxxx # ← your Voice PE
             data:
-              message: "{{ trigger.json.title }}. {{ trigger.json.message }}"
-              preannounce: true     # set false to skip the chime
-mode: queued      # handle bursts (e.g. several anomalies from one import) one at a time
+              message: '{{ trigger.json.title }}. {{ trigger.json.message }}'
+              preannounce: true # set false to skip the chime
+mode: queued # handle bursts (e.g. several anomalies from one import) one at a time
 max: 10
 ```
 
 Notes:
+
 - `local_only: true` is correct for your setup — cross-VLAN RFC1918 traffic still counts as "local". You never expose anything to the internet.
 - `mode: queued` prevents announcements from stomping each other when an import produces several alerts at once.
 - ⚠️ Voice PE's `announce` has a [known drop bug](https://github.com/home-assistant/core/issues/142027) (10–90% missed). Action (A) persistent notification is your reliable backstop.
@@ -139,42 +140,42 @@ Notes:
 
 Create one `input_boolean` per notification type you might want to silence. HA → Settings → Devices & Services → **Helpers** → Create Helper → Toggle. Name each **exactly** `moneypulse_voice_<type>` so the automation's template finds it:
 
-| Helper entity_id | Mutes voice for |
-|---|---|
-| `input_boolean.moneypulse_voice_spending_anomaly` | Unusual spend / large purchase |
-| `input_boolean.moneypulse_voice_bill_overdue` | Missed/overdue bills |
-| `input_boolean.moneypulse_voice_budget_threshold` | Budget 80–100% alerts |
-| `input_boolean.moneypulse_voice_cashflow_low` | Low projected balance |
-| `input_boolean.moneypulse_voice_subscription_price_increase` | Subscription price hikes |
-| `input_boolean.moneypulse_voice_digest` | Daily/weekly digest |
-| `input_boolean.moneypulse_voice_streak` | Streak / gamification |
+| Helper entity_id                                             | Mutes voice for                |
+| ------------------------------------------------------------ | ------------------------------ |
+| `input_boolean.moneypulse_voice_spending_anomaly`            | Unusual spend / large purchase |
+| `input_boolean.moneypulse_voice_bill_overdue`                | Missed/overdue bills           |
+| `input_boolean.moneypulse_voice_budget_threshold`            | Budget 80–100% alerts          |
+| `input_boolean.moneypulse_voice_cashflow_low`                | Low projected balance          |
+| `input_boolean.moneypulse_voice_subscription_price_increase` | Subscription price hikes       |
+| `input_boolean.moneypulse_voice_digest`                      | Daily/weekly digest            |
+| `input_boolean.moneypulse_voice_streak`                      | Streak / gamification          |
 
-**Default ON** (toggle on) = speaks. Flip a toggle **off** when a type gets annoying. A type with *no* matching helper still speaks (default-on), so you only create toggles for things you want the option to silence.
+**Default ON** (toggle on) = speaks. Flip a toggle **off** when a type gets annoying. A type with _no_ matching helper still speaks (default-on), so you only create toggles for things you want the option to silence.
 
 Or create them all at once in `configuration.yaml`:
 
 ```yaml
 input_boolean:
   moneypulse_voice_spending_anomaly:
-    name: "MoneyPulse voice: anomalies"
+    name: 'MoneyPulse voice: anomalies'
     initial: on
   moneypulse_voice_bill_overdue:
-    name: "MoneyPulse voice: overdue bills"
+    name: 'MoneyPulse voice: overdue bills'
     initial: on
   moneypulse_voice_budget_threshold:
-    name: "MoneyPulse voice: budget alerts"
+    name: 'MoneyPulse voice: budget alerts'
     initial: on
   moneypulse_voice_cashflow_low:
-    name: "MoneyPulse voice: low balance"
+    name: 'MoneyPulse voice: low balance'
     initial: on
   moneypulse_voice_subscription_price_increase:
-    name: "MoneyPulse voice: subscription price"
+    name: 'MoneyPulse voice: subscription price'
     initial: on
   moneypulse_voice_digest:
-    name: "MoneyPulse voice: digest"
+    name: 'MoneyPulse voice: digest'
     initial: on
   moneypulse_voice_streak:
-    name: "MoneyPulse voice: streaks"
+    name: 'MoneyPulse voice: streaks'
     initial: on
 ```
 
@@ -189,7 +190,7 @@ HA → Helpers → Create Helper → **Text** → name it so the entity is `inpu
 ```yaml
 input_text:
   moneypulse_last_alert:
-    name: "MoneyPulse last alert"
+    name: 'MoneyPulse last alert'
     max: 255
 ```
 
@@ -228,23 +229,23 @@ This gives you the latest alert plus the per-type mute switches in one place.
 
 ## 5. Daily spoken digest
 
-**Easiest (recommended)** — no extra HA work: MoneyPulse's digest feature (Prompt 13) sends a notification with `type: digest` on your schedule. It flows through the same webhook and gets announced (subject to quiet hours + the `digest` mute toggle). To control *when* it speaks, schedule the digest send time in MoneyPulse.
+**Easiest (recommended)** — no extra HA work: MoneyPulse's digest feature (Prompt 13) sends a notification with `type: digest` on your schedule. It flows through the same webhook and gets announced (subject to quiet hours + the `digest` mute toggle). To control _when_ it speaks, schedule the digest send time in MoneyPulse.
 
 **Richer (optional, needs Prompt 15 HA REST sensor)** — have HA pull a summary and compose its own announcement:
 
 ```yaml
 # configuration.yaml — requires the Prompt 15 endpoint GET /api/ha/sensor + token
 rest:
-  - resource: "http://<NAS_IP>:4000/api/ha/sensor"
+  - resource: 'http://<NAS_IP>:4000/api/ha/sensor'
     headers:
       X-HA-Token: !secret moneypulse_ha_token
     scan_interval: 1800
     sensor:
-      - name: "MoneyPulse Today Spending"
-        value_template: "{{ value_json.today_spending_cents / 100 }}"
-        unit_of_measurement: "USD"
-      - name: "MoneyPulse Overdue Bills"
-        value_template: "{{ value_json.overdue_bill_count }}"
+      - name: 'MoneyPulse Today Spending'
+        value_template: '{{ value_json.today_spending_cents / 100 }}'
+        unit_of_measurement: 'USD'
+      - name: 'MoneyPulse Overdue Bills'
+        value_template: '{{ value_json.overdue_bill_count }}'
 ```
 
 ```yaml
@@ -252,7 +253,7 @@ rest:
 alias: MoneyPulse - Spoken Daily Digest
 triggers:
   - trigger: time
-    at: "20:00:00"
+    at: '20:00:00'
 actions:
   - action: assist_satellite.announce
     target:
@@ -291,10 +292,91 @@ Expect: persistent notification appears, dashboard text updates, light flashes (
 **Test end to end** (after Prompt 6a + env set): trigger a real alert in MoneyPulse — e.g. import a statement with a >$500 debit — and confirm HA reacts.
 
 **Troubleshooting:**
+
 - Nothing happens → check HA → Settings → Automations → the automation's **Traces** to see if the webhook fired and which `choose` branches ran.
 - `curl` hangs → VLAN firewall: allow NAS_VLAN → `<HA_IP>:8123/tcp`.
 - Real MoneyPulse alerts don't arrive but `curl` works → `HA_WEBHOOK_ALLOWED_HOSTS` missing the HA IP, or Prompt 6a not deployed (the URL is being blocked by `isUrlSafe()`).
 - Voice silent but notification appears → quiet hours (9pm–8am), a muted toggle, or the Voice PE drop bug — check Traces.
+
+---
+
+## Reference: deployed package (tested 2026-05-31)
+
+The working `packages/moneypulse.yaml` on the live HA (`x.x.x.x`). Notes specific to this deployment:
+
+- Reuses the existing **`input_boolean.quiet_hours`** (announce only when it's `off`) instead of hardcoded times.
+- Mute switches use **`moneypulse_mute_<type>`** semantics: `off` = speaks (default), `on` = silenced — so newly-created toggles speak by default and mutes persist across restarts.
+- Announces on **both** the HA Voice PE (`assist_satellite.home_assistant_voice_0a4a16_assist_satellite`) **and** the Alexa Echos, using the proven `snapshot → volume_set → notify.alexa_media(announce) → delay → restore` pattern (bare announce can play silently if the Echo volume is low).
+- The visual-cue light block was dropped (no dedicated light wired yet).
+
+```yaml
+input_text:
+  moneypulse_last_alert:
+    name: MoneyPulse last alert
+    max: 255
+
+input_boolean: # mute switches: OFF = speaks (default), ON = silenced
+  moneypulse_mute_spending_anomaly: { name: 'Mute MoneyPulse: anomalies' }
+  moneypulse_mute_bill_overdue: { name: 'Mute MoneyPulse: overdue bills' }
+  moneypulse_mute_budget_threshold: { name: 'Mute MoneyPulse: budget alerts' }
+  moneypulse_mute_cashflow_low: { name: 'Mute MoneyPulse: low balance' }
+  moneypulse_mute_subscription_price_increase:
+    { name: 'Mute MoneyPulse: subscriptions' }
+  moneypulse_mute_digest: { name: 'Mute MoneyPulse: digest' }
+  moneypulse_mute_streak: { name: 'Mute MoneyPulse: streaks' }
+
+automation:
+  - alias: MoneyPulse - Incoming Notification
+    id: moneypulse_incoming_notification
+    mode: queued
+    max: 10
+    triggers:
+      - trigger: webhook
+        webhook_id: !secret moneypulse_webhook_id
+        allowed_methods: [POST]
+        local_only: true
+    actions:
+      - action: persistent_notification.create
+        data:
+          title: '💰 {{ trigger.json.title }}'
+          message: '{{ trigger.json.message }}'
+          notification_id: 'moneypulse_{{ trigger.json.type }}'
+      - action: input_text.set_value
+        target: { entity_id: input_text.moneypulse_last_alert }
+        data:
+          value: "{{ (trigger.json.title ~ ' — ' ~ trigger.json.message)[:255] }}"
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.quiet_hours
+                state: 'off'
+              - condition: template
+                value_template: >
+                  {{ states('input_boolean.moneypulse_mute_' ~ trigger.json.type) != 'on' }}
+            sequence:
+              - action: assist_satellite.announce
+                target:
+                  entity_id: assist_satellite.home_assistant_voice_0a4a16_assist_satellite
+                data:
+                  message: '{{ trigger.json.title }}. {{ trigger.json.message }}'
+                  preannounce: true
+              - action: alexa_media.snapshot
+                target:
+                  entity_id: [media_player.my_echo, media_player.myshow]
+              - action: media_player.volume_set
+                target:
+                  entity_id: [media_player.my_echo, media_player.myshow]
+                data: { volume_level: 0.7 }
+              - action: notify.alexa_media
+                data:
+                  target: [media_player.my_echo, media_player.myshow]
+                  message: '{{ trigger.json.title }}. {{ trigger.json.message }}'
+                  data: { type: announce }
+              - delay: '00:00:05'
+              - action: alexa_media.restore
+                target:
+                  entity_id: [media_player.my_echo, media_player.myshow]
+```
 
 ---
 
