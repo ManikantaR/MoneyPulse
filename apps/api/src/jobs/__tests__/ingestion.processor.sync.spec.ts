@@ -67,8 +67,11 @@ function makeProcessor(opts: {
         .fn()
         .mockResolvedValue({ categorizedByRule: 0, uncategorizedIds: [] }),
     } as any,
+    { ruleBasedNormalize: vi.fn() } as any,   // merchantNormalizer
     mockOutbox as any,
     aliasMock as any,
+    { detectAnomalies: vi.fn() } as any,       // anomalyDetector
+    { isAvailable: vi.fn().mockResolvedValue(true) } as any, // ollamaHealth
     { add: vi.fn() } as any,
     { add: vi.fn() } as any,
   );

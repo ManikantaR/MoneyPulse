@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bullmq';
+import { Module, OnModuleInit } from '@nestjs/common';
+import { BullModule, InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { IngestionService } from './ingestion.service';
 import { IngestionController } from './ingestion.controller';
@@ -33,4 +34,19 @@ import { AnalyticsModule } from '../analytics/analytics.module';
   ],
   exports: [IngestionService, DedupService, PdfProxyService],
 })
-export class IngestionModule {}
+export class IngestionModule implements OnModuleInit {
+  constructor(
+    @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
+  ) {}
+
+  async onModuleInit() {
+    // Safety-net sweep: re-enqueue ai-categorize for any transactions that are
+    // still uncategorized (Ollama was down when originally imported, or the job
+    // exhausted its retries during a long outage).  Runs only when Ollama is up.
+    await this.ingestionQueue.upsertJobScheduler(
+      'ai-reconcile-sweep',
+      { every: 15 * 60 * 1000 }, // every 15 minutes
+      { name: 'ai-reconcile' },
+    );
+  }
+}

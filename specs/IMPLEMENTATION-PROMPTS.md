@@ -15,8 +15,8 @@
 | 3 | Recurring Bill Detection | [Prompt 3](#prompt-3--recurring-bill-detection--missed-payment-alerts) | Deploy + SQL migration | ✅ done |
 | 4 | Spending Anomaly Alerts | [Prompt 4](#prompt-4--spending-anomaly-alerts) | Deploy only | ✅ done |
 | 5 | Budget vs Actual Dashboard | [Prompt 5](#prompt-5--budget-vs-actual-variance-dashboard) | Deploy only | ✅ done |
-| **6** | **Notification Push Backbone (6a NAS + 6b Web)** | [Prompt 6](#prompt-6--notification-push-backbone-nas-emit--web-fcm-send--ha-lan-fix) | NAS deploy + web `firebase deploy` | prerequisite for alerts |
-| **7** | **Remote Mac-Ollama Resilience (make existing AI job retry)** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience-make-the-existing-ai-job-retry) | Config + deploy | prerequisite for AI |
+| **6** | **Notification Push Backbone (6a NAS + 6b Web)** | [Prompt 6](#prompt-6--notification-push-backbone-nas-emit--web-fcm-send--ha-lan-fix) | NAS deploy + web `firebase deploy` | ✅ done & deployed |
+| **7** | **Remote Mac-Ollama Resilience (make existing AI job retry)** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience-make-the-existing-ai-job-retry) | Config + deploy | ✅ built (26 tests green) — commit+deploy pending |
 | 8 | Receipt Watch Folder + OCR Auto-Match | [Prompt 8](#prompt-8--receipt-watch-folder--ollama-vision-ocr-auto-match) | Deploy + SQL migration | Tier 2 |
 | 9 | Natural Language Finance Chat | [Prompt 9](#prompt-9--natural-language-finance-chat) | Deploy only | Tier 2 |
 | 10 | Cash Flow Forecasting | [Prompt 10](#prompt-10--cash-flow-forecasting) | Deploy only | Tier 2 |
@@ -30,10 +30,20 @@
 | 18 | PWA Mode + Camera Capture | [Prompt 18](#prompt-18--pwa-mode--camera-capture) | Deploy only | Tier 3 |
 | 19 | Quick-Add Transaction Widget | [Prompt 19](#prompt-19--quick-add-transaction-widget) | Deploy only | Tier 3 |
 | 20 | Spending Streaks & Gamification | [Prompt 20](#prompt-20--spending-streaks--gamification) | Deploy only | Tier 3 |
-| **21** | **moneypulse-web PWA (installable + iOS push)** | [Prompt 21](#prompt-21--moneypulse-web-pwa-installable--ios-background-push) | web `firebase deploy` | web only — pairs with 6 |
+| **21** | **moneypulse-web PWA (installable + push, Android & iOS)** | [Prompt 21](#prompt-21--moneypulse-web-pwa-installable--background-push-android--ios) | web `firebase deploy` | ⏸️ optional for Android (push works post-6b); needed for iOS/app-feel |
 | 22 | Web Bills Glance (`bill.projected.v1`) — OPTIONAL | [Prompt 22](#prompt-22--web-bills-glance-billprojectedv1--optional) | NAS deploy + web `firebase deploy` | optional — 22a NAS + 22b Web |
-| 23 | Send Test Notification (Settings button) | [Prompt 23](#prompt-23--send-test-notification-settings-button) | NAS deploy | dev/test helper — NAS only |
-| 24 | Fix: exclude transfers in web KPIs (`isTransfer` projection) | [Prompt 24](#prompt-24--fix-web-kpis-exclude-transfers-istransfer-projection) | NAS deploy + web deploy + re-sync | bug fix — 24a NAS + 24b Web |
+| 23 | Send Test Notification (Settings button) | [Prompt 23](#prompt-23--send-test-notification-settings-button) | NAS deploy | ✅ done & deployed |
+| 24 | Fix: exclude transfers in web KPIs (`isTransfer` projection) | [Prompt 24](#prompt-24--fix-web-kpis-exclude-transfers-istransfer-projection) | NAS deploy + web deploy + re-sync | ✅ done (24a+24b) & re-synced |
+| 25 | Split Transaction UI | [Prompt 25](#prompt-25--split-transaction-ui) | NAS deploy | ⬜ NEXT — frontend (API done) |
+| 26 | Add / Quick-add Transaction UI | [Prompt 26](#prompt-26--add--quick-add-transaction-ui) | NAS deploy | ⬜ NEXT — frontend (API done) |
+| 27 | Transfer & Investment Modeling | [Prompt 27](#prompt-27--transfer--investment-modeling) | NAS deploy + SQL | tables exist, build API+UI |
+| 28 | Foreign-amount field + Family/Gifts category | [Prompt 28](#prompt-28--foreign-amount-field--familygifts-category) | NAS deploy + SQL | new field + seed |
+| 29 | Reimbursables & Loans | [Prompt 29](#prompt-29--reimbursables--loans) | NAS deploy + SQL | new |
+| 30 | Refunds as Offsets | [Prompt 30](#prompt-30--refunds-as-offsets) | NAS deploy + SQL | new |
+| 31 | Cash Account (ATM tracking) | [Prompt 31](#prompt-31--cash-account-atm-tracking) | NAS deploy + SQL | enum + UI |
+| 32 | Sinking Funds / Savings Goals | [Prompt 32](#prompt-32--sinking-funds--savings-goals) | NAS deploy + SQL | new |
+
+> **Prompts 25–32 — "Real-life finance modeling" (all NAS-only).** Agreed scope: model money that isn't a true expense (transfers/investments via category flags), multi-account investment tracking by value (snapshots), family-abroad as expense + lightweight foreign-amount field, reimbursables/loans, refunds-as-offsets, cash/ATM, and savings goals. Web companion work deferred (essentials principle). Several share one schema migration — see each prompt's SQL.
 
 > **Architecture rules (from PHASE10 spec §F.4/§F.5) every prompt below obeys:**
 > - **Web is essentials + push, not parity.** Each prompt states a **Sync verdict**: `web: none` (NAS-only), `web: field-only` (rides an existing projection), or `web: summary+push` (gets a projected summary + FCM). Do not port NAS management UIs to moneypulse-web.
@@ -1112,7 +1122,7 @@ Verify `public/firebase-messaging-sw.js` has an `onBackgroundMessage` handler th
 - [ ] Removing the device → its token is pruned on next send
 ```
 
-> **Companion checklist for you (the human):** run 6a from MyMoney → deploy NAS → run 6b from moneypulse-web → `firebase deploy`. The end-to-end test (anomaly on NAS → push on phone) needs BOTH deployed. For real iOS background push, also do **Prompt 21** (installable PWA).
+> **Companion checklist for you (the human):** run 6a from MyMoney → deploy NAS → run 6b from moneypulse-web → `firebase deploy`. The end-to-end test (anomaly on NAS → push on phone) needs BOTH deployed. **Android** push works after 6b without installing; **iOS** background push additionally requires **Prompt 21** (installable PWA).
 
 ---
 
@@ -1797,9 +1807,9 @@ I need lightweight spending streaks / gamification in MoneyPulse, tied to real b
 
 ---
 
-## Prompt 21 — moneypulse-web PWA (installable + iOS background push)
+## Prompt 21 — moneypulse-web PWA (installable + background push, Android & iOS)
 
-> **Why**: Today web notifications only show when you have the app open. Prompt 6b makes the server SEND a push; this prompt makes moneypulse-web an **installable PWA** so pushes land like a native app notification — and so iOS (16.4+) web push works at all (it requires the site be added to the Home Screen). **Web repo only — there is no NAS half.** Run from `~/repo/moneypulse-web`.
+> **Why**: makes moneypulse-web an **installable PWA** so pushes land like a native app and the app opens standalone (no browser chrome). **Platform note:** on **Android**, FCM web push already works in Chrome after Prompt 6b *without* installing — this prompt adds the home-screen/app-like polish. On **iOS** (16.4+), installing the PWA to the Home Screen is *required* for web push to work at all, so the iOS-specific tags below are mandatory there and harmless (ignored) on Android. **Web repo only — there is no NAS half.** Run from `~/repo/moneypulse-web`.
 
 ### Prompt 21 (copy this into Copilot Chat with `~/repo/moneypulse-web` open)
 
@@ -2058,6 +2068,299 @@ Find Spending-by-Category and Top-Merchants computations (e.g. apps/web/src/comp
 ```
 
 > **Run order**: deploy **24b** (so `fanOutTransaction` stores the field) → deploy **24a** → **Backfill (Force)** all transactions from Sync Admin → web numbers should now match the NAS.
+
+---
+
+## Prompt 25 — Split Transaction UI
+
+> Backend is **done** (`POST /transactions/:id/split`, full validation, parent flagged `isSplitParent`, children created, list excludes parents). This is the **frontend only**. Powers the "Walmart = Groceries + Electric" and "mortgage = principal + interest" cases. **Sync verdict: `web: field-only`** (split children are normal transactions and already project).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need a UI to split a transaction into multiple categorized parts. The API already exists — do NOT change it. Follow existing patterns. Do NOT read .env or secrets.
+
+## Existing backend (use as-is)
+- `POST /transactions/:id/split` body `{ splits: [{ amountCents, description?, categoryId? }] }`. The child amounts MUST sum exactly to the parent amount or it 400s. Parent becomes `isSplitParent=true` and is hidden from the transaction list; children appear as normal transactions.
+
+## Frontend
+### Hook: `apps/web/src/lib/hooks/useTransactions.ts`
+Add `useSplitTransaction()` — `useMutation` POST `/transactions/:id/split`, on success invalidate `['transactions']` and relevant analytics keys.
+
+### UI: extend `apps/web/src/components/TransactionDetailPanel.tsx`
+- Add a "Split" action that opens a split editor: a list of rows, each with amount + category (reuse the existing category combobox/select) + optional description.
+- Show a running remainder: `parent.amountCents - sum(rows)`; disable Submit until the remainder is exactly 0; show it clearly (e.g. "$0.00 left to allocate" in green, red if non-zero).
+- "Add row" / remove-row controls; start with 2 rows pre-filled (first = full amount).
+- On submit call `useSplitTransaction`; on success close and refresh; surface the API's 400 message if amounts don't match.
+- After split, the parent shows as split (badge) and the children are visible in the list with their own categories.
+
+Use existing styling (`bg-[var(--card)]`, `rounded-2xl`, primary button vars). Use `formatCents`.
+
+## Verification (MANDATORY)
+### 1: Build — pnpm build, fix all TS errors.
+### 2: Tests — split editor disables submit unless rows sum to parent; useSplitTransaction posts the right body; success refreshes the list.
+### 3: Rubber duck — remainder math in cents (no float), category required per row or inherits parent, error surfaced.
+### 4: Deploy — ./deploy-to-nas.sh
+### 5: No SQL (API + schema already exist).
+### 6: Manual — [ ] open a Walmart txn → Split → Groceries $X + Utilities $Y summing to total → submit; [ ] children show with correct categories; [ ] parent hidden from list; [ ] non-matching sum is blocked.
+```
+
+---
+
+## Prompt 26 — Add / Quick-add Transaction UI
+
+> Backend `POST /transactions` (manual create, `isManual`) and `useCreateTransaction` hook **exist**. This adds the **UI** to create transactions manually — the enabler for cash, loans, and (where relevant) investment contributions. Folds in the Prompt 19 quick-add FAB. **Sync verdict: `web: field-only`** (manual txns project normally).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need a UI to manually add a transaction. The API (`POST /transactions`) and `useCreateTransaction` hook already exist — wire a form to them. Follow existing patterns. Do NOT read .env or secrets.
+
+## Form fields
+- Amount (required), credit/debit toggle (isCredit), Merchant/description, Category (existing combobox), Account (existing account select), Date (default today). Set `isManual: true`.
+- Validate amount > 0; show inline errors.
+
+## UI placement
+- A "+ Add Transaction" button on the Transactions page header opening a modal/slide-over with the form.
+- A floating action button (FAB, bottom-right) on mobile widths for quick entry (this is the Prompt 19 quick-add — implement it here).
+- On success: invalidate `['transactions']` + analytics keys, close, toast "Added".
+
+## Notes
+- Reuse the category combobox from the categories/transactions UI and the account selector from the accounts UI.
+- Manual transactions still flow through normalization/categorization as usual.
+- (Forward-compat) leave room in the form for the fields Prompts 27–29 add (transfer/investment link, foreign amount, reimbursable) — but only build the base fields here.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — form posts correct body with isManual:true; validation rejects amount<=0; success refreshes. ### 3: Rubber duck — account ownership, date/timezone (store as date the API expects), optimistic close only on success. ### 4: Deploy. ### 5: No SQL. ### 6: Manual — [ ] Add a $40 cash expense → appears in list; [ ] FAB works on mobile; [ ] category/account/date correct.
+```
+
+---
+
+## Prompt 27 — Transfer & Investment Modeling
+
+> The conceptual core. Two parts: (A) let users flag **categories as transfers** (the `is_transfer` column already exists) so 529/brokerage/savings/internal moves leave the income/expense totals; (B) build **investment-account tracking by value** on the Phase-8 tables (`investment_accounts`, `investment_snapshots`) — which currently have **no API or UI** — for multiple accounts (401k, IRA, Robinhood, Betterment, 529) flowing into net worth. **Sync verdict: `web: none`** for the investment UI (defer); the category `is_transfer` already feeds the web KPI fix (Prompt 24).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need (A) a UI to mark categories as transfers, and (B) an investment-accounts feature (tracked by periodic value snapshots) for multiple accounts, flowing into net worth. The categories table already has is_transfer; the investment_accounts + investment_snapshots tables exist (Phase 8) but have NO service/controller/UI yet. Follow existing patterns. Do NOT read .env or secrets.
+
+## Part A — Category transfer flag in the UI
+- `apps/api/src/categories/categories.controller.ts` already has POST/PATCH. Ensure the create/update Zod schema accepts `isTransfer: boolean` (add if missing) and the service persists it.
+- In the Categories page (`apps/web/src/app/(protected)/categories/page.tsx`), add an "Is transfer?" toggle when creating/editing a category, with helper text: "Transfers (savings, 529, brokerage deposits, credit-card payments, internal moves) are excluded from income & expenses." Show a small "Transfer" badge on transfer categories.
+- Seed/ensure transfer categories exist: "Transfers", "Credit Card Payment", plus add "Investment Contribution" (is_transfer = true). (Follow the existing seed in db/seed.ts.)
+
+## Part B — Investment accounts (build the API + UI on existing tables)
+### API: `apps/api/src/investments/` (NEW module — tables already exist in schema.ts)
+- `investments.service.ts` + `investments.controller.ts` (`@Controller('investments')`, `@UseGuards(JwtAuthGuard)`, `@CurrentUser()`, `{ data }` envelope). Endpoints:
+  - `GET /investments` — list user's investment accounts, each with its latest snapshot value.
+  - `POST /investments` — create `{ institution, accountType, nickname }`.
+  - `PATCH /investments/:id` — edit/rename; `DELETE /investments/:id` — soft delete (deletedAt).
+  - `POST /investments/:id/snapshots` — record a value: `{ balanceCents, date? (default today) }` → insert into investment_snapshots.
+  - `GET /investments/:id/snapshots` — value history (for a trend line).
+- Ownership-checked everywhere. Register the module in app.module.ts.
+
+### Net worth integration
+- Include the sum of each investment account's LATEST snapshot in the net-worth / assets total (find where net worth is computed — analytics/accounts — and add investments to assets). The dashboard already shows an "INVESTMENTS" figure ($0.00) — wire it to this sum.
+
+### Frontend
+- Hook `apps/web/src/lib/hooks/useInvestments.ts` (list/create/update/delete/addSnapshot), TanStack Query.
+- Page `apps/web/src/app/(protected)/investments/page.tsx`: list accounts (nickname, institution, type, current value, last-updated date), "Add account", and per-account "Update value" (records a snapshot). Optional small value-trend sparkline from snapshots.
+- Sidebar: add "Investments" (lucide `TrendingUp` or `LineChart`).
+
+## Modeling notes (document in the page help text)
+- 401k/IRA: value-only — just update the balance; no bank transaction (it never hits checking).
+- Robinhood/Betterment/529: when a contribution DOES leave your bank, categorize it with a transfer category (Part A) so it isn't counted as an expense — and update the investment account's value separately.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests
+- Category create/update persists isTransfer; analytics already exclude is_transfer (verify unchanged).
+- Investments: create account, add snapshot, GET returns latest value; ownership enforced; net worth includes latest snapshots.
+### 3: Rubber duck — soft-delete excluded from totals; latest-snapshot selection correct (max date); ownership on all endpoints.
+### 4: Deploy — ./deploy-to-nas.sh
+### 5: Post-deploy SQL — tables already exist; just run the seed for the new "Investment Contribution" transfer category:
+   docker exec -i moneypulse-api node dist/db/seed.js   (or an UPDATE to set is_transfer=true on the transfer categories)
+### 6: Manual — [ ] mark a category as transfer → its txns drop out of expense totals; [ ] add a 401k + Robinhood account, set values → net worth/assets rises by that sum; [ ] update a value → reflected.
+```
+
+---
+
+## Prompt 28 — Foreign-amount field + Family/Gifts category
+
+> Lightweight money-abroad support: an optional **original-amount + currency** pair on a transaction (no FX engine), plus a dedicated **Family Support / Gifts** expense category. **Sync verdict: `web: none`** (NAS analytics/records; defer web).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need to record money sent abroad: a lightweight optional foreign-amount field on transactions and a Family Support/Gifts category. NO multi-currency accounting/FX — just record the foreign amount for reference. Follow existing patterns. Do NOT read .env or secrets.
+
+## Schema (add to transactions table)
+- `original_amount_cents integer NULL` and `currency_code varchar(3) NULL` (ISO 4217, e.g. 'INR'). The transaction's main amount stays in USD (what left the account); these are informational.
+- Update the shared Transaction type.
+
+## API
+- Accept/return `originalAmountCents` + `currencyCode` in create (`POST /transactions`) and update (`PATCH /transactions/:id`). Zod-validate currencyCode as a 3-letter code when present.
+
+## Frontend
+- In the Add/Edit transaction form (Prompt 26) and the TransactionDetailPanel, add an optional "Foreign amount" input + currency code (small text/select). Display on the row/detail as e.g. "$600 (₹50,000)".
+- Seed a "Family Support" and "Gifts" category (expense, not transfer) in db/seed.ts.
+
+## Notes
+- This is for YOUR records; it does not affect USD totals, budgets, or net worth.
+- Family support is a normal expense → the recurring-bill detector (Prompt 3) will pick up monthly support automatically.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — create/update round-trips originalAmountCents+currencyCode; invalid currency rejected; USD totals unchanged when foreign fields set. ### 3: Rubber duck — nullable handling, no impact on analytics math. ### 4: Deploy. ### 5: Post-deploy SQL:
+   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS original_amount_cents INTEGER;
+   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS currency_code VARCHAR(3);
+   (then seed the Family Support / Gifts categories)
+### 6: Manual — [ ] add a "$600 (₹50,000)" family-support expense → shows foreign amount, counts as $600 expense in Family Support; [ ] recurring monthly support appears in bill detection.
+```
+
+---
+
+## Prompt 29 — Reimbursables & Loans
+
+> Flag money you'll get back (work expenses, medical pre-insurance, loans to people) so it doesn't count as a permanent expense, with an "owed to me" view and a settle action. **Sync verdict: `web: none`** (defer).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need to track reimbursable expenses and money lent out, so they don't count as true expenses and I can see what's owed. Follow existing patterns. Do NOT read .env or secrets.
+
+## Schema (transactions table)
+- `is_reimbursable boolean NOT NULL DEFAULT false`
+- `reimbursed_at timestamptz NULL` and `reimbursed_by_transaction_id uuid NULL` (the incoming credit that settled it)
+- Update shared types.
+
+## Behavior
+- A reimbursable (or loan-out) transaction is EXCLUDED from "true expense" totals while unsettled (treat like a pending receivable). Decide one consistent rule and apply it in analytics income/expense queries: exclude `is_reimbursable = true AND reimbursed_at IS NULL` from expense totals (it's money expected back). Once settled, it nets out (the expense + the matching credit cancel) — so keep both excluded, OR mark the expense settled and exclude both; document the choice.
+
+## API
+- `PATCH /transactions/:id` accepts `isReimbursable`.
+- `POST /transactions/:id/settle-reimbursement` body `{ reimbursedByTransactionId }` → sets reimbursed_at + link (ownership-checked).
+- `GET /transactions/reimbursements/pending` → list of unsettled reimbursables (the "owed to me" view).
+
+## Frontend
+- Add a "Reimbursable" toggle in the Add/Edit form + detail panel; badge on the row.
+- A "Owed to me" section (on Transactions page or a small card): pending reimbursables with total outstanding; each has a "Mark settled" action (pick/auto-suggest the matching incoming credit).
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — unsettled reimbursable excluded from expense totals; settle sets reimbursed_at + link; pending list returns only unsettled; ownership enforced. ### 3: Rubber duck — consistent settled/unsettled accounting (no double count), ownership, null links. ### 4: Deploy. ### 5: Post-deploy SQL:
+   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_reimbursable BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS reimbursed_at TIMESTAMPTZ;
+   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS reimbursed_by_transaction_id UUID;
+### 6: Manual — [ ] flag a $200 work expense reimbursable → drops out of expenses, shows in "owed to me"; [ ] mark settled against the reimbursement credit → leaves the owed list.
+```
+
+---
+
+## Prompt 30 — Refunds as Offsets
+
+> A refund/return should reduce the original category's spend, not look like income. Link a refund credit to the original expense. **Sync verdict: `web: none`** (defer).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need refunds/returns to offset the original expense instead of counting as income. Follow existing patterns. Do NOT read .env or secrets.
+
+## Schema (transactions table)
+- `refund_of_transaction_id uuid NULL` — set on a credit that is a refund of a prior expense.
+- Update shared types.
+
+## Behavior
+- A transaction with `refund_of_transaction_id` set is NOT counted as income; instead it reduces the spend in the SAME category as the original (so category/expense totals net correctly). Apply in analytics: exclude refund credits from income; subtract them from the matched category's expense (or simply: net them within category spend). Document the exact rule and keep it consistent across KPIs, category breakdown, and budgets.
+
+## API
+- `PATCH /transactions/:id` accepts `refundOfTransactionId` (validate the referenced txn exists, belongs to the user, and is an expense/debit).
+- Optional helper `GET /transactions/:id/refund-candidates` — same merchant, opposite sign, near date — to suggest the original.
+
+## Frontend
+- In the detail panel for a credit, add "This is a refund of…" with a picker (pre-filled from refund-candidates). Show a "Refund" badge; on the original, show "partially/fully refunded".
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — a linked refund is excluded from income and reduces the original category's net spend; unlinked credit still counts as income; ownership + type checks on the link. ### 3: Rubber duck — partial refunds (refund < original) net correctly; budgets reflect the offset; no double counting. ### 4: Deploy. ### 5: Post-deploy SQL:
+   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS refund_of_transaction_id UUID;
+### 6: Manual — [ ] return a $50 item → link the $50 credit to the original purchase → category spend drops by $50, income unchanged.
+```
+
+---
+
+## Prompt 31 — Cash Account (ATM tracking)
+
+> Model physical cash so ATM withdrawals (a transfer, not an expense) and later cash spends are tracked instead of vanishing. **Sync verdict: `web: none`** (defer).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need to track cash: an ATM withdrawal is a transfer from checking to a "Cash" account, and cash purchases are expenses from that Cash account. Follow existing patterns. Do NOT read .env or secrets.
+
+## Schema
+- Add `'cash'` to the `account_type` enum (`accountTypeEnum` in db/schema.ts). (Postgres enum change — see SQL.)
+
+## Behavior
+- Users create a "Cash" account (type cash). An ATM withdrawal is entered (or recognized) as a transfer: debit checking with a transfer category, and a corresponding credit to the Cash account (or model as a single transfer if the app supports account-to-account transfers; otherwise two manual entries via Prompt 26 + a transfer category from Prompt 27). Cash spends are normal expenses on the Cash account, reducing its balance.
+- The Cash account balance = withdrawals in − cash expenses out; it counts as an asset in net worth.
+
+## Frontend
+- Allow selecting "Cash" as an account type when creating an account (Accounts page).
+- Document the ATM pattern in help text (withdrawal = transfer to Cash; spends = expenses from Cash).
+- (Optional convenience) a "Record ATM withdrawal" shortcut that creates the transfer pair.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — cash account creates with type 'cash'; its balance reflects withdrawals minus cash expenses; ATM transfer not counted as expense (uses transfer category). ### 3: Rubber duck — enum migration safe; balance math; cash account included in assets. ### 4: Deploy. ### 5: Post-deploy SQL (enum add — must be its own statement, not in a txn with usage):
+   ALTER TYPE account_type ADD VALUE IF NOT EXISTS 'cash';
+### 6: Manual — [ ] create a Cash account; [ ] record a $100 ATM withdrawal as transfer (checking −$100, cash +$100), not an expense; [ ] add a $20 cash expense → cash balance $80; [ ] net worth unaffected by the withdrawal itself.
+```
+
+---
+
+## Prompt 32 — Sinking Funds / Savings Goals
+
+> Earmark money toward future expenses (car, vacation, taxes, emergency fund) and track progress. **Sync verdict: `web: none`** (defer; could become a glance later).
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need savings goals / sinking funds: set a target, contribute toward it, track progress. Follow existing patterns. Do NOT read .env or secrets.
+
+## Schema — new table `savings_goals`
+export const savingsGoals = pgTable('savings_goals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  name: varchar('name', { length: 120 }).notNull(),
+  targetCents: integer('target_cents').notNull(),
+  savedCents: integer('saved_cents').notNull().default(0),
+  targetDate: timestamp('target_date', { withTimezone: true }),
+  accountId: uuid('account_id').references(() => accounts.id), // optional backing account
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+Add shared type.
+
+## API: `apps/api/src/goals/` (NEW module)
+- `GET /goals` (list with computed percent = savedCents/targetCents), `POST /goals`, `PATCH /goals/:id`, `DELETE /goals/:id`.
+- `POST /goals/:id/contribute` body `{ amountCents }` → increment savedCents (and optionally record a transfer to the backing account). Ownership-checked. Register module in app.module.ts.
+
+## Frontend
+- Hook `useGoals.ts`; page `apps/web/src/app/(protected)/goals/page.tsx`: cards per goal with a progress bar (reuse the BudgetProgressCard bar style), saved/target, % and (if targetDate) "on track" pace hint; "Add goal" + "Contribute" actions.
+- Sidebar: "Goals" (lucide `PiggyBank` / `Target`).
+- Optional dashboard glance card showing top goals' progress.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — create goal; contribute increments savedCents; percent computed; ownership enforced; delete. ### 3: Rubber duck — percent capped at 100 in UI (allow over-save), targetDate optional, contribute is additive. ### 4: Deploy. ### 5: Post-deploy SQL:
+   CREATE TABLE IF NOT EXISTS savings_goals (
+     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id UUID NOT NULL REFERENCES users(id),
+     name VARCHAR(120) NOT NULL, target_cents INTEGER NOT NULL, saved_cents INTEGER NOT NULL DEFAULT 0,
+     target_date TIMESTAMPTZ, account_id UUID REFERENCES accounts(id),
+     is_active BOOLEAN NOT NULL DEFAULT true,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+   );
+   CREATE INDEX IF NOT EXISTS idx_goals_user ON savings_goals(user_id);
+### 6: Manual — [ ] create a "$5,000 vacation" goal; [ ] contribute $500 → 10% bar; [ ] over-contribute handled; [ ] dashboard glance shows progress.
+```
 
 ---
 

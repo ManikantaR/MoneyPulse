@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { selectParser } from '../ingestion/parsers/parser-registry';
 import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
@@ -16,6 +16,7 @@ import { PdfProxyService } from '../ingestion/parsers/pdf-proxy.service';
 import { AuditService } from '../audit/audit.service';
 import { CategorizationService } from '../categorization/categorization.service';
 import { MerchantNormalizerService } from '../categorization/merchant-normalizer.service';
+import { OllamaHealthService } from '../categorization/ollama-health.service';
 import { OutboxService } from '../sync/outbox.service';
 import { AliasMapperService } from '../sync/alias-mapper.service';
 import { AnomalyDetectorService } from '../analytics/anomaly-detector.service';
@@ -46,6 +47,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly outbox: OutboxService,
     private readonly aliasMapper: AliasMapperService,
     private readonly anomalyDetector: AnomalyDetectorService,
+    private readonly ollamaHealth: OllamaHealthService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
     @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {
@@ -63,6 +65,9 @@ export class IngestionProcessor extends WorkerHost {
     // Route background AI categorization jobs
     if (job.name === 'ai-categorize') {
       return this.processAiCategorize(job);
+    }
+    if (job.name === 'ai-reconcile') {
+      return this.processAiReconcileSweep();
     }
 
     const { uploadId, userId, accountId, filePath, fileType } = job.data as IngestionJobData;
@@ -282,7 +287,9 @@ export class IngestionProcessor extends WorkerHost {
             await this.ingestionQueue.add(
               'ai-categorize',
               { transactionIds: ruleResult.uncategorizedIds, userId },
-              { delay: 2000, attempts: 2, backoff: { type: 'exponential', delay: 10000 } },
+              // Long retry window: initial 60s, doubling up to ~2 h (8 attempts),
+              // then the 15-min reconcile sweep handles anything beyond that.
+              { delay: 2000, attempts: 8, backoff: { type: 'exponential', delay: 60_000 } },
             );
             this.logger.log(
               `Queued AI categorization for ${ruleResult.uncategorizedIds.length} transactions`,
@@ -578,19 +585,93 @@ export class IngestionProcessor extends WorkerHost {
     job: Job<{ transactionIds: string[]; userId: string }>,
   ): Promise<void> {
     const { transactionIds, userId } = job.data;
+
+    // Gate on Ollama availability BEFORE doing any work.
+    // Throwing here causes BullMQ to retry with the configured exponential backoff
+    // instead of completing the job "successfully" while Ollama is unreachable.
+    if (!(await this.ollamaHealth.isAvailable())) {
+      throw new Error(
+        'ollama-unavailable: Ollama is not reachable; job will be retried with backoff',
+      );
+    }
+
     this.logger.log(
       `Background AI categorization: ${transactionIds.length} transactions`,
     );
-    try {
-      const stats = await this.categorizationService.categorizeBatch(
-        transactionIds,
-        userId,
+
+    // Let errors propagate so BullMQ can retry on unexpected failures.
+    const stats = await this.categorizationService.categorizeBatch(
+      transactionIds,
+      userId,
+    );
+    this.logger.log(
+      `Background AI done: ${stats.categorizedByRule} rules, ${stats.categorizedByAi} AI, ${stats.uncategorized} uncategorized`,
+    );
+  }
+
+  /**
+   * Safety-net sweep — runs every 15 min via upsertJobScheduler.
+   *
+   * Finds transactions that are still uncategorized (no categoryId, not a
+   * split-parent, not soft-deleted) and re-enqueues an ai-categorize job for
+   * each user.  This catches anything that exhausted retries during a long
+   * Ollama outage.
+   *
+   * Skips entirely when Ollama is unavailable to avoid queue churn.
+   */
+  private async processAiReconcileSweep(): Promise<void> {
+    if (!(await this.ollamaHealth.isAvailable())) {
+      this.logger.debug(
+        'AI reconcile sweep: Ollama unavailable — skipping to avoid churn',
       );
-      this.logger.log(
-        `Background AI done: ${stats.categorizedByRule} rules, ${stats.categorizedByAi} AI, ${stats.uncategorized} uncategorized`,
-      );
-    } catch (err: any) {
-      this.logger.warn(`Background AI categorization failed: ${err.message}`);
+      return;
     }
+
+    const rows = await this.db
+      .select({
+        id: schema.transactions.id,
+        userId: schema.transactions.userId,
+      })
+      .from(schema.transactions)
+      .where(
+        and(
+          isNull(schema.transactions.categoryId),
+          isNull(schema.transactions.deletedAt),
+          eq(schema.transactions.isSplitParent, false),
+        ),
+      )
+      .orderBy(schema.transactions.id)
+      .limit(500);
+
+    if (rows.length === 0) {
+      this.logger.debug('AI reconcile sweep: no uncategorized transactions found');
+      return;
+    }
+
+    // Group by userId and enqueue one job per user.
+    // jobId ensures we don't stack duplicate reconcile jobs for the same user
+    // if a sweep fires while a prior one is still queued/processing.
+    const byUser = new Map<string, string[]>();
+    for (const row of rows) {
+      const ids = byUser.get(row.userId) ?? [];
+      ids.push(row.id);
+      byUser.set(row.userId, ids);
+    }
+
+    for (const [userId, transactionIds] of byUser.entries()) {
+      await this.ingestionQueue.add(
+        'ai-categorize',
+        { transactionIds, userId },
+        {
+          jobId: `reconcile-${userId}`,
+          attempts: 8,
+          backoff: { type: 'exponential', delay: 60_000 },
+        },
+      );
+    }
+
+    this.logger.log(
+      `AI reconcile sweep: enqueued ${rows.length} txns across ${byUser.size} user(s)`,
+    );
   }
 }
