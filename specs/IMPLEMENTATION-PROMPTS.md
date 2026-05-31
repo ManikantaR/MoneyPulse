@@ -16,7 +16,7 @@
 | 4 | Spending Anomaly Alerts | [Prompt 4](#prompt-4--spending-anomaly-alerts) | Deploy only | ✅ done |
 | 5 | Budget vs Actual Dashboard | [Prompt 5](#prompt-5--budget-vs-actual-variance-dashboard) | Deploy only | ✅ done |
 | **6** | **Notification Push Backbone (6a NAS + 6b Web)** | [Prompt 6](#prompt-6--notification-push-backbone-nas-emit--web-fcm-send--ha-lan-fix) | NAS deploy + web `firebase deploy` | prerequisite for alerts |
-| **7** | **Remote Mac-Ollama Resilience + Retry Queue** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience--retry-queue) | Config + deploy | prerequisite for AI |
+| **7** | **Remote Mac-Ollama Resilience (make existing AI job retry)** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience-make-the-existing-ai-job-retry) | Config + deploy | prerequisite for AI |
 | 8 | Receipt Watch Folder + OCR Auto-Match | [Prompt 8](#prompt-8--receipt-watch-folder--ollama-vision-ocr-auto-match) | Deploy + SQL migration | Tier 2 |
 | 9 | Natural Language Finance Chat | [Prompt 9](#prompt-9--natural-language-finance-chat) | Deploy only | Tier 2 |
 | 10 | Cash Flow Forecasting | [Prompt 10](#prompt-10--cash-flow-forecasting) | Deploy only | Tier 2 |
@@ -1116,92 +1116,65 @@ Verify `public/firebase-messaging-sw.js` has an `onBackgroundMessage` handler th
 
 ---
 
-## Prompt 7 — Remote Mac-Ollama Resilience + Retry Queue
+## Prompt 7 — Remote Mac-Ollama Resilience (make the existing AI job retry)
 
-> **Why second**: All AI features (phase-2 normalization, OCR, chat) assume Ollama. It now runs on the dev Mac (M1), which is intermittent. This prompt makes AI best-effort with a retry queue so OCR/bill-parse results are never lost and ingestion never blocks. **Sync verdict: `web: none`.**
+> **Why second**: Ollama now runs on the dev Mac (M1), which sleeps/leaves. The good news: AI categorization is **already** decoupled into a background BullMQ job — so ingestion never blocks. The gap is that the job *silently gives up* when the Mac is asleep instead of retrying when it wakes. This prompt closes that, plus the config to point at the Mac. **Sync verdict: `web: none`.**
 
-### Prompt (copy this into Copilot Chat)
+### Prompt (copy this into Copilot Chat with `~/repo/MyMoney` open)
 
 ```
-I need to make MoneyPulse's AI (Ollama) calls resilient to Ollama running on a separate, intermittently-available machine (my dev Mac, reached over the LAN). Today Ollama is assumed local; I'm pointing it at the Mac. Follow existing patterns.
+I need MoneyPulse's background AI categorization to be resilient to Ollama running on my dev Mac (reached over the LAN), which is intermittently asleep. Do NOT rebuild the queue — it already exists. Follow existing patterns. Do NOT read .env or include secrets.
 
-## Background (current state — verify before coding)
-
-- `apps/api/src/categorization/ai-categorizer.service.ts` reads `OLLAMA_URL` (default `http://localhost:11434`), `OLLAMA_MODEL`, batch size, timeout. It already returns nulls gracefully when Ollama is unreachable.
+## What ALREADY exists (verify, don't duplicate)
+- `apps/api/src/jobs/ingestion.processor.ts`: on import it runs `categorizeByRulesOnly` first (fast, on NAS), then enqueues a background `ai-categorize` job (`this.ingestionQueue.add('ai-categorize', { transactionIds, userId }, { delay: 2000, attempts: 2, backoff: { type: 'exponential', delay: 10000 } })`). `process()` routes `job.name === 'ai-categorize'` → `processAiCategorize(job)`. So AI is already non-blocking.
+- `apps/api/src/categorization/ai-categorizer.service.ts` reads `OLLAMA_URL` (default `http://localhost:11434`), `OLLAMA_MODEL`, timeout. On an Ollama error it **returns `batch.map(() => null)` (does NOT throw)**.
 - `apps/api/src/health/health.controller.ts` already probes `${OLLAMA_URL}/api/tags`.
-- The app already uses BullMQ + Redis for the sync delivery queue (see `apps/api/src/sync/sync-delivery.service.ts` and the jobs module).
+- BullMQ pattern: `BullModule.forRootAsync` (Redis) in `app.module.ts`; queues via `BullModule.registerQueue({ name })` in `apps/api/src/jobs/jobs.module.ts`; processors use `@Processor(name)`.
 
-## Goal
+## The bug
+Because the categorizer returns nulls instead of throwing when Ollama is down, the `ai-categorize` job **completes "successfully"** — its `attempts: 2` retries never fire. So transactions imported while the Mac is asleep stay rule-only-categorized forever (until a manual re-run). Fix = make a down-Ollama a *retryable failure*, and add a safety-net sweep.
 
-Rule engine always runs on the NAS. AI enrichment is best-effort: when the Mac/Ollama is unreachable, work that needs AI is QUEUED and reprocessed when it returns — never dropped, never blocking ingestion.
-
-## Part A — Health gate
-
+## Part A — Ollama health gate
 ### `apps/api/src/categorization/ollama-health.service.ts` (NEW)
+Injectable that probes `${OLLAMA_URL}/api/tags` and caches the result ~30s (avoid hammering). `isAvailable(): Promise<boolean>`. Register in the categorization module; export it.
 
-A small injectable that caches Ollama reachability (probe `${OLLAMA_URL}/api/tags`, cache result ~30s to avoid hammering). Expose `isAvailable(): Promise<boolean>`. Reuse this in the AI categorizer and the new queue processor so we skip AI work fast instead of waiting for per-item timeouts when the Mac is asleep.
+## Part B — Make the ai-categorize job retry when Ollama is down
+In `ingestion.processor.ts` `processAiCategorize`:
+1. Call `ollamaHealth.isAvailable()` first. If FALSE → **throw** a clear retryable error (e.g. `throw new Error('ollama-unavailable')`) BEFORE doing work, so BullMQ retries with backoff instead of completing.
+2. Also: if the categorizer ran but returned all-nulls due to an Ollama error (distinguish "Ollama down" from "Ollama up but couldn't classify"), treat that as retryable too. (Simplest: gate on health up-front; that covers the asleep-Mac case.)
+3. Bump the enqueue retry policy for a laptop that may sleep for hours: at the `this.ingestionQueue.add('ai-categorize', …)` call, use something like `{ attempts: 20, backoff: { type: 'exponential', delay: 60_000 } }` (cap effective delay ~30 min). The point: keep retrying across a long window, not give up in 20s.
 
-## Part B — AI enrichment retry queue (BullMQ)
+## Part C — Reconcile-on-return safety net
+Add a scheduled sweep (follow the `jobs.module.ts` `upsertJobScheduler` pattern used for `daily-budget-check`/`sync-delivery-sweep`): every ~15 min, IF `ollamaHealth.isAvailable()`, find still-uncategorized transactions (no category, not split-parent, not deleted) and enqueue an `ai-categorize` job for them. This catches anything that exhausted retries or was imported during a long outage. Skip entirely when Ollama is down (no churn).
 
-### `apps/api/src/jobs/ai-enrichment.queue.ts` + processor (NEW)
-
-Register a new BullMQ queue `ai-enrichment` (follow the existing queue registration pattern in the jobs module). Job types:
-- `normalize-merchant` — { transactionIds: string[] } (lossy-OK: rule engine already gave a usable name; AI just improves it)
-- `ocr-receipt` — { receiptQueueId: string } (MUST-RETRY: no result without AI — used by Prompt 8)
-- `parse-bill` — { ... } (MUST-RETRY)
-
-Processor behavior:
-1. Check `ollamaHealth.isAvailable()`. If false → throw a retryable error so BullMQ backs off (do NOT mark the job failed permanently).
-2. If available → run the AI step, persist the result.
-3. Backoff: exponential, e.g. `{ attempts: 10, backoff: { type: 'exponential', delay: 60_000 } }`. After max attempts, move to a dead-letter state that is VISIBLE (log + a queryable status), not a silent drop. For must-retry jobs, prefer a longer/again-schedulable strategy over hard failure.
-
-### Enqueue points
-
-- In `ingestion.processor.ts`: after the rule-engine + (attempted) inline AI categorization, enqueue `normalize-merchant` for any transactions whose merchant wasn't confidently normalized — instead of relying solely on the inline call. If Ollama was up and inline succeeded, no job needed.
-- Receipt OCR (Prompt 8) and bill parsing enqueue their must-retry jobs here.
-
-## Part C — Reconcile-on-return
-
-Add a lightweight scheduled check (the app already runs scheduled jobs — follow that pattern) that, when Ollama transitions unreachable→reachable, ensures the `ai-enrichment` queue is being drained (BullMQ retries handle most of this; the scheduled nudge re-promotes any delayed jobs). Keep it simple — do not build a custom queue.
-
-## Part D — Config & docs
-
-- `OLLAMA_URL=http://<mac-hostname>.local:11434` (mDNS). Add a short doc note (e.g. in `docs/`) on:
-  - Setting `OLLAMA_HOST=0.0.0.0:11434` on the Mac so it listens on the LAN.
-  - DHCP reservation / static IP fallback if the NAS Docker container can't resolve `.local` (document a docker-compose `extra_hosts: ["machost:192.168.x.x"]` example).
-  - Firewall: restrict 11434 to the LAN subnet; never expose to WAN.
-- Do NOT hardcode the Mac's IP in code. It's env-only.
+## Part D — Config & docs (point at the Mac)
+- The NAS API + the pdf-parser service both read `OLLAMA_URL`. Set it to the **Mac's LAN IP** (NOT mDNS): a Docker bridge container resolves LAN IPs fine but does NOT resolve `*.local` without extra config. Recommend a **router DHCP reservation** for the Mac so the IP is stable, then `OLLAMA_URL=http://<MAC_LAN_IP>:11434`.
+- This goes in the repo-root `.env` (it's shipped to the NAS by deploy-to-nas.sh and read via `--env-file`; the api/pdf-parser compose services already map `OLLAMA_URL`). Add it to `.env.example` too (documentation).
+- Setup + the layered connectivity test are documented in `docs/ollama-on-mac.md` (already written) — reference it, don't recreate it. Key point baked there: the NAS API runs in a Docker container, so the decisive test is **container → Mac** (`docker exec moneypulse-api curl -s http://<MAC_IP>:11434/api/tags`), not just NAS-host → Mac. `*.local` mDNS does NOT resolve inside a bridge container — use the IP.
+- Do NOT hardcode the Mac IP in code — env only.
 
 ## Important
-- Do NOT read .env files or include secrets.
-- Categorization/normalization are lossy-OK (rule engine fallback). Receipt OCR + bill parsing are must-retry.
-- Do NOT block ingestion waiting on AI — enqueue and move on.
+- Do NOT block ingestion on AI — the existing queue already handles that; keep it.
+- Rule engine result is the always-available fallback; AI only enriches.
+- (Future) Receipt OCR / bill parsing (Prompts 8/10) are *must-retry* — they'll add their own jobs to this same resilient pattern; don't build those here.
 
-## After implementation — verification steps (MANDATORY)
-
-### Step 1: Build
-`pnpm build` from repo root. Fix ALL TypeScript errors.
-
+## After implementation — verification (MANDATORY)
+### Step 1: Build — `pnpm build`, fix all TS errors.
 ### Step 2: Tests
-- `OllamaHealthService.isAvailable()` returns false when the probe fails, true when it returns ok; result is cached within the TTL.
-- AI-enrichment processor throws a retryable error (does NOT permanently fail) when Ollama is unavailable.
-- Enqueue: importing transactions when Ollama is down enqueues `normalize-merchant` jobs.
-Run `pnpm test` — all pass.
+- `OllamaHealthService.isAvailable()` returns false when the probe fails, true on ok; cached within TTL.
+- `processAiCategorize` THROWS (retryable) when `isAvailable()` is false (does not complete silently).
+- The reconcile sweep enqueues `ai-categorize` for uncategorized txns only when Ollama is up.
+### Step 3: Rubber duck — health probe cached (not hammered per-item); ingestion still non-blocking; no hardcoded Mac IP; backoff window long enough for a sleeping laptop.
+### Step 4: Deploy — `./deploy-to-nas.sh`; set `OLLAMA_URL=http://<MAC_LAN_IP>:11434` in repo-root `.env` (+ NAS compose already maps it) and on the Mac run `OLLAMA_HOST=0.0.0.0:11434 ollama serve`.
+### Step 5: Connectivity (do this BEFORE the AI tests — see docs/ollama-on-mac.md)
+- [ ] Layer 3 (decisive): `ssh nas "docker exec moneypulse-api curl -s http://<MAC_IP>:11434/api/tags"` returns a model list. If NAS-host works but container doesn't, it's container networking / you used `.local` instead of the IP.
+- [ ] `docker exec moneypulse-api printenv OLLAMA_URL` = `http://<MAC_IP>:11434`
 
-### Step 3: Rubber duck code review
-Review for: ingestion never blocks on AI; must-retry jobs never silently dropped; health probe cached (not hammered); no hardcoded Mac IP; backoff sane. Fix issues.
-
-### Step 4: Deploy
-```bash
-cd ~/repo/MyMoney && ./deploy-to-nas.sh
-# On the NAS, set OLLAMA_URL to the Mac's mDNS/IP. On the Mac: OLLAMA_HOST=0.0.0.0:11434 ollama serve
-```
-
-### Step 5: Manual test checklist
-- [ ] With the Mac AWAKE: import a statement → transactions get AI-normalized merchant names
-- [ ] Put the Mac to SLEEP, import again → ingestion completes immediately, `ai-enrichment` jobs are queued (rule-engine names used meanwhile)
-- [ ] Wake the Mac → queued jobs drain, merchant names get AI-improved
-- [ ] `GET /health` shows ollama: connected when Mac is up, unavailable when asleep
+### Step 6: Manual test checklist
+- [ ] Mac AWAKE: import a statement → uncategorized txns get AI categories within a minute
+- [ ] Mac ASLEEP: import → ingestion completes immediately; `ai-categorize` job retries (check BullMQ/logs), txns stay rule-categorized meanwhile
+- [ ] Wake the Mac → the retrying job (or the 15-min sweep) categorizes them
+- [ ] `GET /api/health` shows `ollama: connected` when Mac up, `unavailable` when asleep
 ```
 
 ---
@@ -2047,7 +2020,7 @@ Keep the existing best-effort/no-rollback behavior. Do not change unrelated payl
 ### 4: Deploy — ./deploy-to-nas.sh
 ### 5: No SQL migration (is_transfer column already exists on categories).
 ### 6: RE-SYNC existing transactions (critical — existing Firestore docs lack the field):
-   - Deploy 24b FIRST (so the web fan-out persists isTransfer), THEN trigger a re-projection of ALL transactions from the Sync Admin page — use **Replay** (not Backfill: backfill's NOT EXISTS skips already-synced txns). This re-emits every transaction.projected.v1 with the new isTransfer, and fanOutTransaction's .set() overwrites each web doc.
+   - Deploy 24b FIRST (so the web fan-out persists isTransfer), THEN re-project ALL transactions via the Sync Admin page → **Backfill** modal → check **Force** → submit. (Force mode skips the NOT-EXISTS guard and re-emits every transaction; plain Backfill skips already-synced rows, and Replay only re-queues dead-lettered events.) Each `transaction.projected.v1` carries the new isTransfer, and fanOutTransaction's `.set()` overwrites each web doc.
    - Verify in the Firestore console that transaction docs now have `isTransfer`.
 ```
 
@@ -2084,7 +2057,7 @@ Find Spending-by-Category and Top-Merchants computations (e.g. apps/web/src/comp
 ### Manual — after the NAS re-sync: web Income/Expenses/Cash Flow match the NAS dashboard for the same month.
 ```
 
-> **Run order**: deploy **24b** (so `fanOutTransaction` stores the field) → deploy **24a** → **Replay** all transactions from Sync Admin → web numbers should now match the NAS.
+> **Run order**: deploy **24b** (so `fanOutTransaction` stores the field) → deploy **24a** → **Backfill (Force)** all transactions from Sync Admin → web numbers should now match the NAS.
 
 ---
 
