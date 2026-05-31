@@ -2364,6 +2364,26 @@ Add shared type.
 
 ---
 
+## Known Issues & Follow-ups (revisit later)
+
+### FU-1 — Android web push not appearing as a system notification ⚠️ OPEN
+**Symptom (2026-05-31):** MoneyPulse notifications show *in-app* (the web notification bell/list updates), but **no system push appears on the Android phone** — user has to open the web app to see them. Expected: a real push on the lock screen/tray without opening the app.
+
+**Context:** 6a (NAS emit) + 6b (FCM send trigger `onNotificationCreated`) are deployed; `firebase-messaging-sw.js` + `useFcmToken` exist. So the plumbing is there.
+
+**Most likely causes (check in order):**
+1. **No device token** — notification permission was never granted, so `users/{uid}/deviceTokens` is empty and 6b's send no-ops silently. → On the phone: open moneypulse-web in Chrome (logged in) → **Allow** the notification prompt. Then verify a doc exists at Firestore `users/{uid}/deviceTokens`.
+2. **Tested while app was foreground** — by design, FCM delivers in-app (`onMessage`) when the page is focused and does NOT raise a system notification. → Test with the app **backgrounded or the phone locked**.
+3. **OS / Chrome notification settings** — Chrome site settings for moneypulse-web → Notifications = Allow; Android → Settings → Apps → Chrome → Notifications on.
+4. **Payload shape** — confirm 6b's `sendEachForMulticast` includes a `notification: { title, body }` block (Android auto-displays) and/or that `firebase-messaging-sw.js` `onBackgroundMessage` calls `self.registration.showNotification(...)`. If it's data-only AND the SW doesn't show it, nothing appears.
+5. **Function actually sent** — Firebase console → Functions → `onNotificationCreated` logs should show a multicast send when the Send-test button is pressed.
+
+**Fix candidates:** ensure permission/token first; if payload is data-only, either add the `notification` block in 6b or ensure the SW's `onBackgroundMessage` shows it. **Prompt 21 (installable PWA)** improves reliability on Android and is *required* for iOS push.
+
+**Owner:** user to verify token + background test first; escalate to a code fix on 6b/SW if a token exists but background push still fails.
+
+---
+
 ## General Tips for Copilot
 
 1. **If Copilot creates a file but misses an import**: Tell it "You forgot to import X from Y in the file Z"

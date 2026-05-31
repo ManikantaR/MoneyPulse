@@ -7,6 +7,7 @@ import type {
   UpdateTransactionInput,
   BulkCategorizeInput,
   CreateTransactionInput,
+  SplitTransactionInput,
 } from '@moneypulse/shared';
 
 /** Paginated response shape for transaction queries. */
@@ -115,6 +116,19 @@ export function useAutoCategorize() {
           uncategorized: number;
         };
       }>('/transactions/auto-categorize', {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
+/** Split a transaction into multiple categorized child transactions. */
+export function useSplitTransaction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, splits }: { id: string } & SplitTransactionInput) =>
+      api.post<{ data: { splits: Transaction[] } }>(`/transactions/${id}/split`, { splits }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });

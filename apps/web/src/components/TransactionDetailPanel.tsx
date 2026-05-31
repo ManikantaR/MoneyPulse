@@ -1,13 +1,14 @@
 'use client';
 
-import { useRef } from 'react';
-import { X, Paperclip, Download, Trash2, Upload, FileText, Camera } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { X, Paperclip, Download, Trash2, Upload, FileText, Camera, Scissors } from 'lucide-react';
 import {
   useAttachments,
   useUploadAttachment,
   useDeleteAttachment,
 } from '@/lib/hooks/useAttachments';
 import { formatCents, formatDate } from '@/lib/format';
+import { SplitTransactionEditor } from '@/components/SplitTransactionEditor';
 import type { Transaction, TransactionAttachment } from '@moneypulse/shared';
 
 const API_BASE =
@@ -29,6 +30,7 @@ export function TransactionDetailPanel({
 }: TransactionDetailPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [showSplitEditor, setShowSplitEditor] = useState(false);
 
   const { data, isLoading } = useAttachments(transaction.id);
   const uploadAttachment = useUploadAttachment();
@@ -105,10 +107,34 @@ export function TransactionDetailPanel({
           {transaction.merchantName && (
             <DetailRow label="Merchant" value={transaction.merchantName} />
           )}
+          {transaction.isSplitParent ? (
+            <span className="inline-flex items-center rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+              Split
+            </span>
+          ) : (
+            <button
+              onClick={() => setShowSplitEditor(true)}
+              className="mt-1 flex items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--muted)] transition-colors"
+            >
+              <Scissors className="h-3.5 w-3.5" />
+              Split
+            </button>
+          )}
         </div>
 
-        {/* Attachments list */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        {showSplitEditor ? (
+          <SplitTransactionEditor
+            transaction={transaction}
+            onSuccess={() => {
+              setShowSplitEditor(false);
+              onClose();
+            }}
+            onCancel={() => setShowSplitEditor(false)}
+          />
+        ) : (
+          <>
+            {/* Attachments list */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
             Attachments
           </p>
@@ -236,6 +262,8 @@ export function TransactionDetailPanel({
             PDF, PNG, JPG, WEBP, HEIC · Max 10 MB
           </p>
         </div>
+          </>
+        )}
       </div>
     </>
   );
