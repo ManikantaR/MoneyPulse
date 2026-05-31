@@ -33,6 +33,7 @@
 | **21** | **moneypulse-web PWA (installable + iOS push)** | [Prompt 21](#prompt-21--moneypulse-web-pwa-installable--ios-background-push) | web `firebase deploy` | web only — pairs with 6 |
 | 22 | Web Bills Glance (`bill.projected.v1`) — OPTIONAL | [Prompt 22](#prompt-22--web-bills-glance-billprojectedv1--optional) | NAS deploy + web `firebase deploy` | optional — 22a NAS + 22b Web |
 | 23 | Send Test Notification (Settings button) | [Prompt 23](#prompt-23--send-test-notification-settings-button) | NAS deploy | dev/test helper — NAS only |
+| 24 | Fix: exclude transfers in web KPIs (`isTransfer` projection) | [Prompt 24](#prompt-24--fix-web-kpis-exclude-transfers-istransfer-projection) | NAS deploy + web deploy + re-sync | bug fix — 24a NAS + 24b Web |
 
 > **Architecture rules (from PHASE10 spec §F.4/§F.5) every prompt below obeys:**
 > - **Web is essentials + push, not parity.** Each prompt states a **Sync verdict**: `web: none` (NAS-only), `web: field-only` (rides an existing projection), or `web: summary+push` (gets a projected summary + FCM). Do not port NAS management UIs to moneypulse-web.
@@ -2006,6 +2007,84 @@ Find the existing settings page under `apps/web/src/app/(protected)/settings/` (
 - [ ] Phone receives the FCM push (if a device token exists)
 - [ ] Home Assistant speaks it + creates a persistent notification (if not quiet hours)
 ```
+
+---
+
+## Prompt 24 — Fix: web KPIs exclude transfers (`isTransfer` projection)
+
+> **The bug**: The NAS dashboard excludes transfer/credit-card-payment categories from income/expense (Tier 0.3 `is_transfer` fix — `AND COALESCE(c.is_transfer, false) = false` throughout `analytics.service.ts`). The moneypulse-web companion does **not**: `use-kpis.ts` sums *all* credits as income and *all* debits as expenses, so both are inflated by transfer amounts (observed: web Income $7,936 / Expenses $7,436 vs NAS $7,100 / $6,097). Root cause: the sync projection never carries the transfer flag, and `TransactionDoc`/`fanOutTransaction` have no `isTransfer` field.
+>
+> **The fix**: denormalize `isTransfer` onto each projected transaction (NAS), persist + filter it on the web. **Two blocks; deploy both, then re-sync.** Sync verdict: this corrects an existing projection field.
+
+### Prompt 24a — NAS side (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need MoneyPulse to include an `isTransfer` flag on every `transaction.projected.v1` sync payload, so the moneypulse-web companion can exclude transfer/credit-card-payment categories from income/expense (matching the NAS analytics). The flag comes from the transaction's category: categories.is_transfer (COALESCE false); a transaction with no category is not a transfer. Follow existing patterns. Do NOT read .env or include secrets.
+
+## Add `isTransfer` to ALL three places that emit transaction.projected.v1
+
+1. `apps/api/src/sync/sync.controller.ts` (backfill/replay, ~line 175-220):
+   - The SELECT that loads transactions must LEFT JOIN categories to read is_transfer, e.g. add `COALESCE(c.is_transfer, false) AS is_transfer` and `LEFT JOIN categories c ON c.id = t.category_id`.
+   - Add `is_transfer: boolean` to the row type.
+   - Add `isTransfer: txn.is_transfer` to the payload object (next to isCredit).
+
+2. `apps/api/src/transactions/transactions.service.ts` (manual create ~line 80-95 and update ~line 300-310 enqueue):
+   - When building the projected payload, include `isTransfer`. Derive it from the transaction's category is_transfer. If the category isn't already loaded, look it up (SELECT is_transfer FROM categories WHERE id = categoryId); null/absent category → false.
+
+3. `apps/api/src/jobs/ingestion.processor.ts` (the transaction.projected.v1 emit after import, ~line 552):
+   - Same: include `isTransfer` derived from the category's is_transfer.
+
+Keep the existing best-effort/no-rollback behavior. Do not change unrelated payload fields.
+
+## Tests
+- The backfill query result includes is_transfer and the payload carries `isTransfer` (true for a transfer-category txn, false otherwise, false when category is null).
+- Manual create/update and ingestion emit include isTransfer.
+
+## After implementation — verification (MANDATORY)
+### 1: Build — pnpm build, fix all TS errors.
+### 2: Tests (above) pass.
+### 3: Rubber duck — COALESCE false default; null category → false; all 3 emit sites updated; no other payload fields changed.
+### 4: Deploy — ./deploy-to-nas.sh
+### 5: No SQL migration (is_transfer column already exists on categories).
+### 6: RE-SYNC existing transactions (critical — existing Firestore docs lack the field):
+   - Deploy 24b FIRST (so the web fan-out persists isTransfer), THEN trigger a re-projection of ALL transactions from the Sync Admin page — use **Replay** (not Backfill: backfill's NOT EXISTS skips already-synced txns). This re-emits every transaction.projected.v1 with the new isTransfer, and fanOutTransaction's .set() overwrites each web doc.
+   - Verify in the Firestore console that transaction docs now have `isTransfer`.
+```
+
+### Prompt 24b — Web side (copy into Copilot Chat with `~/repo/moneypulse-web` open)
+
+```
+I need moneypulse-web to store and respect an `isTransfer` flag on transactions so income/expense KPIs exclude transfers (matching the NAS app). The NAS now sends `isTransfer` on transaction.projected.v1 (Prompt 24a). Follow this repo's patterns + data-boundary contract (CLAUDE.md). Read specs/ first.
+
+## 1. Persist the field — functions/src/index.ts → fanOutTransaction
+In the transactions doc `.set(...)`, add:
+  isTransfer: body.isTransfer === true,
+(mirrors how isCredit/isManual are read.) No other fan-out changes.
+
+## 2. Type — apps/web/src/lib/types/firestore.ts
+Add `isTransfer?: boolean;` to `TransactionDoc`.
+
+## 3. Exclude transfers from KPIs — apps/web/src/lib/queries/use-kpis.ts
+Before the income/expenses reduce, filter out transfers (treat a missing field as NOT a transfer, so older un-resynced docs still behave):
+  const spendable = transactions.filter((t) => !t.isTransfer);
+  const income = spendable.filter((t) => t.isCredit).reduce((s, t) => s + t.amountCents, 0);
+  const expenses = spendable.filter((t) => !t.isCredit).reduce((s, t) => s + t.amountCents, 0);
+
+## 4. Same exclusion anywhere else that aggregates transactions
+Find Spending-by-Category and Top-Merchants computations (e.g. apps/web/src/components/dashboard/spending-by-category.tsx and any use-transactions-based aggregation) and apply the same `!t.isTransfer` filter so they match the NAS (which also excludes is_transfer there).
+
+## Important
+- Client-side `!t.isTransfer` (not a Firestore `where`) — older docs may lack the field until the NAS re-sync (Prompt 24a step 6) completes; falsy = included, which is correct for non-transfers.
+- Data boundary unchanged: isTransfer is a boolean derived flag, no PII.
+
+## Verification (MANDATORY — pnpm test then pnpm build)
+### Tests — fanOutTransaction persists isTransfer; useKpis excludes isTransfer txns (mock a transfer credit + normal credit → income counts only the normal one); missing isTransfer is treated as included.
+### Rubber duck (/rubber-duck) — KPIs + category + merchants all filter transfers; no Firestore where on isTransfer (avoids dropping un-resynced docs).
+### Deploy — firebase deploy --only functions,hosting
+### Manual — after the NAS re-sync: web Income/Expenses/Cash Flow match the NAS dashboard for the same month.
+```
+
+> **Run order**: deploy **24b** (so `fanOutTransaction` stores the field) → deploy **24a** → **Replay** all transactions from Sync Admin → web numbers should now match the NAS.
 
 ---
 
