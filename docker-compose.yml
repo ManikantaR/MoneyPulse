@@ -57,6 +57,7 @@ services:
       PDF_PARSER_URL: ${PDF_PARSER_URL:-http://pdf-parser:5000}
       UPLOAD_DIR: /data/uploads
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      HA_WEBHOOK_ALLOWED_HOSTS: ${HA_WEBHOOK_ALLOWED_HOSTS:-}
     volumes:
       - ~/moneypulse-data/uploads:/data/uploads
       - ~/moneypulse-data/watch-folder:/config/watch-folder
