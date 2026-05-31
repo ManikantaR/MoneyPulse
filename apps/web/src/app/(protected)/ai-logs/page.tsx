@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Zap,
 } from 'lucide-react';
+import { MobileCard } from '@/components/MobileCard';
 
 function StatCard({
   label,
@@ -267,7 +268,8 @@ export default function AiLogsPage() {
               <Activity className="h-4 w-4" /> Model Performance
             </h2>
           </div>
-          <div className="overflow-x-auto">
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-left text-[var(--muted-foreground)]">
@@ -342,6 +344,53 @@ export default function AiLogsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+          {/* Mobile cards */}
+          <div className="md:hidden divide-y divide-[var(--border)]">
+            {stats.map((row, i) => (
+              <MobileCard
+                key={i}
+                className="rounded-none border-0 shadow-none"
+                fields={[
+                  {
+                    primary: true,
+                    value: (
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          row.prompt_type === 'categorization'
+                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                            : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                        }`}
+                      >
+                        {row.prompt_type}
+                      </span>
+                    ),
+                  },
+                  { label: 'Model', value: <span className="font-mono text-[10px]">{row.model}</span> },
+                  { label: 'Calls', value: String(row.total_calls) },
+                  { label: 'Avg Latency', value: `${row.avg_latency_ms ?? '—'}ms` },
+                  {
+                    label: 'Confidence',
+                    value: row.avg_confidence != null
+                      ? `${(Number(row.avg_confidence) * 100).toFixed(0)}%`
+                      : '—',
+                  },
+                  { label: 'Transactions', value: String(row.total_transactions ?? 0) },
+                  {
+                    label: 'PII Hits',
+                    value: row.pii_detections > 0
+                      ? String(row.pii_detections)
+                      : '0',
+                  },
+                  {
+                    label: 'Last Used',
+                    value: row.last_call
+                      ? new Date(row.last_call).toLocaleDateString()
+                      : '—',
+                  },
+                ]}
+              />
+            ))}
           </div>
         </div>
       )}

@@ -9,6 +9,8 @@ import {
 } from '@/lib/hooks/useAttachments';
 import { formatCents, formatDate } from '@/lib/format';
 import { SplitTransactionEditor } from '@/components/SplitTransactionEditor';
+import { CategoryCombobox } from '@/components/CategoryCombobox';
+import type { CategoryOption } from '@/components/CategoryCombobox';
 import type { Transaction, TransactionAttachment } from '@moneypulse/shared';
 
 const API_BASE =
@@ -19,6 +21,9 @@ interface TransactionDetailPanelProps {
   categoryLabel?: string;
   accountLabel?: string;
   onClose: () => void;
+  /** When provided, renders an inline category editor so mobile users can change the category. */
+  categories?: CategoryOption[];
+  onCategoryChange?: (transactionId: string, categoryId: string) => void;
 }
 
 /** Slide-over panel showing transaction details and attachment management. */
@@ -27,6 +32,8 @@ export function TransactionDetailPanel({
   categoryLabel,
   accountLabel,
   onClose,
+  categories,
+  onCategoryChange,
 }: TransactionDetailPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -100,9 +107,26 @@ export function TransactionDetailPanel({
             label="Amount"
             value={`${transaction.isCredit ? '+' : '-'}${formatCents(transaction.amountCents)}${transaction.originalAmountCents && transaction.currencyCode ? ` (${transaction.currencyCode} ${(transaction.originalAmountCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })})` : ''}`}
           />
-          {categoryLabel && (
+          {/* Category: editable combobox when categories are provided, otherwise static label */}
+          {categories && onCategoryChange ? (
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="shrink-0 text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Category
+              </span>
+              <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
+                <CategoryCombobox
+                  categories={categories}
+                  value={transaction.categoryId ?? ''}
+                  onChange={(val) => onCategoryChange(transaction.id, val)}
+                  placeholder="Uncategorized"
+                  size="sm"
+                  extraOptions={[{ value: '', label: 'Uncategorized' }]}
+                />
+              </div>
+            </div>
+          ) : categoryLabel ? (
             <DetailRow label="Category" value={categoryLabel} />
-          )}
+          ) : null}
           {accountLabel && <DetailRow label="Account" value={accountLabel} />}
           {transaction.merchantName && (
             <DetailRow label="Merchant" value={transaction.merchantName} />

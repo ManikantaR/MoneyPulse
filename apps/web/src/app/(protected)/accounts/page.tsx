@@ -266,8 +266,8 @@ export default function AccountsPage() {
       )}
       {/* Reconcile Modal */}
       {reconcileTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
             <h2 className="text-lg font-semibold mb-1">Reconcile Balance</h2>
             <p className="text-sm text-[var(--muted-foreground)] mb-4">
               Enter the <strong>current balance</strong> shown on your bank or credit card statement for{' '}

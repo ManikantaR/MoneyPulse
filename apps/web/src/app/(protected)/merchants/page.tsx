@@ -11,6 +11,7 @@ import {
 } from '@/lib/hooks/useMerchantAliases';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { MobileCard } from '@/components/MobileCard';
 
 const MATCH_TYPE_LABELS: Record<string, string> = {
   contains: 'Contains',
@@ -198,80 +199,151 @@ export default function MerchantsPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--surface-container-low)]">
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Pattern</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Match Type</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Display Name</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Source</th>
-                <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {aliases.map((alias) => {
-                const isGlobal = alias.userId === null;
-                return (
-                  <tr key={alias.id} className="transition-colors hover:bg-[var(--muted)]/40">
-                    <td className="px-5 py-3 font-mono text-xs">{alias.pattern}</td>
-                    <td className="px-5 py-3">
-                      <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold', MATCH_TYPE_COLORS[alias.matchType] ?? 'bg-gray-100 text-gray-700')}>
-                        {MATCH_TYPE_LABELS[alias.matchType] ?? alias.matchType}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 font-medium">{alias.displayName}</td>
-                    <td className="px-5 py-3">
-                      {isGlobal ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                          <Lock className="h-3 w-3" />
-                          Global
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-container-low)]">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Pattern</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Match Type</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Display Name</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Source</th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {aliases.map((alias) => {
+                  const isGlobal = alias.userId === null;
+                  return (
+                    <tr key={alias.id} className="transition-colors hover:bg-[var(--muted)]/40">
+                      <td className="px-5 py-3 font-mono text-xs">{alias.pattern}</td>
+                      <td className="px-5 py-3">
+                        <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold', MATCH_TYPE_COLORS[alias.matchType] ?? 'bg-gray-100 text-gray-700')}>
+                          {MATCH_TYPE_LABELS[alias.matchType] ?? alias.matchType}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 font-medium">{alias.displayName}</td>
+                      <td className="px-5 py-3">
+                        {isGlobal ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                            <Lock className="h-3 w-3" />
+                            Global
+                          </span>
+                        ) : (
+                          <span className="inline-block rounded-full bg-[var(--accent)] px-2.5 py-0.5 text-xs font-semibold text-[var(--primary)]">
+                            Custom
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        {!isGlobal && (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => {
+                                setEditTarget(alias);
+                                setEditForm({ pattern: alias.pattern, matchType: alias.matchType, displayName: alias.displayName });
+                              }}
+                              className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)] transition-colors"
+                              aria-label="Edit alias"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this alias?')) {
+                                  deleteAlias.mutate(alias.id);
+                                }
+                              }}
+                              className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)] transition-colors"
+                              aria-label="Delete alias"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {aliases.map((alias) => {
+              const isGlobal = alias.userId === null;
+              return (
+                <MobileCard
+                  key={alias.id}
+                  fields={[
+                    { primary: true, value: alias.displayName },
+                    {
+                      label: 'Pattern',
+                      value: (
+                        <span className="font-mono text-[10px] break-all">{alias.pattern}</span>
+                      ),
+                    },
+                    {
+                      label: 'Match Type',
+                      value: (
+                        <span className={cn('inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold', MATCH_TYPE_COLORS[alias.matchType] ?? 'bg-gray-100 text-gray-700')}>
+                          {MATCH_TYPE_LABELS[alias.matchType] ?? alias.matchType}
+                        </span>
+                      ),
+                    },
+                    {
+                      label: 'Source',
+                      value: isGlobal ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                          <Lock className="h-3 w-3" />Global
                         </span>
                       ) : (
-                        <span className="inline-block rounded-full bg-[var(--accent)] px-2.5 py-0.5 text-xs font-semibold text-[var(--primary)]">
+                        <span className="inline-block rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold text-[var(--primary)]">
                           Custom
                         </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      {!isGlobal && (
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => {
-                              setEditTarget(alias);
-                              setEditForm({ pattern: alias.pattern, matchType: alias.matchType, displayName: alias.displayName });
-                            }}
-                            className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)] transition-colors"
-                            aria-label="Edit alias"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm('Delete this alias?')) {
-                                deleteAlias.mutate(alias.id);
-                              }
-                            }}
-                            className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)] transition-colors"
-                            aria-label="Delete alias"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      ),
+                    },
+                  ]}
+                  actions={
+                    !isGlobal ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setEditTarget(alias);
+                            setEditForm({ pattern: alias.pattern, matchType: alias.matchType, displayName: alias.displayName });
+                          }}
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl hover:bg-[var(--muted)] text-[var(--primary)]"
+                          aria-label="Edit alias"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Delete this alias?')) {
+                              deleteAlias.mutate(alias.id);
+                            }
+                          }}
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl hover:bg-[var(--destructive)]/10 text-[var(--destructive)]"
+                          aria-label="Delete alias"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Edit modal */}
       {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
             <h2 className="mb-4 text-lg font-semibold">Edit Alias</h2>
             <form onSubmit={handleUpdate} className="space-y-4">
               <div>

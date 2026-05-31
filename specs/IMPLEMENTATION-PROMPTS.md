@@ -22,11 +22,11 @@
 | 10 | Cash Flow Forecasting | [Prompt 10](#prompt-10--cash-flow-forecasting) | Deploy only | Tier 2 |
 | 11 | Account Balance Snapshots (F.2) | [Prompt 11](#prompt-11--account-balance-history-snapshots-f2) | Deploy + SQL migration | foundational |
 | 12 | Import Deduplication Improvement (F.3) | [Prompt 12](#prompt-12--import-deduplication-improvement-f3) | Deploy + SQL migration | foundational |
-| 13 | Weekly/Monthly Digest | [Prompt 13](#prompt-13--weeklymonthly-financial-digest) | Deploy only | Tier 3 |
+| 13 | Daily/Weekly/Monthly Digest (+ send-now, HA voice) | [Prompt 13](#prompt-13--daily--weekly--monthly-financial-digest) | NAS deploy + SQL | queued — after mobile (33/34) |
 | 14 | Year-over-Year Comparison | [Prompt 14](#prompt-14--year-over-year-comparison) | Deploy only | Tier 3 |
 | 15 | Home Assistant Dashboard Sensor | [Prompt 15](#prompt-15--home-assistant-dashboard-sensor) | Deploy only | Tier 3 |
 | 16 | Tax-Ready Export | [Prompt 16](#prompt-16--tax-ready-export) | Deploy + SQL migration | Tier 3 |
-| 17 | Subscription Manager | [Prompt 17](#prompt-17--subscription-manager) | Deploy only | Tier 3 |
+| 17 | Subscription Manager | [Prompt 17](#prompt-17--subscription-manager) | Deploy only | queued — after mobile (33/34) |
 | 18 | PWA Mode + Camera Capture | [Prompt 18](#prompt-18--pwa-mode--camera-capture) | Deploy only | Tier 3 |
 | 19 | Quick-Add Transaction Widget | [Prompt 19](#prompt-19--quick-add-transaction-widget) | Deploy only | Tier 3 |
 | 20 | Spending Streaks & Gamification | [Prompt 20](#prompt-20--spending-streaks--gamification) | Deploy only | Tier 3 |
@@ -42,6 +42,11 @@
 | 30 | Refunds as Offsets | [Prompt 30](#prompt-30--refunds-as-offsets) | NAS deploy + SQL | new |
 | 31 | Cash Account (ATM tracking) | [Prompt 31](#prompt-31--cash-account-atm-tracking) | NAS deploy + SQL | enum + UI |
 | 32 | Sinking Funds / Savings Goals | [Prompt 32](#prompt-32--sinking-funds--savings-goals) | NAS deploy + SQL | new |
+| **33** | **Mobile shell + PWA (NAS app)** | [Prompt 33](#prompt-33--mobile-shell--pwa-nas-app) | NAS deploy | ⬜ **NEXT (do first)** — responsive shell + bottom-nav + install |
+| **34** | **Responsive data views (tables → cards)** | [Prompt 34](#prompt-34--responsive-data-views-tables--cards) | NAS deploy | ⬜ NEXT — after 33 |
+| **35** | **Merchant Normalization Phase 2 (AI) + bill re-detect/dedupe** | [Prompt 35](#prompt-35--merchant-normalization-phase-2-ai--bill-re-detectdedupe) | NAS deploy | ⬜ after 34, **before 17** — fixes dirty names everywhere |
+
+> **Mobile-first pass (Prompts 33–34, all NAS-only `apps/web`).** Agreed: the NAS app is desktop-built (fixed sidebar, 9 table views, no mobile nav) and used on the phone **at home on wifi** (LAN). Make it a responsive, installable PWA — **bottom tab bar** (Dashboard · Transactions · ＋Add · Bills · More) + slide-out drawer for the rest, tables→cards below `md`, full-screen sheets for modals. Distinct from moneypulse-web's PWA (Prompt 21). **Do 33→34 BEFORE 17 and 13** (mobile usability is the daily blocker; notifications tap through to this app).
 
 > **Prompts 25–32 — "Real-life finance modeling" (all NAS-only).** Agreed scope: model money that isn't a true expense (transfers/investments via category flags), multi-account investment tracking by value (snapshots), family-abroad as expense + lightweight foreign-amount field, reimbursables/loans, refunds-as-offsets, cash/ATM, and savings goals. Web companion work deferred (essentials principle). Several share one schema migration — see each prompt's SQL.
 
@@ -1571,31 +1576,47 @@ docker exec -i moneypulse-db psql -U moneypulse -d moneypulse -c "
 
 ---
 
-## Prompt 13 — Weekly/Monthly Financial Digest
+## Prompt 13 — Daily / Weekly / Monthly Financial Digest
 
-> Automated summary pushed to the user. Builds on Prompts 3/4/5/10. **Sync verdict: `web: summary+push`** (the digest is a notification → FCM; optional email).
+> Automated summary on a chosen cadence + an on-demand "Send now" button, delivered to in-app bell + FCM push + **HA voice (concise)**. Builds on Prompts 3/4/5 (+11 if present), uses Prompt 6's notification pipeline and Prompt 7's Ollama. **Sync verdict: `web: summary+push`.**
 
-### Prompt (copy this into Copilot Chat)
+### Prompt (copy this into Copilot Chat with `~/repo/MyMoney` open)
 
 ```
-I need an automated weekly/monthly financial digest in MoneyPulse. Generate a summary (top categories, budget status, unusual charges, upcoming bills, net-worth change) and deliver via in-app notification + FCM push + optional email. Use Ollama (on my Mac) to write the natural-language summary, but degrade gracefully to a templated summary if it's offline. Follow existing patterns.
+I need a financial digest in MoneyPulse with daily / weekly / monthly cadences plus an on-demand "Send now" button. It delivers to the in-app bell + FCM push + Home Assistant voice (a CONCISE spoken line, while the full detail goes in-app/FCM). Use Ollama (on my Mac) for the narrative, degrade to a template when offline, never block. Follow existing patterns. Do NOT read .env or secrets.
+
+## Settings (schema)
+- user_settings has `weekly_digest_enabled`. Add `daily_digest_enabled` and `monthly_digest_enabled` (boolean, default false). Update shared types + the Settings page toggles (one per cadence).
 
 ## Service: `apps/api/src/analytics/digest.service.ts` (NEW)
-- `buildDigest(userId, period: 'weekly'|'monthly')`: gather top spending categories, budget progress (reuse `budgetProgress`), anomalies in the period, upcoming bills (next 7 days), net-worth change (reuse balance snapshots from Prompt 11).
-- Narrative: if `ollamaHealth.isAvailable()`, ask Ollama to turn the structured data into a friendly paragraph; else fall back to a deterministic template. NEVER block on AI.
-- Deliver via `NotificationsService.create({ type: 'digest', title, message })` (→ web + FCM via Prompt 6). If `notificationEmail` is set, also send email (reuse any existing mailer; if none, skip with a TODO).
+- `buildDigest(userId, period: 'daily'|'weekly'|'monthly')` → `{ title, message, voiceSummary, sections }`:
+  - **daily**: yesterday's total spend, account balances, bills due in the next ~2 days, any anomalies yesterday, the budget closest to its limit. Keep it SHORT.
+  - **weekly/monthly**: top spending categories, budget progress (reuse `budgetProgress`), period anomalies, upcoming bills, net-worth change (use balance snapshots if Prompt 11 exists, else current balances).
+  - `message` = full human-readable detail (for in-app + FCM). `voiceSummary` = ONE concise line for TTS, e.g. "Yesterday you spent 84 dollars. Two bills due this week. Groceries at 78 percent of budget."
+  - Narrative: if `ollamaHealth.isAvailable()`, have Ollama write `message` (and a short `voiceSummary`); else deterministic template. NEVER block on AI.
+- `deliver(userId, period)` → `buildDigest` then `notificationsService.create({ type: 'digest', title, message, voiceSummary })`. If `notificationEmail` is set, also email the full digest (reuse any mailer; TODO if none).
 
-## Trigger
-- Scheduled job honoring the existing `weeklyDigestEnabled` user setting. Weekly on a fixed day (e.g. Monday 8am in the user's `timezone`); monthly on the 1st. Use the user's `timezone` from user_settings.
+## Concise voice support (small cross-cutting add — so HA doesn't read a wall of text)
+- Extend `NotificationsService.create` to accept an optional `voiceSummary`, and include it in the HA webhook payload (`{ title, message, type, voiceSummary }`). Web/FCM keep using `message`.
+- HA automation (`docs/home-assistant-notifications.md` / your `packages/moneypulse.yaml`): change the announce message to prefer the concise line:
+  `message: "{{ trigger.json.voiceSummary if trigger.json.voiceSummary else (trigger.json.title ~ '. ' ~ trigger.json.message) }}"`
+  (one-line edit to the already-deployed automation — note it in the doc).
 
-## Frontend (NAS app)
-- Optional: a "Digests" view or just rely on the notification bell. Add a "Send digest now" button on the settings/dashboard for testing.
+## Triggers (scheduled, per-cadence, timezone-aware)
+- In `jobs.module.ts` (upsertJobScheduler pattern): daily ~07:00, weekly Monday ~08:00, monthly 1st ~08:00 — each gated by its `*_digest_enabled` setting and run in the user's `timezone`. De-dupe per period.
+
+## On-demand "Send now"
+- `POST /digest/send` body `{ period: 'daily'|'weekly'|'monthly' }` → `deliver(...)`. Ownership via `@CurrentUser()`.
+- Settings page: a "Send digest now" control (choose cadence) — same pattern as the test-notification button (Prompt 23). Fires to in-app + FCM + HA voice immediately.
 
 ## Important
-- Respect `weeklyDigestEnabled`. Degrade to template if Ollama offline. Do NOT read .env or secrets.
+- Respect each `*_digest_enabled` setting; degrade to template if Ollama offline; `voiceSummary` keeps HA short; quiet hours + the `moneypulse_mute_digest` toggle already gate HA voice. Do NOT read .env or secrets.
 
 ## Verification (MANDATORY)
-### 1: Build. ### 2: Tests — buildDigest returns all sections from mock data; falls back to template when Ollama down; respects weeklyDigestEnabled. ### 3: Rubber duck — timezone scheduling, no AI block, dedupe per period. ### 4: Deploy. ### 5: No SQL. ### 6: Manual — [ ] "Send digest now" produces a notification + FCM push; [ ] content accurate; [ ] disabled setting suppresses it.
+### 1: Build. ### 2: Tests — buildDigest returns sections + a non-empty voiceSummary per period; template fallback when Ollama down; send-now delivers; per-cadence settings respected; create() forwards voiceSummary to the webhook payload. ### 3: Rubber duck — timezone scheduling, dedupe per period, voiceSummary plumbed end-to-end, daily stays concise. ### 4: Deploy + update the HA automation's announce line. ### 5: Post-deploy SQL:
+   ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_digest_enabled BOOLEAN NOT NULL DEFAULT false;
+   ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS monthly_digest_enabled BOOLEAN NOT NULL DEFAULT false;
+### 6: Manual — [ ] "Send now (daily)" → in-app + FCM + HA speaks the SHORT line (not the full text); [ ] scheduled daily fires once at 7am local; [ ] disabling a cadence suppresses it; [ ] weekly/monthly content accurate.
 ```
 
 ---
@@ -2360,6 +2381,122 @@ Add shared type.
    );
    CREATE INDEX IF NOT EXISTS idx_goals_user ON savings_goals(user_id);
 ### 6: Manual — [ ] create a "$5,000 vacation" goal; [ ] contribute $500 → 10% bar; [ ] over-contribute handled; [ ] dashboard glance shows progress.
+```
+
+---
+
+## Prompt 33 — Mobile shell + PWA (NAS app)
+
+> The NAS app (`apps/web`) is desktop-built: fixed sidebar, **no** mobile nav, minimal responsive handling. Used on the phone **at home on wifi**. This makes the app shell responsive + installable. **NAS-only.** Distinct from moneypulse-web's PWA (Prompt 21). **Do this first, before 17/13.**
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need the MoneyPulse NAS web app (apps/web, Next.js + Tailwind) to be mobile-friendly and installable as a PWA. Today it has a fixed desktop sidebar and no mobile navigation. Follow existing patterns + CSS vars (bg-[var(--card)] etc.). Do NOT read .env or secrets.
+
+## 1. Responsive app shell + mobile navigation
+- The protected layout (`apps/web/src/app/(protected)/layout.tsx`) + `Sidebar.tsx` currently always show the desktop sidebar. Make it responsive:
+  - **≥ md (desktop)**: keep the existing left sidebar.
+  - **< md (mobile)**: HIDE the sidebar; show a **bottom tab bar** (fixed, safe-area-inset aware) with 5 items: **Dashboard (/), Transactions (/transactions), ＋Add (center, opens the Add-Transaction modal from Prompt 26), Bills (/bills), More**.
+  - **More** opens a slide-out drawer (or full-screen sheet) listing the remaining nav items (Accounts, Investments, Budgets, Categories, Merchants, Goals, Imports, Upload, AI Logs, Sync, Settings) — reuse the SAME `navItems` array from Sidebar.tsx so nav stays DRY (factor the list into a shared module if needed).
+  - Active-route highlighting on the bottom bar; touch targets ≥ 44px; respect `env(safe-area-inset-bottom)`.
+- The top bar (search, notifications bell, theme, user) should collapse sensibly on mobile (e.g., bell + avatar visible; search behind an icon).
+
+## 2. PWA (installable, NAS app)
+- `apps/web/public/manifest.webmanifest`: name "MoneyPulse", short_name, display standalone, theme/background colors from the app theme, start_url "/", icons 192/512 + 512 maskable (add PNGs under public/icons/).
+- Link in root layout `<head>`: manifest, theme-color, apple-touch-icon (180), apple-mobile-web-app-capable, status-bar-style.
+- Service worker for an **app-shell cache only** (static assets / shell). **Do NOT cache authenticated API responses or financial data.** Clear caches on logout. (next-pwa or a minimal hand-written SW; keep it simple.)
+- `beforeinstallprompt` → an "Install app" affordance (Android/desktop). iOS A2HS note optional (you use Android; harmless to include).
+
+## Important
+- This is the NAS app's OWN PWA (LAN use at home), separate from moneypulse-web (Prompt 21). Different repo, different manifest.
+- Don't over-cache: NAS is reachable at home, so offline support is minimal (shell only).
+- Keep desktop layout unchanged at ≥ md.
+
+## Verification (MANDATORY)
+### 1: Build — pnpm build, fix all TS errors. ### 2: Tests — nav renders bottom-bar < md and sidebar ≥ md; More drawer lists remaining items; manifest served; SW registers; logout clears caches. ### 3: Rubber duck — DRY nav list (one source), no sensitive caching, safe-area insets, 44px targets, ＋Add wires to the Prompt 26 modal. ### 4: Deploy — ./deploy-to-nas.sh. ### 5: No SQL. ### 6: Manual — [ ] on phone at moneypulse.home.lab: bottom bar shows, tabs navigate, More opens drawer, ＋Add opens the form; [ ] desktop unchanged; [ ] "Add to Home Screen" installs; [ ] opens standalone.
+```
+
+---
+
+## Prompt 34 — Responsive data views (tables → cards)
+
+> Builds on 33. The app has **9 `<table>` views** that are cramped on phones. This adds a reusable responsive pattern so each row becomes a card below `md`, plus single-column dashboard and full-screen modals. **NAS-only.**
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need the MoneyPulse NAS web app's data views to be mobile-friendly. There are ~9 table-based views that are unusable on a phone. Add a reusable responsive pattern and apply it. Follow existing patterns + CSS vars. Do NOT read .env or secrets.
+
+## 1. Reusable responsive list pattern
+- Create a small pattern/component (e.g. `apps/web/src/components/ResponsiveList.tsx` or a shared `<DataTable>` that renders): **≥ md → the existing table; < md → a stacked card per row** (label/value pairs, primary field bold, amount right-aligned with formatCents, tap target for row actions).
+- Keep it simple and reusable; don't rewrite each page's logic — wrap the existing row rendering.
+
+## 2. Apply to the table views
+Find the ~9 `<table>` usages (transactions, accounts, categories, bills, investments, merchants, imports, etc.) and switch them to the responsive pattern so they show as cards on mobile. Prioritize in this order: Transactions → Bills → Accounts → Investments → Budgets → the rest.
+
+## 3. Dashboard + modals
+- Dashboard (`(protected)/page.tsx`): ensure cards stack to a single column < md (most KPI/section cards; verify charts shrink/scroll, not overflow).
+- Modals/forms (Add-Transaction from Prompt 26, Split editor from Prompt 25, reconcile/settle, etc.): render as **full-screen sheets** < md instead of centered dialogs; sticky header with close + sticky submit.
+
+## Important
+- Don't change desktop (≥ md) rendering.
+- Watch horizontal overflow (the #1 mobile bug): no fixed-width tables leaking off-screen.
+- Reuse formatCents, CSS vars, existing badges.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — ResponsiveList renders table ≥ md and cards < md; a couple of converted pages snapshot/behavior tested. ### 3: Rubber duck — no horizontal overflow on 360px width; row actions reachable; modals full-screen on mobile; desktop unchanged. ### 4: Deploy. ### 5: No SQL. ### 6: Manual — [ ] on phone: transactions/bills/accounts/investments show as readable cards, no side-scroll; [ ] add/split modals are full-screen; [ ] dashboard is single-column; [ ] desktop tables unchanged.
+```
+
+---
+
+## Prompt 35 — Merchant Normalization Phase 2 (AI) + bill re-detect/dedupe
+
+> **Problem (observed on the Bills page):** merchant names show raw/uncleaned ("Netflix.Com Los Gatos Ca Null", "Spectrum Mobile 855-707-7328 Mo", "Py *Evergreen Pest So"), so `normalizedName == merchantPattern`, and near-identical raw variants become separate bills. **Cause:** `ruleBasedNormalize()` uses UPPERCASE-only regexes (data is Title Case) and there's **no Phase-2 AI normalization**. Dirty names also degrade Subscriptions (17), Top Merchants, recurring detection, and anomaly matching — so this is foundational. **Do before Prompt 17. Sync verdict: `web: field-only`** (normalized names ride the existing transaction projection). Uses the Mac-Ollama from Prompt 7.
+
+### Prompt (copy into Copilot Chat with `~/repo/MyMoney` open)
+
+```
+I need to fix merchant-name normalization in MoneyPulse: clean up messy bank descriptors, add AI normalization via Ollama, then re-normalize all transactions and re-detect/dedupe recurring bills. Follow existing patterns + the Ollama-resilience pattern from Prompt 7. Do NOT read .env or secrets.
+
+## Part A — Improve the rule-based normalizer
+`apps/api/src/categorization/merchant-normalizer.service.ts` `ruleBasedNormalize()` only strips UPPERCASE patterns; real data is Title Case with phone numbers, addresses, mid-string domains, "Null", processor prefixes. Make it CASE-INSENSITIVE and add strip rules (use `i` flags / work on a case-normalized copy, output a clean Title-Cased brand):
+- Phone numbers: `\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b`
+- Domains anywhere (not just end): `\b\S+\.(com|net|org|io|co)\b` → strip the suffix part (keep the brand, e.g. "Netflix.Com" → "Netflix")
+- Trailing junk words: `\b(null|usa?|llc|inc|co|corp)\b\s*$` (careful not to nuke real names)
+- Processor prefixes: `^(py|sq|tst|sp|pp|ppl|paypal|tsys)\s*\*\s*` (e.g. "Py *Evergreen Pest" → "Evergreen Pest")
+- Card junk: `\bw\+\s*amex\b`, standalone `\bamex\b` mid-string
+- Store addresses/numbers: leading store codes ("1 C 100frederick"), `#\d+`, `store\s*#?\d+`
+- Title-case "City St" suffix (case-insensitive version of the existing rule)
+Add unit tests for the real examples:
+  "Netflix.Com Los Gatos Ca Null" → "Netflix"
+  "Spectrum Mobile 855-707-7328 Mo" → "Spectrum Mobile"
+  "Walmart.Com W+ Amex Bentonville Ar" → "Walmart"
+  "Py *Evergreen Pest So" → "Evergreen Pest"
+  "Arlo Technologies Inc 408-638-3750 Ca" → "Arlo Technologies"
+
+## Part B — Phase 2 AI normalization (Ollama)
+- Add `aiNormalizeBatch(rawNames: string[]): Promise<Map<string,string>>` — sends the batch to Ollama (reuse `ai-categorizer.service.ts`'s fetch + JSON-extraction approach AND the `OllamaHealthService` gate from Prompt 7). Prompt: "For each raw bank descriptor, return the clean consumer-facing merchant/brand name. Return ONLY a JSON object mapping raw→clean." Keep it deterministic (temp low).
+- Flow: in `normalize()`, after alias + rule-based, if the result still looks messy (heuristic: contains digits, > 3 tokens, or unchanged from raw), mark it for AI. Run AI normalization through a **resilient background job** like Prompt 7's `ai-categorize` (health-gated, retry when Mac asleep) — NOT inline-blocking. Rule result stands meanwhile (lossy-OK).
+- **Cache AI results as aliases**: when AI returns a clean name, persist it via the existing `learnAlias()` (global or user merchant_alias) so the same raw string never hits Ollama again and future imports are instant.
+
+## Part C — Re-normalize + re-detect/dedupe bills
+- Re-normalize existing transactions: the `POST /transactions/normalize-merchants` (force) endpoint already re-derives `normalized_merchant_name` — ensure it also enqueues the AI batch for messy ones.
+- Bills (`apps/api/src/bills/bills.service.ts`): change detection grouping + the unique key from raw `merchantPattern` to **`normalized_name`** so variants collapse into one bill. Add a one-time **dedupe pass**: bills sharing a normalized name → keep one (merge lastSeen/amount/occurrences), delete/deactivate the duplicates. Expose it (e.g. `POST /bills/redetect` or fold into detect) so you can run it after re-normalizing.
+
+## Frontend (minor)
+- Bills page: hide the gray `merchantPattern` subtitle when it equals `normalizedName` (cosmetic, avoids the "duplicate name" look). Manual fixes still go through the Merchant Aliases page (Prompt 1).
+
+## Important
+- Don't block imports on AI (Prompt 7 pattern). Rule-based is the always-available fallback; AI enriches + gets cached as an alias.
+- Re-normalizing emits `transaction.projected.v1` updates (clean names flow to web). Bill dedupe must be ownership-safe and idempotent.
+- Do NOT read .env or secrets.
+
+## Verification (MANDATORY)
+### 1: Build. ### 2: Tests — rule normalizer passes the 5 examples; `aiNormalizeBatch` (mock Ollama) returns clean map + caches an alias; bill dedupe merges two raw variants into one. ### 3: Rubber duck — case-insensitive rules don't over-strip real names; AI is background/non-blocking + health-gated; dedupe idempotent + ownership-checked; alias cache prevents repeat Ollama calls. ### 4: Deploy — ./deploy-to-nas.sh. ### 5: Post-deploy — re-run normalization + bill re-detect:
+   curl/admin: POST /transactions/normalize-merchants {force:true}   (then) POST /bills/redetect
+   (Mac/Ollama awake for the AI pass; otherwise it catches up via the retry queue.)
+### 6: Manual — [ ] bills show clean names (Netflix, Spectrum Mobile, Walmart) with no duplicate subtitle; [ ] one bill per vendor (variants merged); [ ] Top Merchants + (later) Subscriptions show clean names.
 ```
 
 ---

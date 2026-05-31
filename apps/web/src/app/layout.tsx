@@ -1,13 +1,29 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Providers } from '@/components/providers';
+import { SwRegister } from '@/components/SwRegister';
+import { InstallPrompt } from '@/components/InstallPrompt';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'MoneyPulse',
-  description: 'Personal Finance Tracker',
+  description: 'Privacy-first personal finance tracker',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'MoneyPulse',
+  },
   icons: {
     icon: '/favicon.svg',
+    apple: '/icons/apple-touch-icon.png',
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#7c3aed',
 };
 
 export default function RootLayout({
@@ -25,6 +41,8 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>{children}</Providers>
+        <SwRegister />
+        <InstallPrompt />
       </body>
     </html>
   );

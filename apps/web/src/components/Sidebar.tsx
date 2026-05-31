@@ -4,51 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
-import {
-  LayoutDashboard,
-  ArrowLeftRight,
-  Upload,
-  Landmark,
-  Tags,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  TrendingUp,
-  Wallet,
-  FileBarChart,
-  LogOut,
-  Brain,
-  RefreshCw,
-  Store,
-  CalendarClock,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingUp, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { UserAvatar } from './UserAvatar';
+import { navItems } from '@/lib/nav-items';
 
-/** Navigation item definition for the sidebar. */
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const navItems: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
-  { href: '/upload', label: 'Upload', icon: Upload },
-  { href: '/imports', label: 'Imports', icon: FileBarChart },
-  { href: '/accounts', label: 'Accounts', icon: Landmark },
-  { href: '/investments', label: 'Investments', icon: TrendingUp },
-  { href: '/budgets', label: 'Budgets', icon: Wallet },
-  { href: '/bills', label: 'Bills', icon: CalendarClock },
-  { href: '/categories', label: 'Categories', icon: Tags },
-  { href: '/merchants', label: 'Merchants', icon: Store },
-  { href: '/ai-logs', label: 'AI Logs', icon: Brain },
-  { href: '/sync', label: 'Sync', icon: RefreshCw },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
-
-/** Collapsible sidebar with icon+label navigation. */
+/** Collapsible sidebar — visible only on md+ screens; mobile uses BottomTabBar instead. */
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -57,7 +18,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex h-screen flex-col border-r border-[var(--border)] bg-[var(--card)] transition-all duration-300',
+        'hidden md:flex h-screen flex-col border-r border-[var(--border)] bg-[var(--card)] transition-all duration-300',
         collapsed ? 'w-[68px]' : 'w-[240px]',
       )}
     >

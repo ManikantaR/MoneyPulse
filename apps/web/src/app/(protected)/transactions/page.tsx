@@ -14,6 +14,7 @@ import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { TransactionDetailPanel } from '@/components/TransactionDetailPanel';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
+import { MobileCard } from '@/components/MobileCard';
 import { formatCents, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { TransactionQueryParams } from '@/lib/hooks/useTransactions';
@@ -394,8 +395,8 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-2xl bg-[var(--card)] shadow-sm">
+      {/* Desktop Table */}
+      <div className="hidden md:block overflow-x-auto rounded-2xl bg-[var(--card)] shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--surface-container-low)]/50 text-left">
@@ -566,6 +567,46 @@ export default function TransactionsPage() {
         </table>
       </div>
 
+      {/* Mobile Cards (< md) */}
+      <div className="md:hidden space-y-3">
+        {isLoading ? (
+          <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">Loading...</p>
+        ) : transactions.length === 0 ? (
+          <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">No transactions found</p>
+        ) : (
+          transactions.map((txn) => {
+            const isIncome = txn.isCredit && accountTypeMap[txn.accountId] !== 'credit_card';
+            const amountColor = isIncome
+              ? 'text-[var(--secondary)]'
+              : txn.isCredit
+                ? 'text-[var(--muted-foreground)]'
+                : 'text-[var(--foreground)]';
+            const cat = txn.categoryId ? categoryMap[txn.categoryId] : null;
+            return (
+              <MobileCard
+                key={txn.id}
+                onClick={() => setSelectedTxn(txn as Transaction)}
+                fields={[
+                  { primary: true, value: txn.description },
+                  {
+                    amount: true,
+                    amountColor,
+                    value: `${txn.isCredit ? '+' : '-'}${formatCents(txn.amountCents)}`,
+                  },
+                  { label: 'Date', value: formatDate(txn.date) },
+                  { label: 'Account', value: accountMap[txn.accountId] ?? '—' },
+                  {
+                    label: 'Category',
+                    value: cat ? `${cat.icon} ${cat.name}` : 'Uncategorized',
+                  },
+                  ...(txn.merchantName ? [{ label: 'Merchant', value: txn.merchantName }] : []),
+                ]}
+              />
+            );
+          })
+        )}
+      </div>
+
       {/* Pagination */}
       <div className="flex items-center justify-between rounded-xl bg-[var(--surface-container-low)]/50 px-6 py-4">
         <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
@@ -627,20 +668,13 @@ export default function TransactionsPage() {
           }
           accountLabel={accountMap[selectedTxn.accountId]}
           onClose={() => setSelectedTxn(null)}
+          categories={categoryOptions}
+          onCategoryChange={handleCategoryChange}
         />
       )}
 
-      {/* Add transaction modal */}
+      {/* Add transaction modal — desktop only (mobile uses shell-level +Add in BottomTabBar) */}
       {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} />}
-
-      {/* FAB — mobile quick-add (hidden on md+) */}
-      <button
-        onClick={() => setShowAddModal(true)}
-        aria-label="Add transaction"
-        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] shadow-lg hover:opacity-90 transition-opacity md:hidden"
-      >
-        <Plus className="h-6 w-6" />
-      </button>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { useUploads, useDeleteUpload } from '@/lib/hooks/useUpload';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/format';
 import { useMemo, useState, Fragment } from 'react';
+import { MobileCard } from '@/components/MobileCard';
 import type { FileUpload } from '@moneypulse/shared';
 
 function StepItem({ icon, label, detail, status }: {
@@ -147,8 +148,20 @@ export default function ImportsPage() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-2xl bg-[var(--card)] shadow-sm">
+      {/* Loading / empty states */}
+      {isLoading && (
+        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">Loading...</p>
+      )}
+      {!isLoading && sortedUploads.length === 0 && (
+        <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">
+          No files imported yet. Upload a statement from the{' '}
+          <a href="/upload" className="text-[var(--primary)] hover:underline">Upload</a>{' '}
+          page or drop a CSV in the watch folder.
+        </p>
+      )}
+
+      {/* Desktop Table */}
+      <div className="hidden md:block overflow-x-auto rounded-2xl bg-[var(--card)] shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--surface-container-low)]/50 text-left">
@@ -180,24 +193,14 @@ export default function ImportsPage() {
           <tbody className="divide-y divide-[var(--border)]">
             {isLoading ? (
               <tr>
-                <td
-                  colSpan={8}
-                  className="px-4 py-12 text-center text-[var(--muted-foreground)]"
-                >
+                <td colSpan={8} className="px-4 py-12 text-center text-[var(--muted-foreground)]">
                   Loading...
                 </td>
               </tr>
             ) : sortedUploads.length === 0 ? (
               <tr>
-                <td
-                  colSpan={8}
-                  className="px-4 py-12 text-center text-[var(--muted-foreground)]"
-                >
-                  No files imported yet. Upload a statement from the{' '}
-                  <a href="/upload" className="text-[var(--primary)] hover:underline">
-                    Upload
-                  </a>{' '}
-                  page or drop a CSV in the watch folder.
+                <td colSpan={8} className="px-4 py-12 text-center text-[var(--muted-foreground)]">
+                  No files imported yet.
                 </td>
               </tr>
             ) : (
@@ -411,6 +414,71 @@ export default function ImportsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Mobile Cards */}
+      {!isLoading && sortedUploads.length > 0 && (
+        <div className="md:hidden space-y-3">
+          {sortedUploads.map((upload) => {
+            const isExpanded = expandedId === upload.id;
+            const totalRows = upload.rowsImported + upload.rowsSkipped + upload.rowsErrored;
+            return (
+              <MobileCard
+                key={upload.id}
+                onClick={() => setExpandedId(isExpanded ? null : upload.id)}
+                fields={[
+                  {
+                    primary: true,
+                    value: (
+                      <span className="flex items-center gap-2">
+                        {isExpanded
+                          ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
+                          : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />}
+                        <span className="truncate">{upload.filename}</span>
+                      </span>
+                    ),
+                  },
+                  { amount: false, label: 'Status', value: statusBadge(upload.status) },
+                  { label: 'Account', value: accountMap[upload.accountId] ?? '—' },
+                  { label: 'Date', value: formatDate(upload.createdAt) },
+                  { label: 'Imported', value: String(upload.rowsImported) },
+                  { label: 'Skipped', value: String(upload.rowsSkipped) },
+                  ...(upload.rowsErrored > 0
+                    ? [{ label: 'Errors', value: String(upload.rowsErrored) }]
+                    : []),
+                ]}
+                actions={
+                  <div className="flex items-center gap-2">
+                    {upload.rowsErrored > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setErrorUpload(upload); }}
+                        className="flex min-h-[44px] items-center gap-1.5 rounded-xl bg-red-500/10 px-3 text-xs font-semibold text-red-600 dark:text-red-400"
+                      >
+                        <FileWarning className="h-4 w-4" />
+                        {upload.rowsErrored} Error{upload.rowsErrored !== 1 ? 's' : ''}
+                      </button>
+                    )}
+                    {(upload.status === 'completed' || upload.status === 'failed') && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete "${upload.filename}" and its ${upload.rowsImported} imported transactions?`)) {
+                            deleteUpload.mutate(upload.id);
+                          }
+                        }}
+                        disabled={deleteUpload.isPending}
+                        className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl hover:bg-red-500/10 text-[var(--muted-foreground)] hover:text-red-500 disabled:opacity-50"
+                        title="Delete import"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                }
+              />
+            );
+          })}
+        </div>
+      )}
 
       {/* Error details modal */}
       {errorUpload && (

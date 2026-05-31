@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CalendarClock, ScanSearch, BellRing, Check, X, Pencil, Ban } from 'lucide-react';
 import { formatCents } from '@/lib/format';
+import { MobileCard } from '@/components/MobileCard';
 import type { RecurringBill, BillFrequency } from '@moneypulse/shared';
 import {
   useBills,
@@ -55,6 +56,83 @@ function formatNextDate(dateStr: string | null): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+// ── Mobile Card ───────────────────────────────────────────────
+
+function BillMobileCard({
+  bill,
+  confirmed,
+}: {
+  bill: RecurringBill;
+  confirmed: boolean;
+}) {
+  const confirm = useConfirmBill();
+  const deactivate = useDeactivateBill();
+  const remove = useDeleteBill();
+  const status = billStatus(bill);
+
+  return (
+    <MobileCard
+      fields={[
+        { primary: true, value: bill.normalizedName },
+        { amount: true, value: formatCents(bill.expectedAmountCents) },
+        { label: 'Pattern', value: bill.merchantPattern },
+        {
+          label: 'Frequency',
+          value: FREQ_LABELS[bill.frequency as BillFrequency] ?? bill.frequency,
+        },
+        { label: 'Next Due', value: formatNextDate(bill.nextExpectedDate) },
+        { label: 'Last Paid', value: formatNextDate(bill.lastSeenDate) },
+        ...(confirmed
+          ? [
+              {
+                label: 'Status',
+                value: (
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.cls}`}
+                  >
+                    {status.label}
+                  </span>
+                ),
+              },
+            ]
+          : []),
+      ]}
+      actions={
+        <div className="flex items-center gap-2">
+          {!confirmed && (
+            <button
+              onClick={() => confirm.mutate(bill.id)}
+              disabled={confirm.isPending}
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400"
+              title="Confirm"
+            >
+              <Check className="h-4 w-4" />
+            </button>
+          )}
+          {confirmed && (
+            <button
+              onClick={() => deactivate.mutate(bill.id)}
+              disabled={deactivate.isPending}
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl hover:bg-[var(--muted)] text-[var(--muted-foreground)]"
+              title="Deactivate"
+            >
+              <Ban className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            onClick={() => remove.mutate(bill.id)}
+            disabled={remove.isPending}
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl hover:bg-[var(--destructive)]/10 text-[var(--destructive)]"
+            title="Dismiss / Delete"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      }
+    />
+  );
 }
 
 // ── Table Row ─────────────────────────────────────────────────
@@ -154,26 +232,36 @@ function BillsTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b border-[var(--border)] bg-[var(--muted)]/50 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-          <tr>
-            <th className="px-4 py-3">Merchant</th>
-            <th className="px-4 py-3">Amount</th>
-            <th className="px-4 py-3">Frequency</th>
-            <th className="px-4 py-3">Next Due</th>
-            <th className="px-4 py-3">Last Paid</th>
-            {confirmed && <th className="px-4 py-3">Status</th>}
-            <th className="px-4 py-3">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {bills.map((bill) => (
-            <BillRow key={bill.id} bill={bill} confirmed={confirmed} />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-[var(--border)]">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-[var(--border)] bg-[var(--muted)]/50 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            <tr>
+              <th className="px-4 py-3">Merchant</th>
+              <th className="px-4 py-3">Amount</th>
+              <th className="px-4 py-3">Frequency</th>
+              <th className="px-4 py-3">Next Due</th>
+              <th className="px-4 py-3">Last Paid</th>
+              {confirmed && <th className="px-4 py-3">Status</th>}
+              <th className="px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bills.map((bill) => (
+              <BillRow key={bill.id} bill={bill} confirmed={confirmed} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {bills.map((bill) => (
+          <BillMobileCard key={bill.id} bill={bill} confirmed={confirmed} />
+        ))}
+      </div>
+    </>
   );
 }
 
