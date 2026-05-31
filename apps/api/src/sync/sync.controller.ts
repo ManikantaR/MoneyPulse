@@ -241,7 +241,7 @@ export class SyncController {
   @ApiOperation({ summary: 'Backfill all categories to outbox' })
   async backfillCategories() {
     const rows = await this.db.execute(sql`
-      SELECT c.id, c.name, c.icon, c.color, c.parent_id, c.sort_order
+      SELECT c.id, c.name, c.icon, c.color, c.parent_id, c.sort_order, c.is_transfer
       FROM categories c
       WHERE c.deleted_at IS NULL
     `);
@@ -253,6 +253,7 @@ export class SyncController {
       color: string;
       parent_id: string | null;
       sort_order: number;
+      is_transfer: boolean;
     }>;
 
     // Need a userId for the outbox — grab the first admin user
@@ -279,6 +280,7 @@ export class SyncController {
             color: cat.color,
             parentCategoryId: cat.parent_id ?? null,
             sortOrder: cat.sort_order ?? 0,
+            isTransfer: cat.is_transfer ?? false,
           },
         });
         enqueued++;

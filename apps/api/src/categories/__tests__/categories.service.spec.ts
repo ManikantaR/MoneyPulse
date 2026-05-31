@@ -92,4 +92,43 @@ describe('CategoriesService', () => {
     await service.softDelete('cat-1');
     expect(mockDb.execute).toHaveBeenCalled();
   });
+
+  describe('isTransfer', () => {
+    it('creates a category with isTransfer=true when specified', async () => {
+      mockDb.returning.mockResolvedValue([
+        { id: 'cat-new', name: 'Transfers', icon: '🔄', color: '#6b7280', parentId: null, sortOrder: 0, isTransfer: true },
+      ]);
+      const result = await service.create({
+        name: 'Transfers',
+        icon: '🔄',
+        color: '#6b7280',
+        isTransfer: true,
+      });
+      expect(mockDb.values).toHaveBeenCalledWith(
+        expect.objectContaining({ isTransfer: true }),
+      );
+      expect(result.isTransfer).toBe(true);
+    });
+
+    it('defaults isTransfer to false when not specified', async () => {
+      await service.create({ name: 'Groceries', icon: '🛒', color: '#f97316' });
+      expect(mockDb.values).toHaveBeenCalledWith(
+        expect.objectContaining({ isTransfer: false }),
+      );
+    });
+
+    it('findTree maps is_transfer from raw SQL result', async () => {
+      mockDb.execute.mockResolvedValue({
+        rows: [
+          { id: 'cat-1', name: 'Transfers', icon: '🔄', color: '#6b7280', parent_id: null, sort_order: 0, is_transfer: true, depth: 0 },
+          { id: 'cat-2', name: 'Groceries', icon: '🛒', color: '#f97316', parent_id: null, sort_order: 1, is_transfer: false, depth: 0 },
+        ],
+      });
+      const result = await service.findTree();
+      const transfers = result.find((r: any) => r.name === 'Transfers');
+      const groceries = result.find((r: any) => r.name === 'Groceries');
+      expect(transfers?.isTransfer).toBe(true);
+      expect(groceries?.isTransfer).toBe(false);
+    });
+  });
 });

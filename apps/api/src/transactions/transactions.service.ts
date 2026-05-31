@@ -87,6 +87,8 @@ export class TransactionsService {
           isCredit: input.isCredit,
           isManual: true,
           tags: input.tags ?? [],
+          originalAmountCents: input.originalAmountCents ?? null,
+          currencyCode: input.currencyCode ?? null,
         })
         .returning();
 
@@ -473,6 +475,8 @@ export class TransactionsService {
       isTransfer,
       isManual: txn.isManual ?? false,
       tags: txn.tags ?? [],
+      originalAmountCents: txn.originalAmountCents ?? null,
+      currencyCode: txn.currencyCode ?? null,
     };
 
     await this.outbox.enqueueInTx(tx, {
@@ -506,6 +510,8 @@ export class TransactionsService {
         isTransfer,
         isManual: txn.isManual ?? false,
         tags: txn.tags ?? [],
+        originalAmountCents: txn.originalAmountCents ?? null,
+        currencyCode: txn.currencyCode ?? null,
       };
 
       await this.outbox.enqueue({

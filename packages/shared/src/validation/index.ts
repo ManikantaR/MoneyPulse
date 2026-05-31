@@ -98,13 +98,23 @@ export const createTransactionSchema = z.object({
   merchantName: z.string().max(200).nullable().optional(),
   isCredit: z.boolean(),
   tags: z.array(z.string().max(50)).max(20).optional(),
-});
+  originalAmountCents: z.int().positive().nullable().optional(),
+  currencyCode: z.string().length(3).regex(/^[A-Z]{3}$/).nullable().optional(),
+}).refine(
+  (d) => (d.originalAmountCents != null) === (d.currencyCode != null),
+  { message: 'originalAmountCents and currencyCode must both be set or both be null' },
+);
 
 export const updateTransactionSchema = z.object({
   description: z.string().min(1).max(500).optional(),
   categoryId: z.uuid().nullable().optional(),
   tags: z.array(z.string().max(50)).max(20).optional(),
-});
+  originalAmountCents: z.int().positive().nullable().optional(),
+  currencyCode: z.string().length(3).regex(/^[A-Z]{3}$/).nullable().optional(),
+}).refine(
+  (d) => (d.originalAmountCents != null) === (d.currencyCode != null),
+  { message: 'originalAmountCents and currencyCode must both be set or both be null' },
+);
 
 export const splitTransactionSchema = z.object({
   splits: z
@@ -146,6 +156,7 @@ export const createCategorySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   parentId: z.uuid().nullable().optional(),
   sortOrder: z.int().min(0).optional(),
+  isTransfer: z.boolean().optional(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
@@ -272,3 +283,22 @@ export const updateBillSchema = z.object({
 });
 
 export type UpdateBillInput = z.infer<typeof updateBillSchema>;
+
+// ── Investment Accounts ──────────────────────────────────────
+
+export const createInvestmentAccountSchema = z.object({
+  institution: z.string().min(1).max(100),
+  accountType: z.string().min(1).max(50),
+  nickname: z.string().min(1).max(100),
+});
+
+export const updateInvestmentAccountSchema = createInvestmentAccountSchema.partial();
+
+export const addSnapshotSchema = z.object({
+  balanceCents: z.int().min(0),
+  date: z.iso.date().optional(),
+});
+
+export type CreateInvestmentAccountInput = z.infer<typeof createInvestmentAccountSchema>;
+export type UpdateInvestmentAccountInput = z.infer<typeof updateInvestmentAccountSchema>;
+export type AddSnapshotInput = z.infer<typeof addSnapshotSchema>;

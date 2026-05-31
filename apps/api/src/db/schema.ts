@@ -209,6 +209,8 @@ export const transactions = pgTable(
     sourceFileId: uuid('source_file_id').references(() => fileUploads.id),
     parentTransactionId: uuid('parent_transaction_id'),
     isSplitParent: boolean('is_split_parent').notNull().default(false),
+    originalAmountCents: integer('original_amount_cents'),
+    currencyCode: varchar('currency_code', { length: 3 }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

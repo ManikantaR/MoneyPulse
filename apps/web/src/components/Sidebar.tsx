@@ -38,6 +38,7 @@ const navItems: NavItem[] = [
   { href: '/upload', label: 'Upload', icon: Upload },
   { href: '/imports', label: 'Imports', icon: FileBarChart },
   { href: '/accounts', label: 'Accounts', icon: Landmark },
+  { href: '/investments', label: 'Investments', icon: TrendingUp },
   { href: '/budgets', label: 'Budgets', icon: Wallet },
   { href: '/bills', label: 'Bills', icon: CalendarClock },
   { href: '/categories', label: 'Categories', icon: Tags },

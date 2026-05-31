@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Paperclip } from 'lucide-react';
+import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Paperclip, Plus } from 'lucide-react';
 import { CategoryCombobox, type CategoryOption } from '@/components/CategoryCombobox';
 import {
   useTransactions,
@@ -13,6 +13,7 @@ import {
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { TransactionDetailPanel } from '@/components/TransactionDetailPanel';
+import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { formatCents, formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { TransactionQueryParams } from '@/lib/hooks/useTransactions';
@@ -45,6 +46,7 @@ export default function TransactionsPage() {
   const [autoCategResult, setAutoCategResult] = useState<string | null>(null);
   const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const { data, isLoading } = useTransactions({
     ...query,
@@ -235,6 +237,13 @@ export default function TransactionsPage() {
           >
             <Download className="h-4 w-4" />
             Export CSV
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="hidden items-center gap-2 rounded-full bg-[var(--primary)] px-5 py-2.5 text-sm font-semibold text-[var(--primary-foreground)] shadow-sm hover:opacity-90 transition-opacity md:flex"
+          >
+            <Plus className="h-4 w-4" />
+            Add Transaction
           </button>
         </div>
       </div>
@@ -620,6 +629,18 @@ export default function TransactionsPage() {
           onClose={() => setSelectedTxn(null)}
         />
       )}
+
+      {/* Add transaction modal */}
+      {showAddModal && <AddTransactionModal onClose={() => setShowAddModal(false)} />}
+
+      {/* FAB — mobile quick-add (hidden on md+) */}
+      <button
+        onClick={() => setShowAddModal(true)}
+        aria-label="Add transaction"
+        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] shadow-lg hover:opacity-90 transition-opacity md:hidden"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
     </div>
   );
 }

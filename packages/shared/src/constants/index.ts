@@ -146,6 +146,12 @@ export const DEFAULT_CATEGORIES: SeedCategory[] = [
 
   // ── Credit Card Payment ───────────────────────────────────
   { name: 'Credit Card Payment', icon: '💳', color: '#0891b2', sortOrder: 26, isTransfer: true },
+
+  // ── Investment Contribution ───────────────────────────────
+  { name: 'Investment Contribution', icon: '💹', color: '#3b82f6', sortOrder: 27, isTransfer: true },
+
+  // ── Family Support ────────────────────────────────────────
+  { name: 'Family Support', icon: '🤝', color: '#f97316', sortOrder: 28 },
 ];
 
 export const INSTITUTIONS: { value: Institution; label: string }[] = [

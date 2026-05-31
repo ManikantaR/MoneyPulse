@@ -34,10 +34,10 @@
 | 22 | Web Bills Glance (`bill.projected.v1`) — OPTIONAL | [Prompt 22](#prompt-22--web-bills-glance-billprojectedv1--optional) | NAS deploy + web `firebase deploy` | optional — 22a NAS + 22b Web |
 | 23 | Send Test Notification (Settings button) | [Prompt 23](#prompt-23--send-test-notification-settings-button) | NAS deploy | ✅ done & deployed |
 | 24 | Fix: exclude transfers in web KPIs (`isTransfer` projection) | [Prompt 24](#prompt-24--fix-web-kpis-exclude-transfers-istransfer-projection) | NAS deploy + web deploy + re-sync | ✅ done (24a+24b) & re-synced |
-| 25 | Split Transaction UI | [Prompt 25](#prompt-25--split-transaction-ui) | NAS deploy | ⬜ NEXT — frontend (API done) |
-| 26 | Add / Quick-add Transaction UI | [Prompt 26](#prompt-26--add--quick-add-transaction-ui) | NAS deploy | ⬜ NEXT — frontend (API done) |
-| 27 | Transfer & Investment Modeling | [Prompt 27](#prompt-27--transfer--investment-modeling) | NAS deploy + SQL | tables exist, build API+UI |
-| 28 | Foreign-amount field + Family/Gifts category | [Prompt 28](#prompt-28--foreign-amount-field--familygifts-category) | NAS deploy + SQL | new field + seed |
+| 25 | Split Transaction UI | [Prompt 25](#prompt-25--split-transaction-ui) | NAS deploy | ✅ built & committed — deploy pending |
+| 26 | Add / Quick-add Transaction UI | [Prompt 26](#prompt-26--add--quick-add-transaction-ui) | NAS deploy | ✅ built — commit+deploy pending |
+| 27 | Transfer & Investment Modeling | [Prompt 27](#prompt-27--transfer--investment-modeling) | NAS deploy + **seed** | ✅ built — commit+deploy+seed pending (inv. tables already exist) |
+| 28 | Foreign-amount field + Family/Gifts category | [Prompt 28](#prompt-28--foreign-amount-field--familygifts-category) | NAS deploy + **migration 0005 + seed** | ✅ built — commit+deploy+SQL pending |
 | 29 | Reimbursables & Loans | [Prompt 29](#prompt-29--reimbursables--loans) | NAS deploy + SQL | new |
 | 30 | Refunds as Offsets | [Prompt 30](#prompt-30--refunds-as-offsets) | NAS deploy + SQL | new |
 | 31 | Cash Account (ATM tracking) | [Prompt 31](#prompt-31--cash-account-atm-tracking) | NAS deploy + SQL | enum + UI |

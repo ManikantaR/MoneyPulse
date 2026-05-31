@@ -5,6 +5,11 @@ import { DATABASE_CONNECTION } from '../../db/db.module';
 import { OutboxService } from '../../sync/outbox.service';
 import { AliasMapperService } from '../../sync/alias-mapper.service';
 
+vi.mock('../../common/crypto', () => ({
+  encryptField: vi.fn().mockReturnValue('encrypted_test_value'),
+  decryptField: vi.fn().mockReturnValue('decrypted_test_value'),
+}));
+
 describe('TransactionsService', () => {
   let service: TransactionsService;
   let mockDb: any;
@@ -35,7 +40,10 @@ describe('TransactionsService', () => {
 
     mockAliasMapper = { toAliasId: vi.fn().mockReturnValue('alias-abc123') };
 
-    const mockOutbox = { enqueue: vi.fn().mockResolvedValue(undefined) };
+    const mockOutbox = {
+      enqueue: vi.fn().mockResolvedValue(undefined),
+      enqueueInTx: vi.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -208,6 +216,111 @@ describe('TransactionsService', () => {
 
       const payload = mockOutbox.enqueue.mock.calls[0][0].payload;
       expect(payload.isTransfer).toBe(false);
+    });
+  });
+
+  describe('foreign amount fields', () => {
+    it('create() passes originalAmountCents and currencyCode to the DB insert', async () => {
+      const account = [{ id: 'acc-1' }];
+      const inserted = {
+        ...baseTxn,
+        originalAmountCents: 5000000,
+        currencyCode: 'INR',
+      };
+
+      mockDb.transaction = vi.fn().mockImplementation(async (fn: any) => {
+        const tx = {
+          insert: vi.fn().mockReturnThis(),
+          values: vi.fn().mockReturnThis(),
+          returning: vi.fn().mockResolvedValue([inserted]),
+          select: vi.fn().mockReturnThis(),
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([{ isTransfer: false }]),
+        };
+        const outboxTx = {
+          insert: vi.fn().mockReturnThis(),
+          values: vi.fn().mockReturnThis(),
+        };
+        // Merge outbox into tx for the enqueueInTx call
+        Object.assign(tx, outboxTx);
+        return fn(tx);
+      });
+
+      // account ownership check
+      mockDb.limit.mockResolvedValue(account);
+
+      const result = await service.create('user-1', {
+        accountId: 'acc-1',
+        date: '2026-05-01',
+        description: 'Family support May',
+        amountCents: 60000,
+        isCredit: false,
+        originalAmountCents: 5000000,
+        currencyCode: 'INR',
+      });
+
+      expect(result.originalAmountCents).toBe(5000000);
+      expect(result.currencyCode).toBe('INR');
+    });
+
+    it('update() calls set() with originalAmountCents and currencyCode', async () => {
+      const updated = {
+        ...baseTxn,
+        originalAmountCents: 5000000,
+        currencyCode: 'INR',
+      };
+      vi.spyOn(service, 'findById').mockResolvedValue(baseTxn as any);
+      mockDb.returning.mockResolvedValue([updated]);
+
+      const result = await service.update('txn-1', 'user-1', {
+        originalAmountCents: 5000000,
+        currencyCode: 'INR',
+      });
+
+      expect(mockDb.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalAmountCents: 5000000,
+          currencyCode: 'INR',
+        }),
+      );
+      expect(result.originalAmountCents).toBe(5000000);
+      expect(result.currencyCode).toBe('INR');
+    });
+
+    it('update() can clear foreign amount by setting both fields to null', async () => {
+      const withForeign = { ...baseTxn, originalAmountCents: 5000000, currencyCode: 'INR' };
+      const cleared = { ...baseTxn, originalAmountCents: null, currencyCode: null };
+      vi.spyOn(service, 'findById').mockResolvedValue(withForeign as any);
+      mockDb.returning.mockResolvedValue([cleared]);
+
+      const result = await service.update('txn-1', 'user-1', {
+        originalAmountCents: null,
+        currencyCode: null,
+      });
+
+      expect(mockDb.set).toHaveBeenCalledWith(
+        expect.objectContaining({ originalAmountCents: null, currencyCode: null }),
+      );
+      expect(result.originalAmountCents).toBeNull();
+    });
+
+    it('USD amountCents is unchanged when foreign fields are set', async () => {
+      const updated = {
+        ...baseTxn,
+        amountCents: 1000, // unchanged
+        originalAmountCents: 5000000,
+        currencyCode: 'INR',
+      };
+      vi.spyOn(service, 'findById').mockResolvedValue(baseTxn as any);
+      mockDb.returning.mockResolvedValue([updated]);
+
+      const result = await service.update('txn-1', 'user-1', {
+        originalAmountCents: 5000000,
+        currencyCode: 'INR',
+      });
+
+      expect(result.amountCents).toBe(1000);
     });
   });
 });

@@ -98,7 +98,7 @@ export function TransactionDetailPanel({
           <DetailRow label="Date" value={formatDate(transaction.date)} />
           <DetailRow
             label="Amount"
-            value={`${transaction.isCredit ? '+' : '-'}${formatCents(transaction.amountCents)}`}
+            value={`${transaction.isCredit ? '+' : '-'}${formatCents(transaction.amountCents)}${transaction.originalAmountCents && transaction.currencyCode ? ` (${transaction.currencyCode} ${(transaction.originalAmountCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })})` : ''}`}
           />
           {categoryLabel && (
             <DetailRow label="Category" value={categoryLabel} />

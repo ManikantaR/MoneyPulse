@@ -2,6 +2,7 @@
 
 import { ThemeProvider as NextThemesProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
 import { useState, type ReactNode } from 'react';
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -21,6 +22,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
         {children}
+        <Toaster richColors position="bottom-right" />
       </NextThemesProvider>
     </QueryClientProvider>
   );

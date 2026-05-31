@@ -21,6 +21,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { AiLogsModule } from './ai-logs/ai-logs.module';
 import { SyncModule } from './sync/sync.module';
 import { BillsModule } from './bills/bills.module';
+import { InvestmentsModule } from './investments/investments.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { BillsModule } from './bills/bills.module';
     JobsModule,
     AiLogsModule,
     BillsModule,
+    InvestmentsModule,
     HealthModule,
   ],
   providers: [

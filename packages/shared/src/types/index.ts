@@ -85,6 +85,8 @@ export interface Transaction {
   sourceFileId: string | null;
   parentTransactionId: string | null;
   isSplitParent: boolean;
+  originalAmountCents: number | null;
+  currencyCode: string | null;
   createdAt: string;
   updatedAt: string;
   /** Number of receipt/bill attachments. Only present on list responses. */
@@ -330,4 +332,27 @@ export interface InviteResponse {
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface InvestmentAccount {
+  id: string;
+  userId: string;
+  institution: string;
+  accountType: string;
+  nickname: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  /** Latest snapshot balance in cents (null if no snapshot yet). */
+  latestBalanceCents: number | null;
+  /** Date of the latest snapshot. */
+  latestSnapshotDate: string | null;
+}
+
+export interface InvestmentSnapshot {
+  id: string;
+  investmentAccountId: string;
+  date: string;
+  balanceCents: number;
+  createdAt: string;
 }

@@ -54,6 +54,7 @@ export default function CategoriesPage() {
     icon: '📝',
     color: '#6366f1',
     parentId: null as string | null,
+    isTransfer: false,
   });
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
@@ -114,9 +115,10 @@ export default function CategoriesPage() {
       icon: form.icon,
       color: form.color,
       parentId: form.parentId,
+      isTransfer: form.isTransfer,
     });
     setShowForm(false);
-    setForm({ name: '', icon: '📝', color: '#6366f1', parentId: null });
+    setForm({ name: '', icon: '📝', color: '#6366f1', parentId: null, isTransfer: false });
   }
 
   /** Render a parent category card with its subcategories and spending. */
@@ -145,7 +147,14 @@ export default function CategoriesPage() {
             {node.icon}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold leading-tight">{node.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold leading-tight">{node.name}</p>
+              {node.isTransfer && (
+                <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                  Transfer
+                </span>
+              )}
+            </div>
             {hasChildren && (
               <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
                 {node.children.length} subcategor{node.children.length === 1 ? 'y' : 'ies'}
@@ -207,6 +216,11 @@ export default function CategoriesPage() {
                     </span>
                   </div>
                   <p className="flex-1 min-w-0 text-sm truncate">{child.name}</p>
+                  {child.isTransfer && (
+                    <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                      Transfer
+                    </span>
+                  )}
                   {childAmount > 0 ? (
                     <div className="flex items-center gap-2.5 shrink-0">
                       <div className="w-20 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
@@ -338,6 +352,33 @@ export default function CategoriesPage() {
                   style={{ backgroundColor: color }}
                 />
               ))}
+            </div>
+          </div>
+
+          {/* Transfer toggle */}
+          <div className="flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-4 py-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.isTransfer}
+              onClick={() => setForm({ ...form, isTransfer: !form.isTransfer })}
+              className={cn(
+                'relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none',
+                form.isTransfer ? 'bg-purple-600' : 'bg-[var(--border)]',
+              )}
+            >
+              <span
+                className={cn(
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  form.isTransfer ? 'translate-x-4' : 'translate-x-0',
+                )}
+              />
+            </button>
+            <div>
+              <p className="text-sm font-semibold">Is transfer?</p>
+              <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                Transfers (savings, 529, brokerage deposits, credit-card payments, internal moves) are excluded from income &amp; expenses.
+              </p>
             </div>
           </div>
 

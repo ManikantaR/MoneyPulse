@@ -36,6 +36,13 @@
       "when": 1779653284221,
       "tag": "0004_faithful_peter_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780235569000,
+      "tag": "0005_foreign_amount_fields",
+      "breakpoints": true
     }
   ]
 }

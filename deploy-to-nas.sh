@@ -164,4 +164,4 @@ esac
 echo ""
 ok "Deploy complete!"
 log "View logs:  ssh nas docker logs -f moneypulse-api"
-log "Open app:   http://moneypulse.home.lab:8080"
+log "Open app:   http://moneypulse.home.lab"
