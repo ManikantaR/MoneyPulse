@@ -174,9 +174,16 @@ export class DigestService {
     const spendCents = Number((spendResult.rows ?? spendResult)[0]?.total ?? 0);
 
     const accountRows = await this.db.execute(sql`
-      SELECT nickname, balance_cents
-      FROM ${schema.accounts}
-      WHERE user_id = ${userId} AND is_active = true
+      SELECT a.nickname,
+             a.starting_balance_cents
+               + COALESCE(SUM(CASE WHEN t.is_credit THEN t.amount_cents ELSE -t.amount_cents END), 0) AS balance_cents
+      FROM ${schema.accounts} a
+      LEFT JOIN ${schema.transactions} t
+        ON t.account_id = a.id
+        AND t.deleted_at IS NULL
+        AND t.is_split_parent = false
+      WHERE a.user_id = ${userId} AND a.deleted_at IS NULL
+      GROUP BY a.id, a.nickname, a.starting_balance_cents
       ORDER BY balance_cents DESC
       LIMIT 3
     `);
