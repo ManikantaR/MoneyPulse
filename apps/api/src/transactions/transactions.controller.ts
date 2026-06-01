@@ -12,6 +12,8 @@ import {
   NotFoundException,
   Res,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import type { Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
@@ -29,6 +31,7 @@ import {
   splitTransactionSchema,
   bulkCategorizeSchema,
   transactionQuerySchema,
+  INGESTION_QUEUE,
 } from '@moneypulse/shared';
 import type {
   AuthTokenPayload,
@@ -50,6 +53,7 @@ export class TransactionsController {
     private readonly categorizationService: CategorizationService,
     private readonly learningService: LearningService,
     private readonly merchantNormalizer: MerchantNormalizerService,
+    @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {}
 
   /**
@@ -315,12 +319,23 @@ export class TransactionsController {
   /**
    * POST /transactions/normalize-merchants — Backfill normalized merchant names.
    * Pass { force: true } to re-normalize ALL transactions (useful after adding aliases).
+   * Enqueues an AI normalization job for messy results when Ollama is available.
    */
   @Post('normalize-merchants')
   @HttpCode(200)
   @ApiOperation({ summary: 'Backfill normalized merchant names' })
   async normalizeMerchants(@Body() body?: { force?: boolean }) {
     const result = await this.merchantNormalizer.backfillAll(body?.force ?? false);
-    return { data: result };
+
+    // Enqueue background AI normalization for descriptors that rule-based couldn't clean well
+    if (result.messyRaws.length > 0) {
+      await this.ingestionQueue.add(
+        'merchant-normalize',
+        { rawNames: result.messyRaws },
+        { attempts: 8, backoff: { type: 'exponential', delay: 60_000 } },
+      );
+    }
+
+    return { data: { updated: result.updated, total: result.total, aiQueued: result.messyRaws.length } };
   }
 }

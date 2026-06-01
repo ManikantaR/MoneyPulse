@@ -11,6 +11,7 @@ interface CreateNotificationInput {
   type: string;
   title: string;
   message: string;
+  voiceSummary?: string;
   dedupeKey?: string;
   metadata?: Record<string, any>;
 }
@@ -90,6 +91,7 @@ export class NotificationsService {
         metadata: {
           ...(input.metadata ?? {}),
           ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}),
+          ...(input.voiceSummary ? { voiceSummary: input.voiceSummary } : {}),
         },
       })
       .returning();
@@ -119,6 +121,7 @@ export class NotificationsService {
         title: input.title,
         message: input.message,
         type: input.type,
+        ...(input.voiceSummary ? { voiceSummary: input.voiceSummary } : {}),
       })
       .then((delivered) => {
         if (delivered) {

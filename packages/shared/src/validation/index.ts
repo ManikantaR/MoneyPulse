@@ -208,8 +208,14 @@ export const updateUserSettingsSchema = z.object({
   enableCloudAi: z.boolean().optional(),
   haWebhookUrl: z.url().nullable().optional(),
   weeklyDigestEnabled: z.boolean().optional(),
+  dailyDigestEnabled: z.boolean().optional(),
+  monthlyDigestEnabled: z.boolean().optional(),
   notificationEmail: z.email().nullable().optional(),
   firebaseUid: z.string().max(128).nullable().optional(),
+});
+
+export const sendDigestSchema = z.object({
+  period: z.enum(['daily', 'weekly', 'monthly']),
 });
 
 // ── File Upload ─────────────────────────────────────────────

@@ -24,7 +24,9 @@ MoneyPulse (NAS)                         Home Assistant (its VLAN, port 8123)
               └─ if awake hours AND type not muted: assist_satellite.announce 🔊
 ```
 
-MoneyPulse sends a **POST with a JSON body** of exactly three fields: `title`, `message`, `type`. HA exposes that body to templates as **`trigger.json`** (because the `Content-Type` is `application/json`).
+MoneyPulse sends a **POST with a JSON body** of exactly four fields: `title`, `message`, `type`, and the optional `voiceSummary`. HA exposes that body to templates as **`trigger.json`** (because the `Content-Type` is `application/json`).
+
+When `voiceSummary` is present (e.g. for digest notifications), it is a concise one-sentence string optimized for voice announcements. The HA announce action uses it automatically — see the automation below.
 
 Notification `type` values MoneyPulse emits (taxonomy from the analytics/bills/anomaly services):
 `spending_anomaly`, `bill_overdue`, `budget_threshold`, `cashflow_low`, `subscription_price_increase`, `digest`, `streak`.
@@ -122,7 +124,7 @@ actions:
             target:
               entity_id: assist_satellite.home_assistant_voice_xxxxx # ← your Voice PE
             data:
-              message: '{{ trigger.json.title }}. {{ trigger.json.message }}'
+              message: '{{ trigger.json.voiceSummary if trigger.json.voiceSummary else (trigger.json.title ~ ". " ~ trigger.json.message) }}'
               preannounce: true # set false to skip the chime
 mode: queued # handle bursts (e.g. several anomalies from one import) one at a time
 max: 10

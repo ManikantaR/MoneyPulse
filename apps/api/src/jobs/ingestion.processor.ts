@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { selectParser } from '../ingestion/parsers/parser-registry';
 import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
@@ -68,6 +68,9 @@ export class IngestionProcessor extends WorkerHost {
     }
     if (job.name === 'ai-reconcile') {
       return this.processAiReconcileSweep();
+    }
+    if (job.name === 'merchant-normalize') {
+      return this.processMerchantNormalize(job);
     }
 
     const { uploadId, userId, accountId, filePath, fileType } = job.data as IngestionJobData;
@@ -673,5 +676,46 @@ export class IngestionProcessor extends WorkerHost {
     this.logger.log(
       `AI reconcile sweep: enqueued ${rows.length} txns across ${byUser.size} user(s)`,
     );
+  }
+
+  /**
+   * Background AI merchant normalization.
+   * Health-gated — throws if Ollama unavailable so BullMQ retries with exponential backoff.
+   * For each clean AI result: updates matching transactions + learns a global alias for future imports.
+   */
+  private async processMerchantNormalize(
+    job: Job<{ rawNames: string[] }>,
+  ): Promise<void> {
+    const { rawNames } = job.data;
+
+    if (!(await this.ollamaHealth.isAvailable())) {
+      throw new Error(
+        'ollama-unavailable: Ollama not reachable; merchant-normalize will be retried',
+      );
+    }
+
+    this.logger.log(`Background AI merchant normalization: ${rawNames.length} descriptors`);
+
+    const cleanMap = await this.merchantNormalizer.aiNormalizeBatch(rawNames);
+    if (cleanMap.size === 0) {
+      this.logger.log('AI merchant normalization: no improvements found');
+      return;
+    }
+
+    for (const [raw, clean] of cleanMap.entries()) {
+      // Update normalizedMerchantName for all transactions with this raw merchant name
+      await this.db.execute(
+        // Use drizzle execute with tagged template — raw strings need literal comparison
+        sql`UPDATE transactions
+            SET normalized_merchant_name = ${clean}
+            WHERE deleted_at IS NULL
+              AND (merchant_name = ${raw} OR (merchant_name IS NULL AND description = ${raw}))`,
+      );
+
+      // Cache as a global exact alias so future imports skip Ollama for this raw string
+      await this.merchantNormalizer.learnAlias(null, raw, clean, 'exact');
+    }
+
+    this.logger.log(`AI merchant normalization complete: ${cleanMap.size} descriptors improved`);
   }
 }

@@ -14,6 +14,12 @@ export default function SettingsPage() {
   const [weeklyDigest, setWeeklyDigest] = useState(
     settings?.weeklyDigestEnabled ?? false,
   );
+  const [dailyDigest, setDailyDigest] = useState(
+    settings?.dailyDigestEnabled ?? false,
+  );
+  const [monthlyDigest, setMonthlyDigest] = useState(
+    settings?.monthlyDigestEnabled ?? false,
+  );
   const [haWebhookUrl, setHaWebhookUrl] = useState(
     settings?.haWebhookUrl ?? '',
   );
@@ -22,6 +28,8 @@ export default function SettingsPage() {
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [digestPeriod, setDigestPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
+  const [sendingDigest, setSendingDigest] = useState(false);
   const sendTest = useSendTestNotification();
 
   async function handleSave(e: FormEvent) {
@@ -33,6 +41,8 @@ export default function SettingsPage() {
       await api.patch('/users/settings', {
         timezone,
         weeklyDigestEnabled: weeklyDigest,
+        dailyDigestEnabled: dailyDigest,
+        monthlyDigestEnabled: monthlyDigest,
         haWebhookUrl: haWebhookUrl || null,
         firebaseUid: firebaseUid || null,
       });
@@ -42,6 +52,19 @@ export default function SettingsPage() {
       setMessage(err.message || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSendDigest() {
+    setSendingDigest(true);
+    setMessage('');
+    try {
+      await api.post('/digest/send', { period: digestPeriod });
+      setMessage(`${digestPeriod.charAt(0).toUpperCase() + digestPeriod.slice(1)} digest sent — check the bell.`);
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to send digest');
+    } finally {
+      setSendingDigest(false);
     }
   }
 
@@ -117,6 +140,30 @@ export default function SettingsPage() {
               Enable weekly spending digest
             </label>
           </div>
+          <div className="flex items-center gap-3">
+            <input
+              id="dailyDigest"
+              type="checkbox"
+              checked={dailyDigest}
+              onChange={(e) => setDailyDigest(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--border)]"
+            />
+            <label htmlFor="dailyDigest" className="text-sm font-medium">
+              Enable daily spending digest
+            </label>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              id="monthlyDigest"
+              type="checkbox"
+              checked={monthlyDigest}
+              onChange={(e) => setMonthlyDigest(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--border)]"
+            />
+            <label htmlFor="monthlyDigest" className="text-sm font-medium">
+              Enable monthly spending digest
+            </label>
+          </div>
         </section>
 
         <section className="space-y-4 rounded-2xl bg-[var(--surface-container-low)] p-6">
@@ -171,6 +218,30 @@ export default function SettingsPage() {
             >
               {sendTest.isPending ? 'Sending…' : 'Send test notification'}
             </button>
+          </div>
+          <div className="border-t border-[var(--border)] pt-4">
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Send a digest on-demand — delivers to in-app bell, FCM, and Home Assistant voice.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <select
+                value={digestPeriod}
+                onChange={(e) => setDigestPeriod(e.target.value as typeof digestPeriod)}
+                className="rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              <button
+                type="button"
+                disabled={sendingDigest}
+                onClick={handleSendDigest}
+                className="rounded-full border border-[var(--primary)] px-5 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-[var(--primary)] hover:text-[var(--primary-foreground)] transition-colors disabled:opacity-50"
+              >
+                {sendingDigest ? 'Sending…' : 'Send digest now'}
+              </button>
+            </div>
           </div>
         </section>
 

@@ -2,12 +2,16 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { AlertEngineService } from '../notifications/alert-engine.service';
+import { DigestService } from '../analytics/digest.service';
 
 @Processor('alerts')
 export class AlertCronProcessor extends WorkerHost {
   private readonly logger = new Logger(AlertCronProcessor.name);
 
-  constructor(private readonly alertEngine: AlertEngineService) {
+  constructor(
+    private readonly alertEngine: AlertEngineService,
+    private readonly digestService: DigestService,
+  ) {
     super();
   }
 
@@ -28,6 +32,18 @@ export class AlertCronProcessor extends WorkerHost {
         await this.alertEngine.checkBudgets(userIds);
         break;
       }
+
+      case 'digest-daily':
+        await this.digestService.deliverAllEnabled('daily');
+        break;
+
+      case 'digest-weekly':
+        await this.digestService.deliverAllEnabled('weekly');
+        break;
+
+      case 'digest-monthly':
+        await this.digestService.deliverAllEnabled('monthly');
+        break;
 
       default:
         this.logger.warn(`Unknown alert job: ${job.name}`);

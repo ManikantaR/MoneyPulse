@@ -432,7 +432,7 @@ export class BillsService {
       )
       .orderBy(asc(schema.recurringBills.normalizedName));
 
-    return bills.map((bill) => {
+    return (bills as any[]).map((bill) => {
       const upperBound = Math.ceil(
         bill.expectedAmountCents * (1 + bill.amountTolerancePercent / 100),
       );

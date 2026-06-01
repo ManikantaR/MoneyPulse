@@ -6,6 +6,7 @@ import { ReminderProcessor } from './reminder.processor';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SyncModule } from '../sync/sync.module';
 import { SyncDeliveryProcessor } from './sync-delivery.processor';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SyncDeliveryProcessor } from './sync-delivery.processor';
     BullModule.registerQueue({ name: 'sync-delivery' }),
     NotificationsModule,
     SyncModule,
+    AnalyticsModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -30,6 +32,23 @@ export class JobsModule implements OnModuleInit {
       'daily-budget-check',
       { pattern: '0 8 * * *' },
       { name: 'budget-sweep' },
+    );
+
+    // Digest sweeps (UTC fixed times — user-local period key handles timezone dedupe)
+    await this.alertsQueue.upsertJobScheduler(
+      'daily-digest',
+      { pattern: '0 7 * * *' },
+      { name: 'digest-daily' },
+    );
+    await this.alertsQueue.upsertJobScheduler(
+      'weekly-digest',
+      { pattern: '0 8 * * 1' },
+      { name: 'digest-weekly' },
+    );
+    await this.alertsQueue.upsertJobScheduler(
+      'monthly-digest',
+      { pattern: '0 8 1 * *' },
+      { name: 'digest-monthly' },
     );
 
     // Weekly bank balance reminder (Monday 9 AM)

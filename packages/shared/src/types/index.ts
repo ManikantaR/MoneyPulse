@@ -41,6 +41,8 @@ export interface Household {
   updatedAt: string;
 }
 
+export type DigestPeriod = 'daily' | 'weekly' | 'monthly';
+
 export interface UserSettings {
   id: string;
   userId: string;
@@ -49,6 +51,8 @@ export interface UserSettings {
   enableCloudAi: boolean;
   haWebhookUrl: string | null;
   weeklyDigestEnabled: boolean;
+  dailyDigestEnabled: boolean;
+  monthlyDigestEnabled: boolean;
   notificationEmail: string | null;
   firebaseUid: string | null;
 }

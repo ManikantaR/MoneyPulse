@@ -1,7 +1,9 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { sql, eq, isNull, and } from 'drizzle-orm';
+import { OllamaHealthService } from './ollama-health.service';
 
 /**
  * Normalizes raw bank transaction merchant names into clean display names.
@@ -16,8 +18,22 @@ import { sql, eq, isNull, and } from 'drizzle-orm';
 @Injectable()
 export class MerchantNormalizerService {
   private readonly logger = new Logger(MerchantNormalizerService.name);
+  private readonly ollamaUrl: string;
+  private readonly ollamaModel: string;
+  private readonly ollamaTimeoutMs: number;
 
-  constructor(@Inject(DATABASE_CONNECTION) private readonly db: any) {}
+  constructor(
+    @Inject(DATABASE_CONNECTION) private readonly db: any,
+    private readonly config: ConfigService,
+    private readonly ollamaHealth: OllamaHealthService,
+  ) {
+    this.ollamaUrl = this.config.get<string>('OLLAMA_URL') ?? 'http://localhost:11434';
+    this.ollamaModel = this.config.get<string>('OLLAMA_MODEL') ?? 'llama3.2:3b';
+    this.ollamaTimeoutMs = parseInt(
+      this.config.get<string>('OLLAMA_TIMEOUT_MS') ?? '120000',
+      10,
+    );
+  }
 
   /**
    * Normalize a single merchant name or transaction description.
@@ -48,94 +64,137 @@ export class MerchantNormalizerService {
   /**
    * Synchronous rule-based normalization (no DB lookup).
    * Use this for bulk operations where alias lookup is done separately.
+   *
+   * Pipeline (case-insensitive throughout):
+   *   1. Processor prefixes (Py *, SQ *, PAYPAL *, etc.)
+   *   2. Domain TLD cleanup ("Netflix.Com" → "Netflix")
+   *   3. Phone numbers
+   *   4. Card network junk (W+ Amex)
+   *   5. Store/location numbers
+   *   6. Transaction reference IDs
+   *   7. Transaction type suffixes
+   *   8. Trailing cleanup loop: junk words → known-city+state → standalone state
+   *   9. Collapse whitespace + title-case
    */
   ruleBasedNormalize(raw: string): string {
     let name = raw.trim();
+    if (!name) return name;
 
-    // Strip common card network / POS prefixes
+    // 1. Strip processor prefixes (case-insensitive)
     const prefixes = [
-      /^SQ \*/i,
-      /^TST \*/i,
-      /^SP \*/i,
-      /^PAYPAL \*/i,
-      /^VENMO \*/i,
-      /^ZELLE \*/i,
-      /^CASH APP\*/i,
-      /^CKE\*/i,
-      /^CHK\*/i,
-      /^POS /i,
-      /^PURCHASE /i,
-      /^DEBIT CARD /i,
-      /^ACH /i,
-      /^RECURRING /i,
-      /^AUTOPAY /i,
-      /^ONLINE /i,
-      /^INTERNET /i,
-      /^CHECKCARD /i,
-      /^HLU\*/i,            // Hulu prefix
-      /^AMZN\*/i,           // Amazon prefix
-      /^APPL\*/i,           // Apple prefix
-      /^DES:\w+ /i,         // BoA DES: prefix (e.g., DES:PAYROLL)
-      /^SAMPAY /i,          // Samsung Pay prefix
+      /^(py|pp|ppl)\s*\*\s*/i,    // Py *Merchant, PP *Merchant
+      /^sq\s*\*/i,
+      /^tst\s*\*/i,
+      /^sp\s*\*/i,
+      /^paypal\s*\*/i,
+      /^venmo\s*\*/i,
+      /^zelle\s*\*/i,
+      /^cash\s*app\s*\*/i,
+      /^cke\s*\*/i,
+      /^chk\s*\*/i,
+      /^hlu\s*\*/i,
+      /^amzn\s*\*/i,
+      /^appl\s*\*/i,
+      /^des:\w+\s+/i,
+      /^sampay\s+/i,
+      /^pos\s+/i,
+      /^purchase\s+/i,
+      /^debit\s*card\s+/i,
+      /^ach\s+/i,
+      /^recurring\s+/i,
+      /^autopay\s+/i,
+      /^online\s+/i,
+      /^internet\s+/i,
+      /^checkcard\s+/i,
     ];
     for (const prefix of prefixes) {
       name = name.replace(prefix, '');
     }
 
-    // Strip trailing location patterns (city, state, zip, country)
-    // "WHOLE FOODS MARKET RICHMOND VA" → "WHOLE FOODS MARKET"
-    // "TARGET T-1234 GLEN ALLEN VA 23060" → "TARGET"
-    name = name
-      // State abbreviation at end (2 uppercase letters)
-      .replace(/\s+[A-Z]{2}\s*\d{0,5}\s*$/, '')
-      // City + State at end
-      .replace(/\s+(GLEN ALLEN|RICHMOND|MIDLOTHIAN|SHORT PUMP|MECHANICSVILLE|HENRICO)\s+[A-Z]{2}\s*$/i, '')
-      // Generic city,state pattern: "CITY ST" or "CITY, ST"
-      .replace(/,?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,?\s+[A-Z]{2}\s*$/, '')
-      // Country codes
-      .replace(/\s+US\s*$/, '');
+    // 2. Domain TLD cleanup — keep brand, strip .com/.net/etc. (anywhere in string)
+    // "Netflix.Com" → "Netflix", "Walmart.com/shop" → "Walmart"
+    name = name.replace(/\b(\S+?)\.(com|net|org|io|co)\b(\/\S*)?/gi, '$1');
 
-    // Strip store/location numbers
-    // "TARGET T-1234" → "TARGET", "COSTCO WHSE #1234" → "COSTCO WHSE"
+    // 3. Phone numbers
+    name = name.replace(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/g, '');
+
+    // 4. Card network junk (only in W+ context to avoid nuking AMEX merchant names)
+    name = name.replace(/\bw\+\s*amex\b/gi, '');
+
+    // 5. Store/location numbers
     name = name
       .replace(/\s+[T#]-?\d{3,}.*$/i, '')
       .replace(/\s+#\d+\s*$/i, '')
-      .replace(/\s+STORE\s*#?\d+\s*$/i, '')
-      .replace(/\s+WHSE\s*#?\d*\s*$/i, '');
+      .replace(/\s+store\s*#?\d+\s*$/i, '')
+      .replace(/\s+whse\s*#?\d*\s*$/i, '');
 
-    // Strip transaction reference IDs
-    // "COSTAR GROUP DES:PAYROLL ID:38760..." → "COSTAR GROUP PAYROLL"
-    name = name.replace(/\s+ID:\S+/gi, '');
+    // 6. Transaction reference IDs
+    name = name.replace(/\s+id:\S+/gi, '');
 
-    // Strip trailing URLs
-    name = name.replace(/\s+\S+\.(com|net|org|io)(\/\S*)?\s*$/i, '');
+    // 7. Transaction type suffixes
+    name = name.replace(/\s+(credit|debit|payment|purchase|withdrawal|deposit|refund)\s*$/i, '');
 
-    // Strip "CREDIT", "DEBIT", "PAYMENT" suffixes that are transaction types not merchant names
-    name = name
-      .replace(/\s+(CREDIT|DEBIT|PAYMENT|PURCHASE|WITHDRAWAL|DEPOSIT|REFUND)\s*$/i, '');
+    // 8. Trailing cleanup loop — repeat until stable
+    // Order: junk words → known-city+state → standalone state → country
+    let prev: string;
+    do {
+      prev = name;
 
-    // Collapse whitespace and trim
+      // Trailing legal/junk words (but not "co" in "Costco" — \b protects it)
+      name = name.replace(/\s+\b(null|usa|llc|inc|corp)\b\s*$/gi, '');
+      name = name.replace(/\s+\bco\b\s*$/gi, '');
+
+      // Known city + state (case-insensitive, extended list)
+      name = name.replace(
+        /\s+\b(glen allen|richmond|midlothian|short pump|mechanicsville|henrico|los gatos|bentonville|cupertino|redmond|san jose|seattle|mountain view|new york|san francisco|los angeles|chicago|dallas|austin|houston|phoenix|atlanta|denver|nashville|portland)\b\s+[a-z]{2}\s*\d{0,5}\s*$/i,
+        '',
+      );
+
+      // Standalone 2-letter state abbreviation at end (with optional zip)
+      name = name.replace(/\s+[a-z]{2}\s*\d{0,5}\s*$/i, '');
+
+      // Country code
+      name = name.replace(/\s+us\s*$/i, '');
+
+      name = name.trim();
+    } while (name !== prev);
+
+    // 9. Collapse whitespace
     name = name.replace(/\s+/g, ' ').trim();
 
-    // Title case
-    if (name === name.toUpperCase() && name.length > 2) {
-      name = name
-        .toLowerCase()
-        .split(' ')
-        .map((w) => {
-          // Keep short words (a, an, the, of, etc.) lowercase unless first word
-          if (w.length <= 2) return w;
-          return w.charAt(0).toUpperCase() + w.slice(1);
-        })
-        .join(' ');
-      // Always capitalize first character
-      name = name.charAt(0).toUpperCase() + name.slice(1);
+    // 10. Title-case
+    // If entirely UPPERCASE: lowercase then capitalize each word
+    // If mixed: only capitalize words that are all-lowercase (preserve acronyms like AT&T, HBO)
+    if (name.length > 0) {
+      if (name === name.toUpperCase() && name.length > 2) {
+        name = name
+          .toLowerCase()
+          .split(' ')
+          .map((w, i) => {
+            if (i > 0 && w.length <= 2) return w;
+            return w.charAt(0).toUpperCase() + w.slice(1);
+          })
+          .join(' ');
+        name = name.charAt(0).toUpperCase() + name.slice(1);
+      } else {
+        // Mixed-case: capitalize any word that is fully lowercase
+        name = name
+          .split(' ')
+          .map((w, i) => {
+            if (!w) return w;
+            if (w === w.toLowerCase()) {
+              // Skip short connecting words unless first
+              if (i > 0 && w.length <= 2) return w;
+              return w.charAt(0).toUpperCase() + w.slice(1);
+            }
+            return w; // preserve existing capitalization (acronyms, Title-case)
+          })
+          .join(' ');
+        if (name.length > 0) {
+          name = name.charAt(0).toUpperCase() + name.slice(1);
+        }
+      }
     }
-
-    // Brand name corrections are handled by merchant_aliases table (seeded from DEFAULT_MERCHANT_ALIASES).
-    // The normalize() method checks aliases BEFORE calling this rule-based method. (seeded from DEFAULT_MERCHANT_ALIASES).
-    // The normalize() method checks aliases BEFORE calling this rule-based method.
-    // ruleBasedNormalize() focuses on cleanup only; alias matching happens in normalize().
 
     return name || raw.trim();
   }
@@ -212,14 +271,15 @@ export class MerchantNormalizerService {
   }
 
   /**
-   * Self-learning: create a user-scoped alias from a raw merchant string → display name.
-   * Called when a user manually confirms or edits a normalized merchant name.
+   * Self-learning: create a user-scoped or global alias from a raw merchant string → display name.
+   * Pass userId=null to create a global alias (applies to all users).
    * Skips if an identical alias already exists.
    */
   async learnAlias(
-    userId: string,
+    userId: string | null,
     rawPattern: string,
     displayName: string,
+    matchType: 'exact' | 'startsWith' | 'contains' = 'contains',
   ): Promise<boolean> {
     if (!rawPattern || !displayName) return false;
 
@@ -229,7 +289,9 @@ export class MerchantNormalizerService {
       .from(schema.merchantAliases)
       .where(
         and(
-          eq(schema.merchantAliases.userId, userId),
+          userId === null
+            ? isNull(schema.merchantAliases.userId)
+            : eq(schema.merchantAliases.userId, userId),
           eq(schema.merchantAliases.pattern, rawPattern.toLowerCase()),
         ),
       )
@@ -250,20 +312,89 @@ export class MerchantNormalizerService {
     await this.db.insert(schema.merchantAliases).values({
       userId,
       pattern: rawPattern.toLowerCase(),
-      matchType: 'contains',
+      matchType,
       displayName,
     });
 
-    this.logger.log(`Learned merchant alias: "${rawPattern}" → "${displayName}" for user ${userId}`);
+    const scope = userId ? `user ${userId}` : 'global';
+    this.logger.log(`Learned merchant alias: "${rawPattern}" → "${displayName}" (${scope})`);
     return true;
+  }
+
+  /**
+   * Heuristic: returns true when a rule-based result looks like it still needs AI cleanup.
+   * Criteria: unchanged from raw, contains digits, or more than 3 tokens.
+   */
+  isMessyResult(raw: string, normalized: string): boolean {
+    const n = normalized.trim();
+    if (n.toLowerCase() === raw.toLowerCase().trim()) return true;
+    if (/\d/.test(n)) return true;
+    if (n.split(/\s+/).length > 3) return true;
+    return false;
+  }
+
+  /**
+   * AI-powered merchant normalization via Ollama.
+   * Sends a batch of raw descriptors to Ollama and returns a Map<raw, cleanName>.
+   * Returns an empty map if Ollama is unavailable or the response cannot be parsed.
+   * This is a direct call — the caller is responsible for health-gating and retry logic.
+   */
+  async aiNormalizeBatch(rawNames: string[]): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (!rawNames.length) return result;
+
+    const prompt = `For each raw bank transaction descriptor below, return the clean consumer-facing merchant or brand name. Strip store numbers, phone numbers, city/state, legal suffixes (Inc, LLC, Corp), and processor prefixes. Return ONLY a JSON object mapping each raw descriptor to its clean name. If you are unsure, repeat the raw descriptor unchanged.
+
+${rawNames.map((n, i) => `${i + 1}. "${n}"`).join('\n')}
+
+Respond ONLY with valid JSON like: {"raw descriptor 1": "Clean Name", "raw descriptor 2": "Clean Name"}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.ollamaTimeoutMs);
+
+    try {
+      const response = await fetch(`${this.ollamaUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: this.ollamaModel,
+          prompt,
+          stream: false,
+          options: { temperature: 0.05, num_predict: 1000 },
+        }),
+      });
+
+      if (!response.ok) throw new Error(`Ollama returned ${response.status}`);
+
+      const data = (await response.json()) as { response: string };
+      const jsonMatch = data.response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('No JSON object in Ollama response');
+
+      const parsed = JSON.parse(jsonMatch[0]) as Record<string, string>;
+      for (const [raw, clean] of Object.entries(parsed)) {
+        const cleanTrimmed = (clean ?? '').trim();
+        if (raw && cleanTrimmed && cleanTrimmed.toLowerCase() !== raw.toLowerCase().trim()) {
+          result.set(raw, cleanTrimmed);
+        }
+      }
+      this.logger.log(`AI merchant normalization: ${result.size}/${rawNames.length} cleaned`);
+    } catch (err: any) {
+      this.logger.warn(`AI merchant normalization failed: ${err.message}`);
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    return result;
   }
 
   /**
    * Backfill normalized_merchant_name for all transactions.
    * When force=false (default), only fills NULL values.
    * When force=true, re-normalizes ALL transactions (useful after adding new aliases).
+   * Returns messyRaws: raw strings whose rule-based result still looks noisy (candidates for AI).
    */
-  async backfillAll(force = false): Promise<{ updated: number; total: number }> {
+  async backfillAll(force = false): Promise<{ updated: number; total: number; messyRaws: string[] }> {
     const whereClause = force
       ? sql`deleted_at IS NULL`
       : sql`normalized_merchant_name IS NULL AND deleted_at IS NULL`;
@@ -285,10 +416,12 @@ export class MerchantNormalizerService {
     const allAliases = await this.db.select().from(schema.merchantAliases);
 
     let updated = 0;
+    const messyRawSet = new Set<string>();
+
     for (const txn of txns) {
       const raw = txn.merchant_name || txn.description;
       // Check aliases (user-specific first, then global)
-      let normalized = this.matchAlias(raw, allAliases, txn.user_id)
+      const normalized = this.matchAlias(raw, allAliases, txn.user_id)
         ?? this.matchAlias(raw, allAliases)
         ?? this.ruleBasedNormalize(raw);
       await this.db
@@ -296,8 +429,14 @@ export class MerchantNormalizerService {
         .set({ normalizedMerchantName: normalized })
         .where(eq(schema.transactions.id, txn.id));
       updated++;
+
+      // Collect messy results for AI enrichment (only when no alias resolved it)
+      const aliasHit = this.matchAlias(raw, allAliases, txn.user_id) ?? this.matchAlias(raw, allAliases);
+      if (!aliasHit && this.isMessyResult(raw, normalized)) {
+        messyRawSet.add(raw);
+      }
     }
 
-    return { updated, total: txns.length };
+    return { updated, total: txns.length, messyRaws: [...messyRawSet] };
   }
 }
