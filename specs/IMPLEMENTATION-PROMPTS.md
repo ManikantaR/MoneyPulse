@@ -16,17 +16,17 @@
 | 4 | Spending Anomaly Alerts | [Prompt 4](#prompt-4--spending-anomaly-alerts) | Deploy only | ✅ done |
 | 5 | Budget vs Actual Dashboard | [Prompt 5](#prompt-5--budget-vs-actual-variance-dashboard) | Deploy only | ✅ done |
 | **6** | **Notification Push Backbone (6a NAS + 6b Web)** | [Prompt 6](#prompt-6--notification-push-backbone-nas-emit--web-fcm-send--ha-lan-fix) | NAS deploy + web `firebase deploy` | ✅ done & deployed |
-| **7** | **Remote Mac-Ollama Resilience (make existing AI job retry)** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience-make-the-existing-ai-job-retry) | Config + deploy | ✅ built (26 tests green) — commit+deploy pending |
+| **7** | **Remote Mac-Ollama Resilience (make existing AI job retry)** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience-make-the-existing-ai-job-retry) | Config + deploy | ✅ built & committed (feat branch) — deploy pending |
 | 8 | Receipt Watch Folder + OCR Auto-Match | [Prompt 8](#prompt-8--receipt-watch-folder--ollama-vision-ocr-auto-match) | Deploy + SQL migration | Tier 2 |
 | 9 | Natural Language Finance Chat | [Prompt 9](#prompt-9--natural-language-finance-chat) | Deploy only | Tier 2 |
 | 10 | Cash Flow Forecasting | [Prompt 10](#prompt-10--cash-flow-forecasting) | Deploy only | Tier 2 |
 | 11 | Account Balance Snapshots (F.2) | [Prompt 11](#prompt-11--account-balance-history-snapshots-f2) | Deploy + SQL migration | foundational |
 | 12 | Import Deduplication Improvement (F.3) | [Prompt 12](#prompt-12--import-deduplication-improvement-f3) | Deploy + SQL migration | foundational |
-| 13 | Daily/Weekly/Monthly Digest (+ send-now, HA voice) | [Prompt 13](#prompt-13--daily--weekly--monthly-financial-digest) | NAS deploy + SQL | queued — after mobile (33/34) |
+| 13 | Daily/Weekly/Monthly Digest (+ send-now, HA voice) | [Prompt 13](#prompt-13--daily--weekly--monthly-financial-digest) | NAS deploy + SQL | ✅ built & committed — deploy + SQL pending |
 | 14 | Year-over-Year Comparison | [Prompt 14](#prompt-14--year-over-year-comparison) | Deploy only | Tier 3 |
 | 15 | Home Assistant Dashboard Sensor | [Prompt 15](#prompt-15--home-assistant-dashboard-sensor) | Deploy only | Tier 3 |
 | 16 | Tax-Ready Export | [Prompt 16](#prompt-16--tax-ready-export) | Deploy + SQL migration | Tier 3 |
-| 17 | Subscription Manager | [Prompt 17](#prompt-17--subscription-manager) | Deploy only | queued — after mobile (33/34) |
+| 17 | Subscription Manager | [Prompt 17](#prompt-17--subscription-manager) | Deploy only | ✅ built & committed — deploy pending (do 35 first for clean names) |
 | 18 | PWA Mode + Camera Capture | [Prompt 18](#prompt-18--pwa-mode--camera-capture) | Deploy only | Tier 3 |
 | 19 | Quick-Add Transaction Widget | [Prompt 19](#prompt-19--quick-add-transaction-widget) | Deploy only | Tier 3 |
 | 20 | Spending Streaks & Gamification | [Prompt 20](#prompt-20--spending-streaks--gamification) | Deploy only | Tier 3 |
@@ -35,16 +35,16 @@
 | 23 | Send Test Notification (Settings button) | [Prompt 23](#prompt-23--send-test-notification-settings-button) | NAS deploy | ✅ done & deployed |
 | 24 | Fix: exclude transfers in web KPIs (`isTransfer` projection) | [Prompt 24](#prompt-24--fix-web-kpis-exclude-transfers-istransfer-projection) | NAS deploy + web deploy + re-sync | ✅ done (24a+24b) & re-synced |
 | 25 | Split Transaction UI | [Prompt 25](#prompt-25--split-transaction-ui) | NAS deploy | ✅ built & committed — deploy pending |
-| 26 | Add / Quick-add Transaction UI | [Prompt 26](#prompt-26--add--quick-add-transaction-ui) | NAS deploy | ✅ built — commit+deploy pending |
-| 27 | Transfer & Investment Modeling | [Prompt 27](#prompt-27--transfer--investment-modeling) | NAS deploy + **seed** | ✅ built — commit+deploy+seed pending (inv. tables already exist) |
-| 28 | Foreign-amount field + Family/Gifts category | [Prompt 28](#prompt-28--foreign-amount-field--familygifts-category) | NAS deploy + **migration 0005 + seed** | ✅ built — commit+deploy+SQL pending |
+| 26 | Add / Quick-add Transaction UI | [Prompt 26](#prompt-26--add--quick-add-transaction-ui) | NAS deploy | ✅ built & committed — deploy pending |
+| 27 | Transfer & Investment Modeling | [Prompt 27](#prompt-27--transfer--investment-modeling) | NAS deploy + **seed** | ✅ built & committed — deploy + seed pending (inv. tables already exist) |
+| 28 | Foreign-amount field + Family/Gifts category | [Prompt 28](#prompt-28--foreign-amount-field--familygifts-category) | NAS deploy + **migration 0005 + seed** | ✅ built & committed — deploy + migration 0005 + seed pending |
 | 29 | Reimbursables & Loans | [Prompt 29](#prompt-29--reimbursables--loans) | NAS deploy + SQL | new |
 | 30 | Refunds as Offsets | [Prompt 30](#prompt-30--refunds-as-offsets) | NAS deploy + SQL | new |
 | 31 | Cash Account (ATM tracking) | [Prompt 31](#prompt-31--cash-account-atm-tracking) | NAS deploy + SQL | enum + UI |
 | 32 | Sinking Funds / Savings Goals | [Prompt 32](#prompt-32--sinking-funds--savings-goals) | NAS deploy + SQL | new |
-| **33** | **Mobile shell + PWA (NAS app)** | [Prompt 33](#prompt-33--mobile-shell--pwa-nas-app) | NAS deploy | ⬜ **NEXT (do first)** — responsive shell + bottom-nav + install |
-| **34** | **Responsive data views (tables → cards)** | [Prompt 34](#prompt-34--responsive-data-views-tables--cards) | NAS deploy | ⬜ NEXT — after 33 |
-| **35** | **Merchant Normalization Phase 2 (AI) + bill re-detect/dedupe** | [Prompt 35](#prompt-35--merchant-normalization-phase-2-ai--bill-re-detectdedupe) | NAS deploy | ⬜ after 34, **before 17** — fixes dirty names everywhere |
+| **33** | **Mobile shell + PWA (NAS app)** | [Prompt 33](#prompt-33--mobile-shell--pwa-nas-app) | NAS deploy | ✅ built & committed — deploy pending |
+| **34** | **Responsive data views (tables → cards)** | [Prompt 34](#prompt-34--responsive-data-views-tables--cards) | NAS deploy | ✅ built & committed — deploy pending |
+| **35** | **Merchant Normalization Phase 2 (AI) + bill re-detect/dedupe** | [Prompt 35](#prompt-35--merchant-normalization-phase-2-ai--bill-re-detectdedupe) | NAS deploy | ✅ built & committed — deploy + re-normalize/redetect pending |
 
 > **Mobile-first pass (Prompts 33–34, all NAS-only `apps/web`).** Agreed: the NAS app is desktop-built (fixed sidebar, 9 table views, no mobile nav) and used on the phone **at home on wifi** (LAN). Make it a responsive, installable PWA — **bottom tab bar** (Dashboard · Transactions · ＋Add · Bills · More) + slide-out drawer for the rest, tables→cards below `md`, full-screen sheets for modals. Distinct from moneypulse-web's PWA (Prompt 21). **Do 33→34 BEFORE 17 and 13** (mobile usability is the daily blocker; notifications tap through to this app).
 

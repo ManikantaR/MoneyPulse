@@ -9,10 +9,18 @@ build/
 .turbo/
 *.tsbuildinfo
 
-# Environment
+# Environment / secrets — NEVER commit. Broad ignore + explicit allow-list.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+# .env.production is intentionally tracked: it holds ONLY public NEXT_PUBLIC_* values
+# (these are baked into the browser bundle anyway). NEVER put a real secret here.
+!.env.production
+*.pem
+*.key
+*.p12
+*-credentials.json
+*serviceAccount*.json
 
 # IDE
 .vscode/*
