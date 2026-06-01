@@ -131,6 +131,21 @@ export interface RecurringBill {
   updatedAt: string;
 }
 
+/** A recurring bill projected as a subscription with annualized cost and price-change detection. */
+export interface SubscriptionItem {
+  id: string;
+  name: string;
+  amountCents: number;
+  frequency: BillFrequency;
+  annualCostCents: number;
+  /** Most recently seen charge amount (may differ from amountCents if price changed). */
+  lastAmountCents: number | null;
+  /** True when lastAmountCents exceeds the upper tolerance of expectedAmountCents. */
+  priceIncreased: boolean;
+  categoryId: string | null;
+  nextExpectedDate: string | null;
+}
+
 export interface Category {
   id: string;
   name: string;

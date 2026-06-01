@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Store,
   CalendarClock,
+  Repeat,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -32,6 +33,7 @@ export const navItems: NavItem[] = [
   { href: '/budgets', label: 'Budgets', icon: Wallet, placement: 'drawer' },
   { href: '/categories', label: 'Categories', icon: Tags, placement: 'drawer' },
   { href: '/merchants', label: 'Merchants', icon: Store, placement: 'drawer' },
+  { href: '/subscriptions', label: 'Subscriptions', icon: Repeat, placement: 'drawer' },
   { href: '/imports', label: 'Imports', icon: FileBarChart, placement: 'drawer' },
   { href: '/upload', label: 'Upload', icon: Upload, placement: 'drawer' },
   { href: '/ai-logs', label: 'AI Logs', icon: Brain, placement: 'drawer' },

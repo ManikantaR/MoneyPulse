@@ -31,7 +31,9 @@ import {
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { UpcomingBillsCard } from '@/components/charts/UpcomingBillsCard';
 import { useUpcomingBills } from '@/lib/hooks/useBills';
+import { useSubscriptions } from '@/lib/hooks/useSubscriptions';
 import { formatCents } from '@/lib/format';
+import { Repeat } from 'lucide-react';
 
 /** Dashboard page — main financial overview with KPI cards and charts. */
 export default function DashboardPage() {
@@ -67,6 +69,7 @@ export default function DashboardPage() {
   const { data: merchants, isLoading: merchLoading } = useTopMerchants(params);
   const { data: ccPayments, isLoading: ccLoading } = useCreditCardPayments(params);
   const { data: upcomingBills } = useUpcomingBills();
+  const { data: subscriptionsData } = useSubscriptions();
   const { data: budgetProgressData } = useBudgetProgress(params);
   const { data: topTxData, isLoading: topTxLoading } = useTransactions({
     from,
@@ -230,6 +233,24 @@ export default function DashboardPage() {
       {upcomingBills?.data && (
         <UpcomingBillsCard bills={upcomingBills.data} />
       )}
+
+      {/* Subscriptions glance card */}
+      {subscriptionsData?.data && subscriptionsData.data.length > 0 && (() => {
+        const subs = subscriptionsData.data;
+        const annualCents = subs.reduce((s, sub) => s + sub.annualCostCents, 0);
+        const monthlyCents = Math.round(annualCents / 12);
+        const priceAlerts = subs.filter((s) => s.priceIncreased).length;
+        return (
+          <StatCard
+            title="Subscriptions"
+            value={formatCents(monthlyCents) + '/mo'}
+            subtitle={formatCents(annualCents) + '/yr · ' + subs.length + ' active' + (priceAlerts > 0 ? ` · ${priceAlerts} price alert${priceAlerts > 1 ? 's' : ''}` : '')}
+            icon={Repeat}
+            accentColor="primary"
+            onClick={() => router.push('/subscriptions')}
+          />
+        );
+      })()}
 
       {/* Budget Progress — top 5 by percentUsed, with link to /budgets */}
       {budgetProgressData?.data && budgetProgressData.data.length > 0 && (

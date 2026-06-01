@@ -8,7 +8,19 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, isNull, lt, gte, lte, or, asc } from 'drizzle-orm';
 import { NotificationsService } from '../notifications/notifications.service';
-import type { BillFrequency, UpdateBillInput } from '@moneypulse/shared';
+import type { BillFrequency, UpdateBillInput, SubscriptionItem } from '@moneypulse/shared';
+
+function annualCostCents(amountCents: number, frequency: BillFrequency): number {
+  const multipliers: Record<BillFrequency, number> = {
+    weekly: 52,
+    biweekly: 26,
+    monthly: 12,
+    quarterly: 4,
+    semi_annual: 2,
+    annual: 1,
+  };
+  return amountCents * multipliers[frequency];
+}
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -164,7 +176,11 @@ export class BillsService {
       detected++;
 
       const existing = await this.db
-        .select({ id: schema.recurringBills.id })
+        .select({
+          id: schema.recurringBills.id,
+          expectedAmountCents: schema.recurringBills.expectedAmountCents,
+          amountTolerancePercent: schema.recurringBills.amountTolerancePercent,
+        })
         .from(schema.recurringBills)
         .where(
           and(
@@ -175,6 +191,34 @@ export class BillsService {
         .limit(1);
 
       if (existing.length > 0) {
+        const prev = existing[0];
+        const newLastAmount = lastOccurrence.amountCents;
+        const upperBound = Math.ceil(
+          prev.expectedAmountCents * (1 + prev.amountTolerancePercent / 100),
+        );
+
+        // Fire price-increase notification (deduped by bill id + new amount)
+        if (newLastAmount > upperBound) {
+          const dedupeKey = `subscription_price_increase_${prev.id}_${newLastAmount}`;
+          const alreadySent = await this.notificationsService.findByMetadata(userId, dedupeKey);
+          if (!alreadySent) {
+            const oldFmt = `$${(prev.expectedAmountCents / 100).toFixed(2)}`;
+            const newFmt = `$${(newLastAmount / 100).toFixed(2)}`;
+            await this.notificationsService.createAndDispatch({
+              userId,
+              type: 'subscription_price_increase',
+              title: `Price increase: ${merchantKey}`,
+              message: `${merchantKey} charge rose from ${oldFmt} to ${newFmt}.`,
+              dedupeKey,
+              metadata: {
+                billId: prev.id,
+                oldAmountCents: prev.expectedAmountCents,
+                newAmountCents: newLastAmount,
+              },
+            });
+          }
+        }
+
         await this.db
           .update(schema.recurringBills)
           .set({
@@ -367,6 +411,46 @@ export class BillsService {
       )
       .orderBy(asc(schema.recurringBills.nextExpectedDate))
       .limit(5);
+  }
+
+  // ── Subscriptions (derived projection) ───────────────────
+
+  /**
+   * Returns active, confirmed recurring bills projected as subscriptions.
+   * Computes annualized cost and flags price increases.
+   * Read-only — no side effects.
+   */
+  async getSubscriptions(userId: string): Promise<SubscriptionItem[]> {
+    const bills = await this.db
+      .select()
+      .from(schema.recurringBills)
+      .where(
+        and(
+          eq(schema.recurringBills.userId, userId),
+          eq(schema.recurringBills.isActive, true),
+        ),
+      )
+      .orderBy(asc(schema.recurringBills.normalizedName));
+
+    return bills.map((bill) => {
+      const upperBound = Math.ceil(
+        bill.expectedAmountCents * (1 + bill.amountTolerancePercent / 100),
+      );
+      const priceIncreased =
+        bill.lastAmountCents !== null && bill.lastAmountCents > upperBound;
+
+      return {
+        id: bill.id,
+        name: bill.normalizedName ?? bill.merchantPattern,
+        amountCents: bill.expectedAmountCents,
+        frequency: bill.frequency as BillFrequency,
+        annualCostCents: annualCostCents(bill.expectedAmountCents, bill.frequency as BillFrequency),
+        lastAmountCents: bill.lastAmountCents,
+        priceIncreased,
+        categoryId: bill.categoryId,
+        nextExpectedDate: bill.nextExpectedDate ? bill.nextExpectedDate.toISOString() : null,
+      };
+    });
   }
 
   // ── Deduplicate ───────────────────────────────────────────
