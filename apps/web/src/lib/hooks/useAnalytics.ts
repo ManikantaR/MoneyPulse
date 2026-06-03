@@ -176,3 +176,18 @@ export function useBudgetProgress(params: AnalyticsParams = {}) {
       api.get<{ data: BudgetProgressItem[] }>('/analytics/budget-progress', { params }),
   });
 }
+
+/** Single balance snapshot point from the balance-history endpoint. */
+export interface BalanceHistoryPoint {
+  date: string;
+  balanceCents: number;
+}
+
+/** Fetch account balance history from stored snapshots. */
+export function useBalanceHistory(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'balance-history', params],
+    queryFn: () =>
+      api.get<{ data: BalanceHistoryPoint[] }>('/analytics/balance-history', { params }),
+  });
+}

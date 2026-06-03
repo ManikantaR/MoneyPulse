@@ -12,6 +12,8 @@ import {
   uniqueIndex,
   index,
   pgEnum,
+  date,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -557,6 +559,24 @@ export const syncAuditLogs = pgTable(
   (table) => [
     index('idx_sync_audit_outbox').on(table.outboxEventId),
     index('idx_sync_audit_created').on(table.createdAt),
+  ],
+);
+
+// ── Account Balance Snapshots ────────────────────────────────
+
+/** Daily computed balance per account — used for net-worth and trend charts. */
+export const accountBalanceSnapshots = pgTable(
+  'account_balance_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id').notNull().references(() => accounts.id),
+    balanceCents: integer('balance_cents').notNull(),
+    snapshotDate: date('snapshot_date').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('uq_snapshot_account_date').on(t.accountId, t.snapshotDate),
+    index('idx_snapshot_account').on(t.accountId, t.snapshotDate),
   ],
 );
 

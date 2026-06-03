@@ -20,6 +20,7 @@ import { OllamaHealthService } from '../categorization/ollama-health.service';
 import { OutboxService } from '../sync/outbox.service';
 import { AliasMapperService } from '../sync/alias-mapper.service';
 import { AnomalyDetectorService } from '../analytics/anomaly-detector.service';
+import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
 import { encryptField } from '../common/crypto';
 
@@ -48,6 +49,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly aliasMapper: AliasMapperService,
     private readonly anomalyDetector: AnomalyDetectorService,
     private readonly ollamaHealth: OllamaHealthService,
+    private readonly balanceSnapshotService: BalanceSnapshotService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
     @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {
@@ -217,6 +219,10 @@ export class IngestionProcessor extends WorkerHost {
           await this.alertsQueue.add('post-import-check', {
             userIds: [userId],
           });
+          // Best-effort balance snapshot so dashboard trend is current
+          this.balanceSnapshotService.snapshotForUser(userId).catch((err) =>
+            this.logger.warn(`Balance snapshot failed for user ${userId}: ${err.message}`),
+          );
         }
 
         return;
@@ -352,6 +358,10 @@ export class IngestionProcessor extends WorkerHost {
       // Trigger budget alert check after successful import
       if (dedupResult.newTransactions.length > 0) {
         await this.alertsQueue.add('post-import-check', { userIds: [userId] });
+        // Best-effort balance snapshot so dashboard trend is current
+        this.balanceSnapshotService.snapshotForUser(userId).catch((err) =>
+          this.logger.warn(`Balance snapshot failed for user ${userId}: ${err.message}`),
+        );
       }
     } catch (err: any) {
       this.logger.error(`Upload ${uploadId} failed: ${err.message}`, err.stack);

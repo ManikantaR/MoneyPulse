@@ -97,8 +97,9 @@ function makeProcessor(opts: {
     { toAliasId: vi.fn().mockReturnValue('a') } as any, // 9  aliasMapper
     { detectAnomalies: vi.fn() } as any,          // 10 anomalyDetector
     mockOllamaHealth as any,                      // 11 ollamaHealth
-    { add: vi.fn() } as any,                      // 12 alertsQueue
-    { add: ingestionQueueAddSpy } as any,         // 13 ingestionQueue
+    { snapshotForUser: vi.fn().mockResolvedValue(undefined) } as any, // 12 balanceSnapshotService
+    { add: vi.fn() } as any,                      // 13 alertsQueue
+    { add: ingestionQueueAddSpy } as any,         // 14 ingestionQueue
   );
 
   return { processor, mockOllamaHealth, categorizeSpy, ingestionQueueAddSpy, mockDb };

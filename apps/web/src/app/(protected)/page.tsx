@@ -10,6 +10,7 @@ import { IncomeExpenseBar } from '@/components/charts/IncomeExpenseBar';
 import { CategoryDonut } from '@/components/charts/CategoryDonut';
 import { SpendingTrendLine } from '@/components/charts/SpendingTrendLine';
 import { AccountBalanceHistory } from '@/components/charts/AccountBalanceHistory';
+import { AccountBalanceTrend } from '@/components/charts/AccountBalanceTrend';
 import { CreditUtilization } from '@/components/charts/CreditUtilization';
 import { NetWorthCard } from '@/components/charts/NetWorthCard';
 import { TopMerchantsBar } from '@/components/charts/TopMerchantsBar';
@@ -27,6 +28,7 @@ import {
   useTopMerchants,
   useCreditCardPayments,
   useBudgetProgress,
+  useBalanceHistory,
 } from '@/lib/hooks/useAnalytics';
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { UpcomingBillsCard } from '@/components/charts/UpcomingBillsCard';
@@ -71,6 +73,9 @@ export default function DashboardPage() {
   const { data: upcomingBills } = useUpcomingBills();
   const { data: subscriptionsData } = useSubscriptions();
   const { data: budgetProgressData } = useBudgetProgress(params);
+  // Balance history uses last 12 months to show a meaningful trend
+  const balHistoryFrom = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
+  const { data: balanceHistory } = useBalanceHistory({ from: balHistoryFrom, to: trendTo });
   const { data: topTxData, isLoading: topTxLoading } = useTransactions({
     from,
     to,
@@ -218,6 +223,11 @@ export default function DashboardPage() {
         )}
         {balances?.data && <AccountBalanceHistory data={balances.data} />}
       </div>
+
+      {/* Balance Trend — net balance over time from daily snapshots */}
+      {balanceHistory?.data && (
+        <AccountBalanceTrend data={balanceHistory.data} />
+      )}
 
       {/* Credit Utilization + CC Payments */}
       <div className="grid gap-6 lg:grid-cols-2">
