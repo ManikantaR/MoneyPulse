@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { AlertEngineService } from '../notifications/alert-engine.service';
 import { DigestService } from '../analytics/digest.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
+import { ForecastService } from '../analytics/forecast.service';
 
 @Processor('alerts')
 export class AlertCronProcessor extends WorkerHost {
@@ -13,6 +14,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly alertEngine: AlertEngineService,
     private readonly digestService: DigestService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
+    private readonly forecastService: ForecastService,
   ) {
     super();
   }
@@ -49,6 +51,10 @@ export class AlertCronProcessor extends WorkerHost {
 
       case 'snapshot-all':
         await this.balanceSnapshotService.snapshotAll();
+        break;
+
+      case 'cashflow-sweep':
+        await this.forecastService.checkAndAlertAll();
         break;
 
       default:

@@ -11,6 +11,7 @@ import { CategoryDonut } from '@/components/charts/CategoryDonut';
 import { SpendingTrendLine } from '@/components/charts/SpendingTrendLine';
 import { AccountBalanceHistory } from '@/components/charts/AccountBalanceHistory';
 import { AccountBalanceTrend } from '@/components/charts/AccountBalanceTrend';
+import { CashFlowForecastChart } from '@/components/charts/CashFlowForecastChart';
 import { CreditUtilization } from '@/components/charts/CreditUtilization';
 import { NetWorthCard } from '@/components/charts/NetWorthCard';
 import { TopMerchantsBar } from '@/components/charts/TopMerchantsBar';
@@ -29,6 +30,7 @@ import {
   useCreditCardPayments,
   useBudgetProgress,
   useBalanceHistory,
+  useForecast,
 } from '@/lib/hooks/useAnalytics';
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { UpcomingBillsCard } from '@/components/charts/UpcomingBillsCard';
@@ -76,6 +78,7 @@ export default function DashboardPage() {
   // Balance history uses last 12 months to show a meaningful trend
   const balHistoryFrom = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
   const { data: balanceHistory } = useBalanceHistory({ from: balHistoryFrom, to: trendTo });
+  const { data: forecastData } = useForecast(90);
   const { data: topTxData, isLoading: topTxLoading } = useTransactions({
     from,
     to,
@@ -228,6 +231,56 @@ export default function DashboardPage() {
       {balanceHistory?.data && (
         <AccountBalanceTrend data={balanceHistory.data} />
       )}
+
+      {/* Cash-Flow Forecast — projected balance + alerts */}
+      {forecastData?.data && (() => {
+        const forecast = forecastData.data;
+        const netSeries = forecast.netWorthSeries;
+        const firstAlert = forecast.alerts[0];
+        const netAccount = forecast.accounts[0];
+        return (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <CashFlowForecastChart
+              series={netSeries}
+              lowBalanceDate={firstAlert?.date}
+              title="Net Balance Forecast (90 days)"
+            />
+            {/* Projected balance summary widget */}
+            <div className="flex flex-col justify-center rounded-2xl bg-[var(--surface-container-low)] p-6">
+              <h3 className="mb-2 text-xl font-bold tracking-tight">Projected Balance</h3>
+              {forecast.alerts.length === 0 ? (
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  ✅ On track for the next 90 days.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {forecast.alerts.map((a) => {
+                    const acct = forecast.accounts.find((acc) => acc.accountId === a.accountId);
+                    return (
+                      <li key={a.accountId} className="flex items-start gap-2 text-sm">
+                        <span className="mt-0.5 text-red-500">⚠</span>
+                        <span>
+                          <span className="font-semibold">{acct?.accountName ?? 'Account'}</span>{' '}
+                          projected to drop below $1,000 by{' '}
+                          <span className="font-semibold text-red-600 dark:text-red-400">
+                            {new Date(a.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>{' '}
+                          ({formatCents(a.projectedCents)}).
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {netAccount && (
+                <p className="mt-4 text-xs text-[var(--muted-foreground)]">
+                  End of window: {formatCents(netSeries[netSeries.length - 1]?.projectedCents ?? 0)}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Credit Utilization + CC Payments */}
       <div className="grid gap-6 lg:grid-cols-2">

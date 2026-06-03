@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 import { BalanceSnapshotService } from './balance-snapshot.service';
+import { ForecastService } from './forecast.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -9,11 +10,13 @@ import {
   analyticsQuerySchema,
   spendingTrendQuerySchema,
   topMerchantsQuerySchema,
+  forecastQuerySchema,
 } from '@moneypulse/shared';
 import type {
   AnalyticsQuery,
   SpendingTrendQuery,
   TopMerchantsQuery,
+  ForecastQuery,
   AuthTokenPayload,
 } from '@moneypulse/shared';
 
@@ -24,6 +27,7 @@ export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
+    private readonly forecastService: ForecastService,
   ) {}
 
   /**
@@ -230,6 +234,24 @@ export class AnalyticsController {
       from: query.from,
       to: query.to,
     });
+    return { data };
+  }
+
+  /**
+   * GET /analytics/forecast?days= — Project account balances for the next 30/60/90 days.
+   * Uses recurring bills + average daily net spend to project each account and combined net-worth.
+   *
+   * @param query - Validated days parameter (30, 60, or 90).
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: ForecastResult }` with per-account series, net-worth series, and alerts.
+   */
+  @Get('forecast')
+  @ApiOperation({ summary: 'Cash-flow forecast for the next 30/60/90 days' })
+  async forecast(
+    @Query(new ZodValidationPipe(forecastQuerySchema)) query: ForecastQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.forecastService.forecast(user.sub, query.days);
     return { data };
   }
 }
