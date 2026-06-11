@@ -11,7 +11,8 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "turbo run test",
-    "test:e2e": "turbo run test:e2e",
+    "test:e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
     "lint": "turbo run lint",
     "clean": "turbo run clean",
     "db:generate": "pnpm --filter @moneypulse/api run db:generate",
@@ -26,6 +27,7 @@
     "pre-commit": "node scripts/validate-ai-customizations.mjs && npx markdownlint-cli2 --no-globs AGENTS.md \".github/**/*.md\" \"docs/agentic/**/*.md\""
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "simple-git-hooks": "^2.13.1",
     "turbo": "^2.9.14",
     "vite": "8.0.8"
