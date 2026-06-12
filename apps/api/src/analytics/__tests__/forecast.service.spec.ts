@@ -61,8 +61,8 @@ describe('ForecastService', () => {
     const series = result.accounts[0].series;
     expect(series).toHaveLength(90);
     // Each day decreases by ~$50 (5000 cents)
-    expect(series[0].projectedCents).toBeCloseTo(500_000 - 5_000, -2);
-    expect(series[89].projectedCents).toBeCloseTo(500_000 - 90 * 5_000, -2);
+    expect(series[0].projectedCents).toBe(500_000 - 5_000);
+    expect(series[89].projectedCents).toBe(500_000 - 90 * 5_000);
   });
 
   it('computes low-balance date correctly at $1,000 threshold', async () => {

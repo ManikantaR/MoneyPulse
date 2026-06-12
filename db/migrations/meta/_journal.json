@@ -43,6 +43,13 @@
       "when": 1780235569000,
       "tag": "0005_foreign_amount_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781143984539,
+      "tag": "0006_brainy_titanium_man",
+      "breakpoints": true
     }
   ]
 }

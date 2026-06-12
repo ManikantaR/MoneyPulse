@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Playwright E2E config — runs against a LOCAL dev server (never the NAS).
- * `pnpm e2e` boots the web app via `webServer` and runs the specs in apps/web/e2e.
+ * `pnpm test:e2e:web` boots the web app via `webServer` and runs the specs in apps/web/e2e.
  *
  * Testing posture: Vitest = unit gate; Playwright (here) = E2E gate against local dev.
  * Do NOT point this at moneypulse.home.lab / the NAS — keep it deterministic.

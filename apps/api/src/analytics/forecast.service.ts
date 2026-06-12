@@ -77,7 +77,11 @@ function addFrequency(date: Date, frequency: BillFrequency): Date {
   return d;
 }
 
-/** Format a Date as YYYY-MM-DD without timezone conversion. */
+/**
+ * Format a Date as YYYY-MM-DD using its LOCAL date components.
+ * The forecast builds and compares all projection dates in local time (the NAS
+ * runs UTC, so prod is consistent); keep this in lockstep with that construction.
+ */
 function toDateStr(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -209,7 +213,10 @@ export class ForecastService {
         ON rb.user_id = ${userId}
         AND rb.is_active = true
         AND LOWER(t.normalized_merchant_name) = LOWER(rb.normalized_name)
-      WHERE t.account_id = ANY(ARRAY[${sql.raw(accountIds.map((id) => `'${id}'`).join(','))}]::uuid[])
+      WHERE t.account_id = ANY(ARRAY[${sql.join(
+        accountIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )}])
         AND t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND t.is_transfer = false

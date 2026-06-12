@@ -82,6 +82,7 @@ export class BalanceSnapshotService {
         )::date AS snapshot_date
         FROM transactions t
         WHERE t.account_id = ${accountId} AND t.deleted_at IS NULL
+        HAVING MIN(t.date) IS NOT NULL
       ),
       balances AS (
         SELECT
