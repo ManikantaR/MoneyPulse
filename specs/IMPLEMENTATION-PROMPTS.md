@@ -16,35 +16,35 @@
 | 4 | Spending Anomaly Alerts | [Prompt 4](#prompt-4--spending-anomaly-alerts) | Deploy only | ✅ done |
 | 5 | Budget vs Actual Dashboard | [Prompt 5](#prompt-5--budget-vs-actual-variance-dashboard) | Deploy only | ✅ done |
 | **6** | **Notification Push Backbone (6a NAS + 6b Web)** | [Prompt 6](#prompt-6--notification-push-backbone-nas-emit--web-fcm-send--ha-lan-fix) | NAS deploy + web `firebase deploy` | ✅ done & deployed |
-| **7** | **Remote Mac-Ollama Resilience (make existing AI job retry)** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience-make-the-existing-ai-job-retry) | Config + deploy | ✅ built & committed (feat branch) — deploy pending |
+| **7** | **Remote Mac-Ollama Resilience (make existing AI job retry)** | [Prompt 7](#prompt-7--remote-mac-ollama-resilience-make-the-existing-ai-job-retry) | Config + deploy | ✅ DONE (on main) |
 | 8 | Receipt Watch Folder + OCR Auto-Match | [Prompt 8](#prompt-8--receipt-watch-folder--ollama-vision-ocr-auto-match) | Deploy + SQL migration | Tier 2 |
 | 9 | Natural Language Finance Chat | [Prompt 9](#prompt-9--natural-language-finance-chat) | Deploy only | Tier 2 |
 | 10 | Cash Flow Forecasting | [Prompt 10](#prompt-10--cash-flow-forecasting) | Deploy only | Tier 2 |
 | 11 | Account Balance Snapshots (F.2) | [Prompt 11](#prompt-11--account-balance-history-snapshots-f2) | Deploy + SQL migration | foundational |
 | 12 | Import Deduplication Improvement (F.3) | [Prompt 12](#prompt-12--import-deduplication-improvement-f3) | Deploy + SQL migration | foundational |
-| 13 | Daily/Weekly/Monthly Digest (+ send-now, HA voice) | [Prompt 13](#prompt-13--daily--weekly--monthly-financial-digest) | NAS deploy + SQL | ✅ built & committed — deploy + SQL pending |
+| 13 | Daily/Weekly/Monthly Digest (+ send-now, HA voice) | [Prompt 13](#prompt-13--daily--weekly--monthly-financial-digest) | NAS deploy + SQL | ✅ DONE (on main) — needs digest-cols SQL on NAS |
 | 14 | Year-over-Year Comparison | [Prompt 14](#prompt-14--year-over-year-comparison) | Deploy only | Tier 3 |
 | 15 | Home Assistant Dashboard Sensor | [Prompt 15](#prompt-15--home-assistant-dashboard-sensor) | Deploy only | Tier 3 |
 | 16 | Tax-Ready Export | [Prompt 16](#prompt-16--tax-ready-export) | Deploy + SQL migration | Tier 3 |
-| 17 | Subscription Manager | [Prompt 17](#prompt-17--subscription-manager) | Deploy only | ✅ built & committed — deploy pending (do 35 first for clean names) |
-| 18 | PWA Mode + Camera Capture | [Prompt 18](#prompt-18--pwa-mode--camera-capture) | Deploy only | Tier 3 |
-| 19 | Quick-Add Transaction Widget | [Prompt 19](#prompt-19--quick-add-transaction-widget) | Deploy only | Tier 3 |
+| 17 | Subscription Manager | [Prompt 17](#prompt-17--subscription-manager) | Deploy only | ✅ DONE (on main) |
+| 18 | PWA Mode + Camera Capture | [Prompt 18](#prompt-18--pwa-mode--camera-capture) | Deploy only | ✅ SUPERSEDED by 33/34 (PWA done); camera capture optional |
+| 19 | Quick-Add Transaction Widget | [Prompt 19](#prompt-19--quick-add-transaction-widget) | Deploy only | ✅ SUPERSEDED by 26 (add modal + FAB) |
 | 20 | Spending Streaks & Gamification | [Prompt 20](#prompt-20--spending-streaks--gamification) | Deploy only | Tier 3 |
 | **21** | **moneypulse-web PWA (installable + push, Android & iOS)** | [Prompt 21](#prompt-21--moneypulse-web-pwa-installable--background-push-android--ios) | web `firebase deploy` | ⏸️ optional for Android (push works post-6b); needed for iOS/app-feel |
 | 22 | Web Bills Glance (`bill.projected.v1`) — OPTIONAL | [Prompt 22](#prompt-22--web-bills-glance-billprojectedv1--optional) | NAS deploy + web `firebase deploy` | optional — 22a NAS + 22b Web |
 | 23 | Send Test Notification (Settings button) | [Prompt 23](#prompt-23--send-test-notification-settings-button) | NAS deploy | ✅ done & deployed |
 | 24 | Fix: exclude transfers in web KPIs (`isTransfer` projection) | [Prompt 24](#prompt-24--fix-web-kpis-exclude-transfers-istransfer-projection) | NAS deploy + web deploy + re-sync | ✅ done (24a+24b) & re-synced |
-| 25 | Split Transaction UI | [Prompt 25](#prompt-25--split-transaction-ui) | NAS deploy | ✅ built & committed — deploy pending |
-| 26 | Add / Quick-add Transaction UI | [Prompt 26](#prompt-26--add--quick-add-transaction-ui) | NAS deploy | ✅ built & committed — deploy pending |
-| 27 | Transfer & Investment Modeling | [Prompt 27](#prompt-27--transfer--investment-modeling) | NAS deploy + **seed** | ✅ built & committed — deploy + seed pending (inv. tables already exist) |
-| 28 | Foreign-amount field + Family/Gifts category | [Prompt 28](#prompt-28--foreign-amount-field--familygifts-category) | NAS deploy + **migration 0005 + seed** | ✅ built & committed — deploy + migration 0005 + seed pending |
+| 25 | Split Transaction UI | [Prompt 25](#prompt-25--split-transaction-ui) | NAS deploy | ✅ DONE (on main) |
+| 26 | Add / Quick-add Transaction UI | [Prompt 26](#prompt-26--add--quick-add-transaction-ui) | NAS deploy | ✅ DONE (on main) |
+| 27 | Transfer & Investment Modeling | [Prompt 27](#prompt-27--transfer--investment-modeling) | NAS deploy + **seed** | ✅ DONE (on main) — run seed on NAS |
+| 28 | Foreign-amount field + Family/Gifts category | [Prompt 28](#prompt-28--foreign-amount-field--familygifts-category) | NAS deploy + **migration 0005 + seed** | ✅ DONE (on main) — migration 0005 + seed on NAS |
 | 29 | Reimbursables & Loans | [Prompt 29](#prompt-29--reimbursables--loans) | NAS deploy + SQL | new |
 | 30 | Refunds as Offsets | [Prompt 30](#prompt-30--refunds-as-offsets) | NAS deploy + SQL | new |
 | 31 | Cash Account (ATM tracking) | [Prompt 31](#prompt-31--cash-account-atm-tracking) | NAS deploy + SQL | enum + UI |
 | 32 | Sinking Funds / Savings Goals | [Prompt 32](#prompt-32--sinking-funds--savings-goals) | NAS deploy + SQL | new |
-| **33** | **Mobile shell + PWA (NAS app)** | [Prompt 33](#prompt-33--mobile-shell--pwa-nas-app) | NAS deploy | ✅ built & committed — deploy pending |
-| **34** | **Responsive data views (tables → cards)** | [Prompt 34](#prompt-34--responsive-data-views-tables--cards) | NAS deploy | ✅ built & committed — deploy pending |
-| **35** | **Merchant Normalization Phase 2 (AI) + bill re-detect/dedupe** | [Prompt 35](#prompt-35--merchant-normalization-phase-2-ai--bill-re-detectdedupe) | NAS deploy | ✅ built & committed — deploy + re-normalize/redetect pending |
+| **33** | **Mobile shell + PWA (NAS app)** | [Prompt 33](#prompt-33--mobile-shell--pwa-nas-app) | NAS deploy | ✅ DONE (on main) |
+| **34** | **Responsive data views (tables → cards)** | [Prompt 34](#prompt-34--responsive-data-views-tables--cards) | NAS deploy | ✅ DONE (on main) |
+| **35** | **Merchant Normalization Phase 2 (AI) + bill re-detect/dedupe** | [Prompt 35](#prompt-35--merchant-normalization-phase-2-ai--bill-re-detectdedupe) | NAS deploy | ✅ DONE (on main) — run normalize+redetect on NAS |
 
 > **Mobile-first pass (Prompts 33–34, all NAS-only `apps/web`).** Agreed: the NAS app is desktop-built (fixed sidebar, 9 table views, no mobile nav) and used on the phone **at home on wifi** (LAN). Make it a responsive, installable PWA — **bottom tab bar** (Dashboard · Transactions · ＋Add · Bills · More) + slide-out drawer for the rest, tables→cards below `md`, full-screen sheets for modals. Distinct from moneypulse-web's PWA (Prompt 21). **Do 33→34 BEFORE 17 and 13** (mobile usability is the daily blocker; notifications tap through to this app).
 
@@ -1460,10 +1460,21 @@ export const accountBalanceSnapshots = pgTable('account_balance_snapshots', {
 }, (t) => ({ uniq: unique().on(t.accountId, t.snapshotDate) }));
 ```
 
+## CRITICAL — the real balance formula (do NOT invent a balance_cents column)
+There is NO `balance_cents` column on `accounts`; a balance is COMPUTED. The canonical SQL already exists in `apps/api/src/analytics/analytics.service.ts` (`netWorth()` / account-balances, ~lines 208–276) — reuse that exact shape:
+```
+a.starting_balance_cents
+  + COALESCE(SUM(CASE WHEN t.is_credit THEN t.amount_cents ELSE -t.amount_cents END), 0)
+FROM accounts a
+LEFT JOIN transactions t ON t.account_id = a.id AND t.deleted_at IS NULL AND t.is_split_parent = false
+WHERE a.deleted_at IS NULL
+```
+(accounts use `deleted_at IS NULL` for "active" — there is NO `is_active` column.)
+
 ## Service: `apps/api/src/analytics/balance-snapshot.service.ts` (NEW)
-- `snapshotAll()` — for each account, compute current balance (reuse the existing balance computation in `accounts.service.ts`), upsert a row for today (`ON CONFLICT (account_id, snapshot_date) DO UPDATE`).
-- `backfill(accountId)` — replay transaction history to compute end-of-month (and end-of-day for the recent window) balances historically; insert snapshots. Idempotent.
-- `history(userId, { accountId?, from, to })` — return the time series.
+- `snapshotAll()` — for each non-deleted account, compute current balance with the formula above, upsert today's row (`ON CONFLICT (account_id, snapshot_date) DO UPDATE`).
+- `backfill(accountId)` — replay history: a snapshot for `snapshot_date` = `starting_balance_cents + signed-sum of txns with date <= snapshot_date`; insert end-of-month points (+ end-of-day for the recent window). Idempotent (upsert).
+- `history(userId, { accountId?, from, to })` — return the time series (sum across accounts for the net-worth trend; per-account when `accountId` given).
 
 ## Triggers
 - Post-import hook in `ingestion.processor.ts`: after a successful import, call `snapshotAll()` for the affected user (best-effort).

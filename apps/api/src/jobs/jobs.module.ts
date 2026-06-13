@@ -65,6 +65,20 @@ export class JobsModule implements OnModuleInit {
       { name: 'investment-reminder' },
     );
 
+    // Daily balance snapshots at 1 AM UTC (idempotent upsert — safe to run multiple times)
+    await this.alertsQueue.upsertJobScheduler(
+      'daily-snapshot',
+      { pattern: '0 1 * * *' },
+      { name: 'snapshot-all' },
+    );
+
+    // Daily cash-flow forecast sweep at 6 AM UTC — checks low-balance projections
+    await this.alertsQueue.upsertJobScheduler(
+      'daily-cashflow-check',
+      { pattern: '0 6 * * *' },
+      { name: 'cashflow-sweep' },
+    );
+
     // Frequent sync delivery sweep for outbox events.
     await this.syncQueue.upsertJobScheduler(
       'sync-delivery-sweep',

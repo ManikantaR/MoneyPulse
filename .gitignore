@@ -70,3 +70,9 @@ config/watch-folder/**/.*archived/
 .temp
 .tmp
 .env.bak-clean-url
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

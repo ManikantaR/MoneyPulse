@@ -176,3 +176,54 @@ export function useBudgetProgress(params: AnalyticsParams = {}) {
       api.get<{ data: BudgetProgressItem[] }>('/analytics/budget-progress', { params }),
   });
 }
+
+/** Single point in the cash-flow forecast series. */
+export interface ForecastPoint {
+  date: string;
+  projectedCents: number;
+}
+
+/** Per-account forecast result. */
+export interface AccountForecast {
+  accountId: string;
+  accountName: string;
+  series: ForecastPoint[];
+  lowBalanceDate?: string;
+}
+
+/** Low-balance alert from the forecast. */
+export interface ForecastAlert {
+  accountId: string;
+  date: string;
+  projectedCents: number;
+}
+
+/** Full forecast result from the API. */
+export interface ForecastData {
+  accounts: AccountForecast[];
+  netWorthSeries: ForecastPoint[];
+  alerts: ForecastAlert[];
+}
+
+/** Fetch cash-flow forecast for the next 30, 60, or 90 days. */
+export function useForecast(days: 30 | 60 | 90 = 90) {
+  return useQuery({
+    queryKey: ['analytics', 'forecast', days],
+    queryFn: () =>
+      api.get<{ data: ForecastData }>('/analytics/forecast', { params: { days } }),
+  });
+}
+
+export interface BalanceHistoryPoint {
+  date: string;
+  balanceCents: number;
+}
+
+/** Fetch account balance history from stored snapshots. */
+export function useBalanceHistory(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'balance-history', params],
+    queryFn: () =>
+      api.get<{ data: BalanceHistoryPoint[] }>('/analytics/balance-history', { params }),
+  });
+}

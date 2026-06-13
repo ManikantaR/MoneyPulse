@@ -1,6 +1,8 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
+import { BalanceSnapshotService } from './balance-snapshot.service';
+import { ForecastService } from './forecast.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -8,11 +10,13 @@ import {
   analyticsQuerySchema,
   spendingTrendQuerySchema,
   topMerchantsQuerySchema,
+  forecastQuerySchema,
 } from '@moneypulse/shared';
 import type {
   AnalyticsQuery,
   SpendingTrendQuery,
   TopMerchantsQuery,
+  ForecastQuery,
   AuthTokenPayload,
 } from '@moneypulse/shared';
 
@@ -20,7 +24,11 @@ import type {
 @Controller('analytics')
 @UseGuards(JwtAuthGuard)
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly balanceSnapshotService: BalanceSnapshotService,
+    private readonly forecastService: ForecastService,
+  ) {}
 
   /**
    * GET /analytics/income-vs-expenses — Monthly income vs expense aggregates.
@@ -204,6 +212,46 @@ export class AnalyticsController {
       query,
       user.householdId,
     );
+    return { data };
+  }
+
+  /**
+   * GET /analytics/balance-history — Time series of account balance snapshots.
+   * Returns per-account series when accountId is provided, otherwise sums all accounts.
+   *
+   * @param query - Validated date/account filter parameters.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: Array<{ date: string, balanceCents: number }> }` ordered by date.
+   */
+  @Get('balance-history')
+  @ApiOperation({ summary: 'Account balance history from daily snapshots' })
+  async balanceHistory(
+    @Query(new ZodValidationPipe(analyticsQuerySchema)) query: AnalyticsQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.balanceSnapshotService.history(user.sub, {
+      accountId: query.accountId,
+      from: query.from,
+      to: query.to,
+    });
+    return { data };
+  }
+
+  /**
+   * GET /analytics/forecast?days= — Project account balances for the next 30/60/90 days.
+   * Uses recurring bills + average daily net spend to project each account and combined net-worth.
+   *
+   * @param query - Validated days parameter (30, 60, or 90).
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: ForecastResult }` with per-account series, net-worth series, and alerts.
+   */
+  @Get('forecast')
+  @ApiOperation({ summary: 'Cash-flow forecast for the next 30/60/90 days' })
+  async forecast(
+    @Query(new ZodValidationPipe(forecastQuerySchema)) query: ForecastQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.forecastService.forecast(user.sub, query.days);
     return { data };
   }
 }
