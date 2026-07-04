@@ -580,6 +580,20 @@ export const accountBalanceSnapshots = pgTable(
   ],
 );
 
+// ── Advisor settings (global singleton) ─────────────────────
+// One row for the whole app: which LLM provider/model backs the AI advisor and
+// the (AES-256-GCM encrypted) API key entered via the web UI. Env vars take
+// precedence over this row at resolve time; the key is never returned to clients.
+export const advisorSettings = pgTable('advisor_settings', {
+  id: integer('id').primaryKey().default(1),
+  provider: varchar('provider', { length: 20 }).notNull().default('anthropic'),
+  model: varchar('model', { length: 100 }),
+  apiKeyCiphertext: text('api_key_ciphertext'),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ── Relations ───────────────────────────────────────────────
 
 export const householdRelations = relations(households, ({ many }) => ({

@@ -1,17 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AdvisorService } from '../advisor.service';
+import type { LlmStreamChunk, LlmTurnResult } from '../llm/types';
 
 // ── Fakes ──────────────────────────────────────────────────────────────────
 
-/** A fake Anthropic stream: async-iterable of events + finalMessage(). */
-function makeStream(deltas: string[], finalMsg: any) {
+/** A fake provider turn: streams text deltas, then a single `final` chunk. */
+function makeTurn(deltas: string[], final: LlmTurnResult): AsyncIterable<LlmStreamChunk> {
   return {
     async *[Symbol.asyncIterator]() {
-      for (const text of deltas) {
-        yield { type: 'content_block_delta', delta: { type: 'text_delta', text } };
-      }
+      for (const text of deltas) yield { type: 'text', text };
+      yield { type: 'final', result: final };
     },
-    finalMessage: async () => finalMsg,
   };
 }
 
@@ -20,23 +19,40 @@ const AGGREGATE_TOOLS = [
   { name: 'get_account_balances', description: '', input_schema: { type: 'object' } },
 ];
 
-function build(overrides: { key?: string | undefined } = {}) {
-  const config = {
-    get: (k: string) =>
-      k === 'ANTHROPIC_API_KEY' ? ('key' in overrides ? overrides.key : 'sk-test') : undefined,
-  };
+function build(overrides: { resolved?: any } = {}) {
+  const resolved =
+    'resolved' in overrides
+      ? overrides.resolved
+      : { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test', keySource: 'env' };
+
   const mcp = {
     listAdvisorTools: vi.fn().mockResolvedValue(AGGREGATE_TOOLS),
     callTool: vi.fn().mockResolvedValue('Dining: $420.00 (June)'),
   };
   const aiLogs = { create: vi.fn().mockResolvedValue(undefined) };
-  const service = new AdvisorService(config as any, mcp as any, aiLogs as any);
-  const streamCalls: any[] = [];
-  const fakeAnthropic = { messages: { stream: vi.fn((p: any) => { streamCalls.push(p); return fakeAnthropic.__next.shift(); }), }, __next: [] as any[] };
-  // Only inject the fake when the service actually constructed a client (key present),
-  // so the "disabled" case keeps its null client.
-  if (service.enabled) (service as any).anthropic = fakeAnthropic;
-  return { service, mcp, aiLogs, fakeAnthropic, streamCalls };
+  const settings = {
+    resolve: vi.fn().mockResolvedValue(resolved),
+  };
+
+  const turns: AsyncIterable<LlmStreamChunk>[] = [];
+  const turnParams: any[] = [];
+  const fakeProvider = {
+    id: resolved?.provider ?? 'anthropic',
+    streamTurn: vi.fn((p: any) => {
+      turnParams.push(p);
+      return turns.shift()!;
+    }),
+    testConnection: vi.fn(),
+  };
+  const factory = { create: vi.fn().mockReturnValue(fakeProvider) };
+
+  const service = new AdvisorService(
+    mcp as any,
+    aiLogs as any,
+    settings as any,
+    factory as any,
+  );
+  return { service, mcp, aiLogs, settings, factory, fakeProvider, turns, turnParams };
 }
 
 async function collect(gen: AsyncGenerator<string>): Promise<string> {
@@ -48,9 +64,9 @@ async function collect(gen: AsyncGenerator<string>): Promise<string> {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('AdvisorService', () => {
-  it('is disabled when ANTHROPIC_API_KEY is missing', async () => {
-    const { service } = build({ key: undefined });
-    expect(service.enabled).toBe(false);
+  it('throws when no provider/key is configured', async () => {
+    const { service } = build({ resolved: null });
+    expect(await service.isEnabled()).toBe(false);
     await expect(collect(service.streamChat('u1', 'hi'))).rejects.toThrow(/not configured/);
   });
 
@@ -62,22 +78,28 @@ describe('AdvisorService', () => {
     });
 
     it('calls the aggregate tool, then streams the grounded answer', async () => {
-      ctx.fakeAnthropic.__next = [
+      ctx.turns.push(
         // round 1: model asks for a tool
-        makeStream([], {
-          stop_reason: 'tool_use',
+        makeTurn([], {
+          text: '',
           content: [
             { type: 'tool_use', id: 't1', name: 'get_spending_summary', input: { from: '2026-06-01', to: '2026-06-30' } },
           ],
-          usage: { input_tokens: 100, output_tokens: 20 },
+          toolCalls: [
+            { id: 't1', name: 'get_spending_summary', input: { from: '2026-06-01', to: '2026-06-30' } },
+          ],
+          stopReason: 'tool_use',
+          usage: { inputTokens: 100, outputTokens: 20 },
         }),
         // round 2: model narrates the tool result
-        makeStream(['You spent ', '$420.00 on dining in June.'], {
-          stop_reason: 'end_turn',
+        makeTurn(['You spent ', '$420.00 on dining in June.'], {
+          text: 'You spent $420.00 on dining in June.',
           content: [{ type: 'text', text: 'You spent $420.00 on dining in June.' }],
-          usage: { input_tokens: 150, output_tokens: 30 },
+          toolCalls: [],
+          stopReason: 'end_turn',
+          usage: { inputTokens: 150, outputTokens: 30 },
         }),
-      ];
+      );
 
       const answer = await collect(ctx.service.streamChat('u1', 'How much on dining in June?'));
 
@@ -86,37 +108,65 @@ describe('AdvisorService', () => {
         from: '2026-06-01',
         to: '2026-06-30',
       });
-      // number narrated matches the tool's number
       expect(answer).toContain('$420.00');
-      // logged as an advisor turn with token usage
+      // logged as an advisor turn with summed token usage
       expect(ctx.aiLogs.create).toHaveBeenCalledTimes(1);
       const log = ctx.aiLogs.create.mock.calls[0][0];
       expect(log.promptType).toBe('advisor');
+      expect(log.model).toBe('claude-opus-4-8');
       expect(log.tokenCountIn).toBe(250);
       expect(log.tokenCountOut).toBe(50);
     });
 
-    it('only offers the aggregate tools to Claude (row-level tools never sent)', async () => {
-      ctx.fakeAnthropic.__next = [
-        makeStream(['ok'], { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 1, output_tokens: 1 } }),
-      ];
+    it('only offers the aggregate tools to the model (row-level tools never sent)', async () => {
+      ctx.turns.push(
+        makeTurn(['ok'], {
+          text: 'ok',
+          content: [{ type: 'text', text: 'ok' }],
+          toolCalls: [],
+          stopReason: 'end_turn',
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }),
+      );
       await collect(ctx.service.streamChat('u1', 'hi'));
 
-      const toolsSent = ctx.streamCalls[0].tools.map((t: any) => t.name);
+      const toolsSent = ctx.turnParams[0].tools.map((t: any) => t.name);
       expect(toolsSent).toEqual(['get_spending_summary', 'get_account_balances']);
       expect(toolsSent).not.toContain('get_transactions');
       expect(toolsSent).not.toContain('search_transactions');
-      expect(ctx.streamCalls[0].model).toBe('claude-opus-4-8');
+      expect(ctx.turnParams[0].model).toBe('claude-opus-4-8');
+      expect(ctx.factory.create).toHaveBeenCalledWith('anthropic', 'sk-test');
+    });
+
+    it('routes through whichever provider settings resolve to (OpenAI)', async () => {
+      const c = build({
+        resolved: { provider: 'openai', model: 'gpt-4o', apiKey: 'oa-key', keySource: 'db' },
+      });
+      c.turns.push(
+        makeTurn(['hello'], {
+          text: 'hello',
+          content: [{ type: 'text', text: 'hello' }],
+          toolCalls: [],
+          stopReason: 'end_turn',
+          usage: { inputTokens: 2, outputTokens: 2 },
+        }),
+      );
+      const answer = await collect(c.service.streamChat('u1', 'hi'));
+      expect(answer).toBe('hello');
+      expect(c.factory.create).toHaveBeenCalledWith('openai', 'oa-key');
+      expect(c.turnParams[0].model).toBe('gpt-4o');
     });
 
     it('refuses without a tool call when nothing fits', async () => {
-      ctx.fakeAnthropic.__next = [
-        makeStream(["I don't have a way to answer that from your data."], {
-          stop_reason: 'end_turn',
+      ctx.turns.push(
+        makeTurn(["I don't have a way to answer that from your data."], {
+          text: "I don't have a way to answer that from your data.",
           content: [{ type: 'text', text: "I don't have a way to answer that from your data." }],
-          usage: { input_tokens: 10, output_tokens: 12 },
+          toolCalls: [],
+          stopReason: 'end_turn',
+          usage: { inputTokens: 10, outputTokens: 12 },
         }),
-      ];
+      );
       const answer = await collect(ctx.service.streamChat('u1', "what's the weather?"));
       expect(answer).toMatch(/don't have a way/);
       expect(ctx.mcp.callTool).not.toHaveBeenCalled();

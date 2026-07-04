@@ -44,6 +44,7 @@
     "ioredis": "^5.10.1",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.5",
+    "openai": "^6.45.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",

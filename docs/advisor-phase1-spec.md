@@ -32,12 +32,20 @@ MCP tools (which compute in Postgres) and narrates their verified results.
 
 | Var | Purpose |
 |---|---|
-| `ANTHROPIC_API_KEY` | Cloud Claude (advisor). |
+| `ANTHROPIC_API_KEY` | Claude provider key. **Optional** — can instead be set via the web Settings UI (stored encrypted). Env takes precedence over the DB value. |
+| `OPENAI_API_KEY` | OpenAI provider key. Same rules as above. |
+| `ENCRYPTION_KEY` | 64-char hex (32 bytes). Reused from PII encryption; **required to store a provider key via the web UI** (AES-256-GCM at rest). |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot (from @BotFather). |
 | `TELEGRAM_WEBHOOK_SECRET` | Random path secret guarding the webhook. |
 | `TELEGRAM_CHAT_MAP` | Optional `chatId:userId,…` allowlist. If unset, single-user mode maps every chat to the sole user. |
 | `MCP_SERVER_CMD` / `MCP_SERVER_ARGS` | How to spawn the MCP server over stdio (default: node on the built `apps/mcp-server`). |
-| `ADVISOR_MODEL` | Override model id (default `claude-opus-4-8`). |
+
+### Provider selection
+
+The advisor is provider-agnostic (Claude / OpenAI), selectable from **Settings → AI Advisor**
+(global, one config for the app). Provider/model/key resolve as: provider env key first,
+then the encrypted DB key. The key is write-only in the UI (shown masked, never returned).
+"Test connection" validates credentials before you rely on them.
 
 ## Architecture
 

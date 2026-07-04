@@ -1,11 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
 import { McpClientService } from './mcp-client.service';
 import { AiLogsService } from '../ai-logs/ai-logs.service';
 import { detectPiiTypes } from '../categorization/pii-sanitizer';
+import { AdvisorSettingsService } from './advisor-settings.service';
+import { LlmProviderFactory } from './llm/provider-factory';
+import type {
+  LlmContentBlock,
+  LlmMessage,
+  LlmTool,
+  LlmTurnResult,
+} from './llm/types';
 
-const DEFAULT_MODEL = 'claude-opus-4-8';
 const MAX_TOKENS = 8192;
 /** Hard cap on tool-use round trips so a loop can't run away. */
 const MAX_TOOL_ROUNDS = 8;
@@ -33,44 +38,46 @@ export interface ChatTurn {
 @Injectable()
 export class AdvisorService {
   private readonly logger = new Logger(AdvisorService.name);
-  private readonly anthropic: Anthropic | null;
-  private readonly model: string;
 
   constructor(
-    private readonly config: ConfigService,
     private readonly mcp: McpClientService,
     private readonly aiLogs: AiLogsService,
-  ) {
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
-    this.anthropic = apiKey ? new Anthropic({ apiKey }) : null;
-    this.model = this.config.get<string>('ADVISOR_MODEL') || DEFAULT_MODEL;
-    if (!this.anthropic) {
-      this.logger.warn('ANTHROPIC_API_KEY not set — advisor chat is disabled.');
-    }
-  }
+    private readonly settings: AdvisorSettingsService,
+    private readonly factory: LlmProviderFactory,
+  ) {}
 
-  get enabled(): boolean {
-    return this.anthropic !== null;
+  /** Whether a provider + key are configured (env or DB). */
+  async isEnabled(): Promise<boolean> {
+    return (await this.settings.resolve()) !== null;
   }
 
   /**
    * Stream a grounded answer to the user's message. Yields text deltas as they arrive.
-   * Runs the Claude tool-use loop against the aggregate MCP tools; the model narrates
-   * verified tool results and never computes numbers itself.
+   * Runs the tool-use loop against the aggregate MCP tools through whichever provider
+   * (Anthropic/OpenAI) is configured; the model narrates verified tool results and
+   * never computes numbers itself.
    */
   async *streamChat(
     userId: string,
     message: string,
     history: ChatTurn[] = [],
   ): AsyncGenerator<string> {
-    if (!this.anthropic) {
+    const resolved = await this.settings.resolve();
+    if (!resolved) {
       throw new Error(
-        'Advisor is not configured (ANTHROPIC_API_KEY missing). Set it in the NAS .env.',
+        'Advisor is not configured. Set a provider API key in Settings or the NAS .env.',
       );
     }
+    const provider = this.factory.create(resolved.provider, resolved.apiKey);
 
-    const tools = await this.mcp.listAdvisorTools(userId);
-    const messages: Anthropic.MessageParam[] = [
+    const toolDefs = await this.mcp.listAdvisorTools(userId);
+    const tools: LlmTool[] = toolDefs.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.input_schema,
+    }));
+
+    const messages: LlmMessage[] = [
       ...history.map((t) => ({ role: t.role, content: t.content })),
       { role: 'user', content: message },
     ];
@@ -82,61 +89,54 @@ export class AdvisorService {
 
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const stream = this.anthropic.messages.stream({
-          model: this.model,
-          max_tokens: MAX_TOKENS,
-          thinking: { type: 'adaptive' },
+        let final: LlmTurnResult | undefined;
+        for await (const chunk of provider.streamTurn({
+          model: resolved.model,
+          maxTokens: MAX_TOKENS,
           system: SYSTEM_PROMPT,
-          tools: tools as Anthropic.Tool[],
+          tools,
           messages,
-        });
-
-        for await (const event of stream) {
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            answer += event.delta.text;
-            yield event.delta.text;
+        })) {
+          if (chunk.type === 'text') {
+            answer += chunk.text;
+            yield chunk.text;
+          } else {
+            final = chunk.result;
           }
         }
+        if (!final) break;
 
-        const msg = await stream.finalMessage();
-        tokensIn += msg.usage.input_tokens;
-        tokensOut += msg.usage.output_tokens;
-        messages.push({ role: 'assistant', content: msg.content });
+        tokensIn += final.usage.inputTokens;
+        tokensOut += final.usage.outputTokens;
+        messages.push({ role: 'assistant', content: final.content });
 
-        if (msg.stop_reason !== 'tool_use') break;
+        if (final.stopReason !== 'tool_use') break;
 
-        const toolResults: Anthropic.ToolResultBlockParam[] = [];
-        for (const block of msg.content) {
-          if (block.type !== 'tool_use') continue;
+        const toolResults: LlmContentBlock[] = [];
+        for (const call of final.toolCalls) {
           let content: string;
           try {
-            content = await this.mcp.callTool(
-              userId,
-              block.name,
-              block.input as Record<string, any>,
-            );
+            content = await this.mcp.callTool(userId, call.name, call.input);
           } catch (err: any) {
             content = `Tool error: ${err.message}`;
           }
           toolResults.push({
             type: 'tool_result',
-            tool_use_id: block.id,
+            toolUseId: call.id,
             content,
           });
         }
         messages.push({ role: 'user', content: toolResults });
       }
     } finally {
-      this.logTurn(userId, message, answer, startMs, tokensIn, tokensOut);
+      this.logTurn(userId, resolved.model, message, answer, startMs, tokensIn, tokensOut);
     }
   }
 
   /** Fire-and-forget audit log of the advisor turn. */
   private logTurn(
     userId: string,
+    model: string,
     message: string,
     answer: string,
     startMs: number,
@@ -148,7 +148,7 @@ export class AdvisorService {
       .create({
         userId,
         promptType: 'advisor',
-        model: this.model,
+        model,
         inputText: message,
         outputText: answer || undefined,
         tokenCountIn: tokensIn || undefined,
