@@ -21,6 +21,9 @@ export default function SettingsPage() {
   const [monthlyDigest, setMonthlyDigest] = useState(
     settings?.monthlyDigestEnabled ?? false,
   );
+  const [advisorDigest, setAdvisorDigest] = useState(
+    settings?.advisorDigestEnabled ?? false,
+  );
   const [haWebhookUrl, setHaWebhookUrl] = useState(
     settings?.haWebhookUrl ?? '',
   );
@@ -44,6 +47,7 @@ export default function SettingsPage() {
         weeklyDigestEnabled: weeklyDigest,
         dailyDigestEnabled: dailyDigest,
         monthlyDigestEnabled: monthlyDigest,
+        advisorDigestEnabled: advisorDigest,
         haWebhookUrl: haWebhookUrl || null,
         firebaseUid: firebaseUid || null,
       });
@@ -163,6 +167,22 @@ export default function SettingsPage() {
             />
             <label htmlFor="monthlyDigest" className="text-sm font-medium">
               Enable monthly spending digest
+            </label>
+          </div>
+          <div className="flex items-start gap-3">
+            <input
+              id="advisorDigest"
+              type="checkbox"
+              checked={advisorDigest}
+              onChange={(e) => setAdvisorDigest(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-[var(--border)]"
+            />
+            <label htmlFor="advisorDigest" className="text-sm font-medium">
+              Enable weekly AI advisor recap
+              <span className="block text-xs font-normal text-[var(--on-surface-variant)]">
+                A ranked, dollar-quantified &ldquo;what changed this week&rdquo; narrated by
+                your configured AI advisor. Requires an advisor provider set up above.
+              </span>
             </label>
           </div>
         </section>

@@ -171,6 +171,7 @@ export class AnomalyDetectorService {
         dedupeKey,
         transactionId: txn.id,
         rule: 'amount_anomaly',
+        amountCents: txn.amountCents,
         avgCents: Math.round(stats.avgCents),
         zScore: Number(zScore(txn.amountCents, stats).toFixed(2)),
       },
@@ -216,7 +217,7 @@ export class AnomalyDetectorService {
       title: 'Possible duplicate transaction',
       message: `Possible duplicate: ${formatCents(txn.amountCents)} at ${merchantKey} on ${dateLabel}.`,
       dedupeKey,
-      metadata: { dedupeKey, transactionId: txn.id, rule: 'duplicate' },
+      metadata: { dedupeKey, transactionId: txn.id, rule: 'duplicate', amountCents: txn.amountCents },
     });
   }
 
@@ -248,7 +249,7 @@ export class AnomalyDetectorService {
       title: 'Large purchase detected',
       message: `Large purchase: ${formatCents(txn.amountCents)} at ${label}.`,
       dedupeKey,
-      metadata: { dedupeKey, transactionId: txn.id, rule: 'large_debit' },
+      metadata: { dedupeKey, transactionId: txn.id, rule: 'large_debit', amountCents: txn.amountCents },
     });
   }
 }

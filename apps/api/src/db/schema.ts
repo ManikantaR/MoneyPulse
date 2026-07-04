@@ -104,6 +104,9 @@ export const userSettings = pgTable('user_settings', {
   monthlyDigestEnabled: boolean('monthly_digest_enabled')
     .notNull()
     .default(false),
+  advisorDigestEnabled: boolean('advisor_digest_enabled')
+    .notNull()
+    .default(false),
   notificationEmail: varchar('notification_email', { length: 255 }),
   firebaseUid: varchar('firebase_uid', { length: 128 }),
   createdAt: timestamp('created_at', { withTimezone: true })

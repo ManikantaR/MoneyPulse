@@ -5,6 +5,7 @@ import { AlertEngineService } from '../notifications/alert-engine.service';
 import { DigestService } from '../analytics/digest.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
+import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
 
 @Processor('alerts')
 export class AlertCronProcessor extends WorkerHost {
@@ -15,6 +16,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly digestService: DigestService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
+    private readonly advisorDigestService: AdvisorDigestService,
   ) {
     super();
   }
@@ -47,6 +49,10 @@ export class AlertCronProcessor extends WorkerHost {
 
       case 'digest-monthly':
         await this.digestService.deliverAllEnabled('monthly');
+        break;
+
+      case 'advisor-digest-weekly':
+        await this.advisorDigestService.deliverAllEnabled();
         break;
 
       case 'snapshot-all':

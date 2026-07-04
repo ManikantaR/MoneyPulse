@@ -72,14 +72,19 @@ export class OpenAIProvider implements LlmProvider {
       stream: true,
       stream_options: { include_usage: true },
       messages: this.toOpenAIMessages(params.system, params.messages),
-      tools: params.tools.map((t) => ({
-        type: 'function' as const,
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: t.inputSchema,
-        },
-      })),
+      // Omit `tools` entirely when there are none — OpenAI rejects an empty array.
+      ...(params.tools.length
+        ? {
+            tools: params.tools.map((t) => ({
+              type: 'function' as const,
+              function: {
+                name: t.name,
+                description: t.description,
+                parameters: t.inputSchema,
+              },
+            })),
+          }
+        : {}),
     });
 
     let text = '';
