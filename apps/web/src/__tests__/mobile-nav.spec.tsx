@@ -86,7 +86,7 @@ describe('MobileMoreDrawer', () => {
     }
   });
 
-  it('does NOT list tab items (Dashboard, Transactions, Bills)', () => {
+  it('does NOT list tab items (Dashboard, Transactions, Advisor, Bills)', () => {
     render(<MobileMoreDrawer onClose={vi.fn()} />);
 
     for (const item of tabItems) {
@@ -121,8 +121,13 @@ describe('MobileMoreDrawer', () => {
 });
 
 describe('navItems DRY config', () => {
-  it('tab items are Dashboard, Transactions, Bills', () => {
-    expect(tabItems.map((i) => i.label)).toEqual(['Dashboard', 'Transactions', 'Bills']);
+  it('tab items are Dashboard, Transactions, Advisor, Bills', () => {
+    expect(tabItems.map((i) => i.label)).toEqual([
+      'Dashboard',
+      'Transactions',
+      'Advisor',
+      'Bills',
+    ]);
   });
 
   it('drawer items do not include tab items', () => {
