@@ -81,7 +81,10 @@ sync_code() {
     scp -O "$TMP_ARCHIVE" "$NAS_HOST:/tmp/"
 
     log "Extracting on NAS..."
-    ssh "$NAS_HOST" "cd $NAS_REPO && tar xzf /tmp/moneypulse-sync.tar.gz && rm /tmp/moneypulse-sync.tar.gz"
+    # Prune the source trees first — tar extraction overlays but never deletes, so a
+    # file removed/renamed in git would otherwise linger on the NAS and get compiled
+    # (stale build context). Wiping apps/ + packages/ makes the sync authoritative.
+    ssh "$NAS_HOST" "cd ${NAS_REPO:?} && rm -rf apps packages && tar xzf /tmp/moneypulse-sync.tar.gz && rm /tmp/moneypulse-sync.tar.gz"
 
     rm -f "$TMP_ARCHIVE"
     ok "Code synced to NAS"
