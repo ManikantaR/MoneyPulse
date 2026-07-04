@@ -1,5 +1,7 @@
-CREATE TYPE "public"."ai_prompt_type" AS ENUM('categorization', 'pdf_parse');--> statement-breakpoint
-CREATE TABLE "ai_prompt_logs" (
+DO $$ BEGIN
+ CREATE TYPE "public"."ai_prompt_type" AS ENUM('categorization', 'pdf_parse');
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "ai_prompt_logs" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"user_id" uuid,
 	"prompt_type" "ai_prompt_type" NOT NULL,
@@ -17,7 +19,7 @@ CREATE TABLE "ai_prompt_logs" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "outbox_events" (
+CREATE TABLE IF NOT EXISTS "outbox_events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"event_type" varchar(80) NOT NULL,
 	"aggregate_type" varchar(80) NOT NULL,
@@ -42,7 +44,7 @@ CREATE TABLE "outbox_events" (
 	CONSTRAINT "outbox_events_idempotency_key_unique" UNIQUE("idempotency_key")
 );
 --> statement-breakpoint
-CREATE TABLE "sync_audit_logs" (
+CREATE TABLE IF NOT EXISTS "sync_audit_logs" (
 	"id" bigserial PRIMARY KEY NOT NULL,
 	"outbox_event_id" uuid NOT NULL,
 	"user_id" uuid,
@@ -58,16 +60,26 @@ CREATE TABLE "sync_audit_logs" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "ai_prompt_logs" ADD CONSTRAINT "ai_prompt_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "outbox_events" ADD CONSTRAINT "outbox_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "outbox_events" ADD CONSTRAINT "outbox_events_household_id_households_id_fk" FOREIGN KEY ("household_id") REFERENCES "public"."households"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "sync_audit_logs" ADD CONSTRAINT "sync_audit_logs_outbox_event_id_outbox_events_id_fk" FOREIGN KEY ("outbox_event_id") REFERENCES "public"."outbox_events"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "sync_audit_logs" ADD CONSTRAINT "sync_audit_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_ai_log_user" ON "ai_prompt_logs" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "idx_ai_log_type" ON "ai_prompt_logs" USING btree ("prompt_type");--> statement-breakpoint
-CREATE INDEX "idx_ai_log_created" ON "ai_prompt_logs" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "idx_outbox_status_next_attempt" ON "outbox_events" USING btree ("status","next_attempt_at");--> statement-breakpoint
-CREATE INDEX "idx_outbox_user_created" ON "outbox_events" USING btree ("user_id","created_at");--> statement-breakpoint
-CREATE INDEX "idx_outbox_aggregate" ON "outbox_events" USING btree ("aggregate_type","aggregate_id");--> statement-breakpoint
-CREATE INDEX "idx_sync_audit_outbox" ON "sync_audit_logs" USING btree ("outbox_event_id");--> statement-breakpoint
-CREATE INDEX "idx_sync_audit_created" ON "sync_audit_logs" USING btree ("created_at");
+DO $$ BEGIN
+ ALTER TABLE "ai_prompt_logs" ADD CONSTRAINT "ai_prompt_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "outbox_events" ADD CONSTRAINT "outbox_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "outbox_events" ADD CONSTRAINT "outbox_events_household_id_households_id_fk" FOREIGN KEY ("household_id") REFERENCES "public"."households"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "sync_audit_logs" ADD CONSTRAINT "sync_audit_logs_outbox_event_id_outbox_events_id_fk" FOREIGN KEY ("outbox_event_id") REFERENCES "public"."outbox_events"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "sync_audit_logs" ADD CONSTRAINT "sync_audit_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN null; END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_ai_log_user" ON "ai_prompt_logs" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_ai_log_type" ON "ai_prompt_logs" USING btree ("prompt_type");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_ai_log_created" ON "ai_prompt_logs" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_outbox_status_next_attempt" ON "outbox_events" USING btree ("status","next_attempt_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_outbox_user_created" ON "outbox_events" USING btree ("user_id","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_outbox_aggregate" ON "outbox_events" USING btree ("aggregate_type","aggregate_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_sync_audit_outbox" ON "sync_audit_logs" USING btree ("outbox_event_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_sync_audit_created" ON "sync_audit_logs" USING btree ("created_at");
