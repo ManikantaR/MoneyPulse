@@ -57,6 +57,13 @@
       "when": 1783200000000,
       "tag": "0007_advisor_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783200100000,
+      "tag": "0008_advisor_prompt_type",
+      "breakpoints": true
     }
   ]
 }

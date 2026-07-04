@@ -461,6 +461,7 @@ export const investmentSnapshots = pgTable('investment_snapshots', {
 export const aiPromptTypeEnum = pgEnum('ai_prompt_type', [
   'categorization',
   'pdf_parse',
+  'advisor',
 ]);
 
 export const aiPromptLogs = pgTable(
