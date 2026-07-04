@@ -46,36 +46,36 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-card border border-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-          <div className="p-3 border-b border-border flex items-center justify-between">
+        <div className="absolute right-0 mt-2 w-80 bg-[var(--card)] text-[var(--card-foreground)] border border-[var(--border)] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+          <div className="p-3 border-b border-[var(--border)] flex items-center justify-between">
             <h3 className="font-medium text-sm">Notifications</h3>
             {!!unread && unread > 0 && (
               <button
                 onClick={() => markAllRead.mutate()}
-                className="text-xs text-primary hover:underline"
+                className="text-xs text-[var(--primary)] hover:underline"
               >
                 Mark all read
               </button>
             )}
           </div>
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-[var(--border)]">
             {notifications.slice(0, 20).map((n: any) => (
               <button
                 type="button"
                 key={n.id}
-                className={`w-full text-left p-3 cursor-pointer hover:bg-muted/50 ${!n.isRead ? 'bg-primary/5' : ''}`}
+                className={`w-full text-left p-3 cursor-pointer hover:bg-[var(--muted)]/50 ${!n.isRead ? 'bg-[var(--primary)]/5' : ''}`}
                 onClick={() => {
                   if (!n.isRead) markRead.mutate(n.id);
                 }}
               >
                 <p className="text-sm font-medium">{n.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
+                <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
                   {n.message}
                 </p>
               </button>
             ))}
             {notifications.length === 0 && (
-              <p className="p-4 text-sm text-muted-foreground">
+              <p className="p-4 text-sm text-[var(--muted-foreground)]">
                 No notifications
               </p>
             )}
