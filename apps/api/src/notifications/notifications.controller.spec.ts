@@ -14,9 +14,32 @@ describe('NotificationsController', () => {
       unreadCount: vi.fn().mockResolvedValue(0),
       markRead: vi.fn().mockResolvedValue(undefined),
       markAllRead: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
     };
 
     controller = new NotificationsController(mockNotificationsService);
+  });
+
+  describe('DELETE /notifications/:id', () => {
+    it('dismisses the notification scoped to the authenticated user', async () => {
+      const result = await controller.remove(TEST_USER, 'notif-xyz');
+
+      expect(mockNotificationsService.remove).toHaveBeenCalledTimes(1);
+      expect(mockNotificationsService.remove).toHaveBeenCalledWith(
+        'notif-xyz',
+        TEST_USER.sub,
+      );
+      expect(result).toEqual({ data: { dismissed: true } });
+    });
+
+    it('derives the userId from @CurrentUser(), never a passed-in value', async () => {
+      await controller.remove({ sub: 'user-other' } as any, 'notif-1');
+
+      expect(mockNotificationsService.remove).toHaveBeenCalledWith(
+        'notif-1',
+        'user-other',
+      );
+    });
   });
 
   describe('POST /notifications/test', () => {

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Delete,
   Param,
   UseGuards,
   Post,
@@ -41,6 +42,16 @@ export class NotificationsController {
   ) {
     await this.notificationsService.markRead(id, user.sub);
     return { data: { read: true } };
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Dismiss (delete) a notification' })
+  async remove(
+    @CurrentUser() user: AuthTokenPayload,
+    @Param('id') id: string,
+  ) {
+    await this.notificationsService.remove(id, user.sub);
+    return { data: { dismissed: true } };
   }
 
   @Post('mark-all-read')

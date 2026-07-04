@@ -57,6 +57,18 @@ export class NotificationsService {
       );
   }
 
+  /** Permanently dismiss (delete) a single notification owned by the user. */
+  async remove(id: string, userId: string) {
+    await this.db
+      .delete(schema.notifications)
+      .where(
+        and(
+          eq(schema.notifications.id, id),
+          eq(schema.notifications.userId, userId),
+        ),
+      );
+  }
+
   async markAllRead(userId: string) {
     await this.db
       .update(schema.notifications)

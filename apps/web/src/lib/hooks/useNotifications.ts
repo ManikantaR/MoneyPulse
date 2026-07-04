@@ -32,6 +32,17 @@ export function useMarkNotificationRead() {
   });
 }
 
+/** Dismiss (permanently delete) a single notification. */
+export function useDismissNotification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/notifications/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
 /** Mark all notifications as read. */
 export function useMarkAllRead() {
   const queryClient = useQueryClient();
