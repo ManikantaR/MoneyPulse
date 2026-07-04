@@ -7,6 +7,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { SyncModule } from '../sync/sync.module';
 import { SyncDeliveryProcessor } from './sync-delivery.processor';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { AdvisorModule } from '../advisor/advisor.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     NotificationsModule,
     SyncModule,
     AnalyticsModule,
+    AdvisorModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -49,6 +51,14 @@ export class JobsModule implements OnModuleInit {
       'monthly-digest',
       { pattern: '0 8 1 * *' },
       { name: 'digest-monthly' },
+    );
+
+    // Proactive weekly advisor recap — Monday 13:00 UTC (~8–9 AM ET), after the
+    // basic weekly digest. ISO-week dedupe handles timezone spread.
+    await this.alertsQueue.upsertJobScheduler(
+      'advisor-digest-weekly',
+      { pattern: '0 13 * * 1' },
+      { name: 'advisor-digest-weekly' },
     );
 
     // Weekly bank balance reminder (Monday 9 AM)

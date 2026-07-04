@@ -53,6 +53,7 @@ export interface UserSettings {
   weeklyDigestEnabled: boolean;
   dailyDigestEnabled: boolean;
   monthlyDigestEnabled: boolean;
+  advisorDigestEnabled: boolean;
   notificationEmail: string | null;
   firebaseUid: string | null;
 }

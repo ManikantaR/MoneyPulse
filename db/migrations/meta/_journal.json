@@ -64,6 +64,13 @@
       "when": 1783200100000,
       "tag": "0008_advisor_prompt_type",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783200200000,
+      "tag": "0009_advisor_digest_enabled",
+      "breakpoints": true
     }
   ]
 }

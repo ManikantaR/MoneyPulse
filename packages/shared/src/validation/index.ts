@@ -210,6 +210,7 @@ export const updateUserSettingsSchema = z.object({
   weeklyDigestEnabled: z.boolean().optional(),
   dailyDigestEnabled: z.boolean().optional(),
   monthlyDigestEnabled: z.boolean().optional(),
+  advisorDigestEnabled: z.boolean().optional(),
   notificationEmail: z.email().nullable().optional(),
   firebaseUid: z.string().max(128).nullable().optional(),
 });
