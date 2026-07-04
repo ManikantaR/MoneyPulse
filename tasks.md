@@ -10,7 +10,7 @@ Private, self-hosted advisor over real finances. **LLM is the interface; determi
 |---|---|---|
 | Phase 0 — MCP server (semantic layer, 8 user-scoped tools) | #37 | ✅ Merged (#41) |
 | Phase 1 — Ask-your-money NL chat (MVP) | #38 | ✅ Merged (#49) — deployed |
-| Phase 2 — Weekly digest (proactive) | #39 | ⏳ Planned |
+| Phase 2 — Weekly digest (proactive) | #39 | 🔀 In review (#51) |
 | Phase 3 — Goal planners (car / college / safe-to-spend) | #40 | ⏳ Planned |
 
 **Deferred / later:** real-time nudges, in-app insights feed, draft-actions-to-approve, mortgage & insurance modules.
@@ -23,6 +23,7 @@ Private, self-hosted advisor over real finances. **LLM is the interface; determi
 
 ### Locked design decisions
 - **Provider abstraction (shipped in #49):** Claude *or* OpenAI, selectable in Settings → AI Advisor. Single normalized LLM adapter layer; MCP tools passed as JSON-Schema to either. API key stored write-only (AES-256-GCM in DB via `ENCRYPTION_KEY`) with env-var precedence (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`). Global (one config per app). Ollama skipped (weak tool-calling breaks grounding).
+- **Weekly digest (#51):** deterministic signals (category WoW deltas, top drivers, upcoming bills, subscription price changes, anomalies from #32) → LLM ranks/narrates top 3–5 with **no tools**, no new numbers → notification center + Home Assistant, ISO-week dedupe. Opt-in via `user_settings.advisor_digest_enabled`; sweep gated on advisor configured. Cron `advisor-digest-weekly` Mon 13:00 UTC.
 - Cloud Claude (`claude-opus-4-8`) default for reasoning; **aggregates only** to cloud (raw statements/account numbers stay on NAS).
 - MCP tools = semantic layer; **refuse-don't-guess**, never free-form SQL, LLM never does arithmetic.
 - Provenance on every number; independent verifier pass; "insights, not advice" framing.
