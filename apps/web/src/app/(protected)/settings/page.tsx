@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AdvisorSettingsSection } from '@/components/AdvisorSettingsSection';
 import { useSendTestNotification } from '@/lib/hooks/useNotifications';
 
 export default function SettingsPage() {
@@ -265,6 +266,9 @@ export default function SettingsPage() {
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
       </form>
+
+      {/* AI Advisor (self-contained: own save/test) */}
+      <AdvisorSettingsSection />
 
       {/* Security */}
       <section className="space-y-4 rounded-2xl bg-[var(--surface-container-low)] p-6">

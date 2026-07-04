@@ -6,7 +6,7 @@ import { encryptField, decryptField } from '../common/crypto';
 
 export interface CreateAiLogDto {
   userId?: string;
-  promptType: 'categorization' | 'pdf_parse';
+  promptType: 'categorization' | 'pdf_parse' | 'advisor';
   model: string;
   inputText: string;
   outputText?: string;

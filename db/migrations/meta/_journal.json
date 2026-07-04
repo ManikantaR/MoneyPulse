@@ -50,6 +50,13 @@
       "when": 1781143984539,
       "tag": "0006_brainy_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783200000000,
+      "tag": "0007_advisor_settings",
+      "breakpoints": true
     }
   ]
 }

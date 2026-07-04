@@ -13,6 +13,7 @@ import {
   Store,
   CalendarClock,
   Repeat,
+  Sparkles,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -26,6 +27,7 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, placement: 'tab' },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight, placement: 'tab' },
+  { href: '/advisor', label: 'Advisor', icon: Sparkles, placement: 'tab' },
   { href: '/bills', label: 'Bills', icon: CalendarClock, placement: 'tab' },
   // Drawer items
   { href: '/accounts', label: 'Accounts', icon: Landmark, placement: 'drawer' },
