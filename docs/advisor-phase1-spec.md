@@ -35,9 +35,9 @@ MCP tools (which compute in Postgres) and narrates their verified results.
 | `ANTHROPIC_API_KEY` | Claude provider key. **Optional** — can instead be set via the web Settings UI (stored encrypted). Env takes precedence over the DB value. |
 | `OPENAI_API_KEY` | OpenAI provider key. Same rules as above. |
 | `ENCRYPTION_KEY` | 64-char hex (32 bytes). Reused from PII encryption; **required to store a provider key via the web UI** (AES-256-GCM at rest). |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot (from @BotFather). |
-| `TELEGRAM_WEBHOOK_SECRET` | Random path secret guarding the webhook. |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot (from @BotFather). The API **long-polls** (out-dials `getUpdates`) — no inbound URL is exposed (LAN-only deployment). |
 | `TELEGRAM_CHAT_MAP` | Optional `chatId:userId,…` allowlist. If unset, single-user mode maps every chat to the sole user. |
+| `TELEGRAM_DEFAULT_USER_ID` | Fallback user id for unmapped chats (single-user setups). |
 | `MCP_SERVER_CMD` / `MCP_SERVER_ARGS` | How to spawn the MCP server over stdio (default: node on the built `apps/mcp-server`). |
 
 ### Provider selection
@@ -72,9 +72,10 @@ Telegram  ─┴─▶ AdvisorService ──────▶│   (6 aggregate to
   → a clear, non-crashing error surfaced to the caller.
 - **`advisor.controller.ts`** — `POST /advisor/chat` (JWT-guarded) → SSE stream of
   `{ type: 'delta'|'done'|'error', text }`. `userId` from `@CurrentUser`.
-- **`telegram.controller.ts` / `telegram.service.ts`** — `POST /advisor/telegram/webhook/:secret`.
-  Verifies the secret, maps `chat_id → userId`, sends a typing action, runs the advisor
-  (collect the stream to a final message), and replies via the Bot API (`fetch`).
+- **`telegram.service.ts`** — long-polls the Bot API (`getUpdates`, out-dial only; no inbound
+  endpoint). Maps `chat_id → userId` via the allowlist, sends a typing action, runs the advisor
+  (collect the stream to a final message), and replies via the Bot API (`fetch`). Started/stopped
+  on module init/destroy; `deleteWebhook` is called first so polling isn't blocked.
 - **`advisor.module.ts`** — wires the above; imports `AiLogsModule`.
 - **`ai-logs.service.ts`** — extend `promptType` union with `'advisor'`.
 

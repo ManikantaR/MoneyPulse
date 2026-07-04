@@ -7,7 +7,6 @@ import { AdvisorController } from './advisor.controller';
 import { AdvisorSettingsService } from './advisor-settings.service';
 import { LlmProviderFactory } from './llm/provider-factory';
 import { TelegramService } from './telegram.service';
-import { TelegramController } from './telegram.controller';
 import { DigestSignalsService } from './digest/digest-signals.service';
 import { AdvisorDigestService } from './digest/advisor-digest.service';
 
@@ -22,7 +21,7 @@ import { AdvisorDigestService } from './digest/advisor-digest.service';
     DigestSignalsService,
     AdvisorDigestService,
   ],
-  controllers: [AdvisorController, TelegramController],
+  controllers: [AdvisorController],
   exports: [AdvisorService, AdvisorDigestService],
 })
 export class AdvisorModule {}
