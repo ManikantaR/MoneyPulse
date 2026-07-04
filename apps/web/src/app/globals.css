@@ -1,5 +1,35 @@
 @import 'tailwindcss';
 
+/*
+ * Register the design tokens defined below with Tailwind v4 so utilities like
+ * `bg-card`, `border-border`, and `text-muted-foreground` actually generate CSS.
+ * `inline` keeps the utilities referencing `var(--token)`, so `.dark` runtime
+ * theme switching still works. Chart colors are consumed as `hsl(var(--chart-N))`
+ * directly in JS and intentionally stay out of this map.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+}
+
 :root {
   /* Light theme — clean slate */
   --background: #f7f9fb;
