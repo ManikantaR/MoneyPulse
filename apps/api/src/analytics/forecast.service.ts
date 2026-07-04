@@ -89,6 +89,17 @@ function toDateStr(d: Date): string {
   return `${y}-${m}-${dd}`;
 }
 
+/**
+ * Parse a date-only `YYYY-MM-DD` string as a *local* calendar date.
+ * `new Date('2026-07-19')` parses as UTC midnight, which snaps to the previous
+ * local day in timezones behind UTC — misaligning bill dates with `today` /
+ * `toDateStr`, which are all local. Build the date in the local frame instead.
+ */
+function parseDateOnly(s: string): Date {
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** ISO week key (YYYY-Www) for deduplication of weekly alerts. */
 function isoWeekKey(d: Date): string {
   const tmp = new Date(d);
@@ -188,7 +199,7 @@ export class ForecastService {
       const amount = Number(bill.expected_amount_cents);
       const freq = bill.frequency as BillFrequency;
       // Fast-forward stale nextExpectedDate to first future occurrence
-      let next = new Date(bill.next_expected_date);
+      let next = parseDateOnly(bill.next_expected_date);
       next.setHours(0, 0, 0, 0);
       while (next < today) {
         next = addFrequency(next, freq);

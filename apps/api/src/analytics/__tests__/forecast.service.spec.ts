@@ -84,8 +84,13 @@ describe('ForecastService', () => {
   it('deducts bill on exact projected date in net-worth series', async () => {
     // $5,000 balance, $0 daily net, $200 monthly bill 15 days from now
     const futureDate = new Date();
+    futureDate.setHours(0, 0, 0, 0);
     futureDate.setDate(futureDate.getDate() + 15);
-    const futureDateStr = futureDate.toISOString().slice(0, 10);
+    // Local calendar date (matches the service's local date frame; toISOString
+    // would use UTC and drift by a day in timezones behind UTC).
+    const futureDateStr = `${futureDate.getFullYear()}-${String(
+      futureDate.getMonth() + 1,
+    ).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
 
     const svc = await buildService([
       { rows: [checkingAccount('acct-1', 500_000)] },
