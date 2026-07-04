@@ -24,13 +24,10 @@ function makeTxn(overrides: Record<string, any> = {}) {
 
 function buildMockDb(txn: any) {
   const mockDb: any = {
-    select: vi.fn().mockReturnThis(),
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(txn ? [txn] : []),
-    limit: vi.fn().mockResolvedValue(txn ? [txn] : []),
+    select: vi.fn(),
     execute: vi.fn(),
   };
-  // Make the chain: select().from().where().limit() return the transaction
+  // Chain: select().from().where().limit() → the transaction row
   mockDb.select.mockReturnValue({
     from: vi.fn().mockReturnValue({
       where: vi.fn().mockReturnValue({
@@ -39,6 +36,30 @@ function buildMockDb(txn: any) {
     }),
   });
   return mockDb;
+}
+
+/**
+ * Convenience for the per-transaction execute() sequence:
+ *   1. merchant baseline stats
+ *   2. duplicate lookup
+ * Pass `stats: null` to simulate no merchant history (empty stats row).
+ */
+function mockExecuteSequence(
+  db: any,
+  {
+    stats,
+    duplicateRows = [],
+  }: {
+    stats: { avgCents: number; stddevCents: number; count: number } | null;
+    duplicateRows?: any[];
+  },
+) {
+  const statsRows = stats
+    ? [{ avg_cents: String(stats.avgCents), stddev_cents: String(stats.stddevCents), txn_count: stats.count }]
+    : [];
+  db.execute
+    .mockResolvedValueOnce({ rows: statsRows })
+    .mockResolvedValueOnce({ rows: duplicateRows });
 }
 
 function buildMockNotifications(existingDedupeKeys: string[] = []) {
@@ -51,8 +72,13 @@ function buildMockNotifications(existingDedupeKeys: string[] = []) {
 }
 
 function makeService(db: any, notifications: any) {
-  const svc = new AnomalyDetectorService(db, notifications as any);
-  return svc;
+  return new AnomalyDetectorService(db, notifications as any);
+}
+
+function callsForRule(notif: any, rule: string) {
+  return notif.createAndDispatch.mock.calls.filter(
+    (c: any[]) => c[0].metadata?.rule === rule,
+  );
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -60,53 +86,40 @@ function makeService(db: any, notifications: any) {
 describe('AnomalyDetectorService', () => {
   describe('detectAnomalies — skip conditions', () => {
     it('skips credit transactions (income/refunds)', async () => {
-      const txn = makeTxn({ isCredit: true });
-      const db = buildMockDb(txn);
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
-
-      await svc.detectAnomalies('user-1', ['txn-1']);
-
+      await makeService(buildMockDb(makeTxn({ isCredit: true })), notif).detectAnomalies(
+        'user-1',
+        ['txn-1'],
+      );
       expect(notif.createAndDispatch).not.toHaveBeenCalled();
     });
 
     it('skips split-parent transactions', async () => {
-      const txn = makeTxn({ isSplitParent: true });
-      const db = buildMockDb(txn);
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
-
-      await svc.detectAnomalies('user-1', ['txn-1']);
-
+      await makeService(buildMockDb(makeTxn({ isSplitParent: true })), notif).detectAnomalies(
+        'user-1',
+        ['txn-1'],
+      );
       expect(notif.createAndDispatch).not.toHaveBeenCalled();
     });
 
     it('skips split-child transactions (has parentTransactionId)', async () => {
-      const txn = makeTxn({ parentTransactionId: 'parent-txn-1' });
-      const db = buildMockDb(txn);
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
-
-      await svc.detectAnomalies('user-1', ['txn-1']);
-
+      await makeService(
+        buildMockDb(makeTxn({ parentTransactionId: 'parent-txn-1' })),
+        notif,
+      ).detectAnomalies('user-1', ['txn-1']);
       expect(notif.createAndDispatch).not.toHaveBeenCalled();
     });
 
     it('skips when transaction is not found', async () => {
-      const db = buildMockDb(null);
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
-
-      await svc.detectAnomalies('user-1', ['nonexistent-txn']);
-
+      await makeService(buildMockDb(null), notif).detectAnomalies('user-1', ['nope']);
       expect(notif.createAndDispatch).not.toHaveBeenCalled();
     });
 
     it('continues processing remaining transactions when one fails', async () => {
-      // First txn throws, second should still be checked
-      const db = buildMockDb(null); // returns no txn for both
-      const notif = buildMockNotifications();
-      // Simulate error on first txn by making the first select throw
+      const db = buildMockDb(null);
       let callCount = 0;
       db.select = vi.fn().mockImplementation(() => {
         callCount++;
@@ -119,184 +132,153 @@ describe('AnomalyDetectorService', () => {
           }),
         };
       });
-
-      const svc = makeService(db, notif);
-      // Should not throw even if one txn check fails
+      const notif = buildMockNotifications();
       await expect(
-        svc.detectAnomalies('user-1', ['txn-error', 'txn-2']),
+        makeService(db, notif).detectAnomalies('user-1', ['txn-error', 'txn-2']),
       ).resolves.not.toThrow();
     });
   });
 
-  describe('amount anomaly check', () => {
-    it('creates notification when transaction is > 3x the merchant average (with 3+ history)', async () => {
+  describe('amount anomaly (z-score)', () => {
+    it('flags a statistical outlier: amount many σ above the merchant mean', async () => {
+      // avg $30, σ≈0 → effective σ floored to 10% ($3); $120 is ~30σ above
       const txn = makeTxn({ amountCents: 12_000, normalizedMerchantName: 'Acme Corp' });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValueOnce({
-        rows: [{ avg_cents: '3000', txn_count: 5 }],
-      });
-      // subsequent execute calls (duplicate check) → no rows
-      db.execute.mockResolvedValue({ rows: [] });
+      mockExecuteSequence(db, { stats: { avgCents: 3000, stddevCents: 0, count: 6 } });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const calls = notif.createAndDispatch.mock.calls;
-      const anomalyCalls = calls.filter((c: any[]) => c[0].metadata?.rule === 'amount_anomaly');
-      expect(anomalyCalls).toHaveLength(1);
-      expect(anomalyCalls[0][0].message).toContain('Acme Corp');
-      expect(anomalyCalls[0][0].message).toContain('$120.00');
+      const calls = callsForRule(notif, 'amount_anomaly');
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0].title).toBe('Unusual spend detected');
+      expect(calls[0][0].message).toContain('Acme Corp');
+      expect(calls[0][0].message).toContain('$120.00');
+      expect(calls[0][0].metadata.zScore).toBeGreaterThanOrEqual(3);
     });
 
-    it('does NOT flag when transaction is only 1.5x the average', async () => {
-      const txn = makeTxn({ amountCents: 4_500, normalizedMerchantName: 'Acme Corp' });
+    it('does NOT flag when within the normal band (low z-score)', async () => {
+      // avg $300, σ $50 → $360 is only ~1.2σ above; not an outlier
+      const txn = makeTxn({ amountCents: 36_000, normalizedMerchantName: 'Acme Corp' });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [{ avg_cents: '3000', txn_count: 5 }] });
+      mockExecuteSequence(db, { stats: { avgCents: 30_000, stddevCents: 5_000, count: 8 } });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const anomalyCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'amount_anomaly',
-      );
-      expect(anomalyCalls).toHaveLength(0);
+      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
     });
 
-    it('does NOT flag when history has fewer than 3 transactions', async () => {
-      const txn = makeTxn({ amountCents: 50_000, normalizedMerchantName: 'Acme Corp' });
+    it('does NOT flag a high-z but low-value merchant (absolute-delta floor)', async () => {
+      // avg $2, σ≈0 → $8 is a huge z-score but only $6 over → below $25 floor
+      const txn = makeTxn({ amountCents: 800, normalizedMerchantName: 'Coffee Cart' });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [{ avg_cents: '5000', txn_count: 2 }] });
+      mockExecuteSequence(db, { stats: { avgCents: 200, stddevCents: 0, count: 10 } });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const anomalyCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'amount_anomaly',
-      );
-      expect(anomalyCalls).toHaveLength(0);
+      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
     });
 
-    it('skips amount anomaly check when merchant name is null', async () => {
-      const txn = makeTxn({ amountCents: 50_000, merchantName: null, normalizedMerchantName: null });
+    it('does NOT flag when history has fewer than MIN_HISTORY transactions', async () => {
+      const txn = makeTxn({ amountCents: 40_000, normalizedMerchantName: 'Acme Corp' });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [] });
+      mockExecuteSequence(db, { stats: { avgCents: 5_000, stddevCents: 0, count: 3 } });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const anomalyCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'amount_anomaly',
-      );
-      expect(anomalyCalls).toHaveLength(0);
+      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
     });
 
-    it('does not create duplicate notification when dedupeKey already exists', async () => {
+    it('skips amount anomaly when merchant name is null', async () => {
+      const txn = makeTxn({ amountCents: 40_000, merchantName: null, normalizedMerchantName: null });
+      const db = buildMockDb(txn);
+      const notif = buildMockNotifications();
+
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
+
+      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
+      // No merchant → no stats/duplicate queries issued
+      expect(db.execute).not.toHaveBeenCalled();
+    });
+
+    it('does not re-notify when the amount dedupeKey already exists', async () => {
       const txn = makeTxn({ amountCents: 12_000 });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [{ avg_cents: '3000', txn_count: 5 }] });
-      // Simulate dedupeKey already present for amount anomaly
+      mockExecuteSequence(db, { stats: { avgCents: 3000, stddevCents: 0, count: 6 } });
       const notif = buildMockNotifications([`anomaly_amount_${txn.id}`]);
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const anomalyCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'amount_anomaly',
-      );
-      expect(anomalyCalls).toHaveLength(0);
+      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
     });
   });
 
-  describe('duplicate detection check', () => {
-    it('creates notification when a similar transaction exists within 24 hours', async () => {
+  describe('duplicate detection', () => {
+    it('flags when a similar transaction exists within 24 hours', async () => {
       const txn = makeTxn({ amountCents: 5_000, normalizedMerchantName: 'Starbucks' });
       const db = buildMockDb(txn);
-      db.execute = vi
-        .fn()
-        // amount anomaly: no history (txn_count < 3)
-        .mockResolvedValueOnce({ rows: [{ avg_cents: '5000', txn_count: 1 }] })
-        // duplicate check: found a matching txn
-        .mockResolvedValueOnce({ rows: [{ id: 'other-txn' }] });
+      mockExecuteSequence(db, {
+        stats: { avgCents: 5_000, stddevCents: 0, count: 2 }, // too little history to flag amount
+        duplicateRows: [{ id: 'other-txn' }],
+      });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const dupCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'duplicate',
-      );
-      expect(dupCalls).toHaveLength(1);
-      expect(dupCalls[0][0].title).toBe('Possible duplicate transaction');
+      const dup = callsForRule(notif, 'duplicate');
+      expect(dup).toHaveLength(1);
+      expect(dup[0][0].title).toBe('Possible duplicate transaction');
     });
 
     it('does NOT flag when no similar transaction exists', async () => {
       const txn = makeTxn({ amountCents: 5_000, normalizedMerchantName: 'Starbucks' });
       const db = buildMockDb(txn);
-      db.execute = vi
-        .fn()
-        .mockResolvedValueOnce({ rows: [{ avg_cents: '5000', txn_count: 1 }] }) // amount anomaly: skip
-        .mockResolvedValueOnce({ rows: [] }); // duplicate: none
+      mockExecuteSequence(db, { stats: { avgCents: 5_000, stddevCents: 0, count: 2 }, duplicateRows: [] });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const dupCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'duplicate',
-      );
-      expect(dupCalls).toHaveLength(0);
+      expect(callsForRule(notif, 'duplicate')).toHaveLength(0);
     });
   });
 
-  describe('large debit check', () => {
-    it('creates notification when debit is at or above $500 threshold', async () => {
+  describe('large-debit fallback', () => {
+    it('flags a large debit when there is no merchant history to judge normality', async () => {
       const txn = makeTxn({ amountCents: 60_000, normalizedMerchantName: 'Best Buy' });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [] }); // no history / no dup
+      mockExecuteSequence(db, { stats: null });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const largeCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'large_debit',
-      );
-      expect(largeCalls).toHaveLength(1);
-      expect(largeCalls[0][0].message).toContain('$600.00');
+      const large = callsForRule(notif, 'large_debit');
+      expect(large).toHaveLength(1);
+      expect(large[0][0].message).toContain('$600.00');
     });
 
-    it('creates notification for exactly $500 (boundary)', async () => {
+    it('flags exactly $500 with no history (boundary)', async () => {
       const txn = makeTxn({ amountCents: 50_000, normalizedMerchantName: 'Best Buy' });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [] });
+      mockExecuteSequence(db, { stats: null });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const largeCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'large_debit',
-      );
-      expect(largeCalls).toHaveLength(1);
+      expect(callsForRule(notif, 'large_debit')).toHaveLength(1);
     });
 
-    it('does NOT flag when debit is $499.99 (below threshold)', async () => {
+    it('does NOT flag $499.99 (below threshold)', async () => {
       const txn = makeTxn({ amountCents: 49_999, normalizedMerchantName: 'Best Buy' });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [{ avg_cents: '49999', txn_count: 1 }] });
+      mockExecuteSequence(db, { stats: null });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const largeCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'large_debit',
-      );
-      expect(largeCalls).toHaveLength(0);
+      expect(callsForRule(notif, 'large_debit')).toHaveLength(0);
     });
 
     it('uses description as label when merchant name is null', async () => {
@@ -307,52 +289,53 @@ describe('AnomalyDetectorService', () => {
         description: 'Wire transfer',
       });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [] });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const largeCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'large_debit',
-      );
-      expect(largeCalls).toHaveLength(1);
-      expect(largeCalls[0][0].message).toContain('Wire transfer');
+      const large = callsForRule(notif, 'large_debit');
+      expect(large).toHaveLength(1);
+      expect(large[0][0].message).toContain('Wire transfer');
     });
 
-    it('does not create duplicate large-debit notification when dedupeKey already exists', async () => {
+    it('does not re-notify when the large dedupeKey already exists', async () => {
       const txn = makeTxn({ amountCents: 60_000 });
       const db = buildMockDb(txn);
-      db.execute = vi.fn().mockResolvedValue({ rows: [] });
+      mockExecuteSequence(db, { stats: null });
       const notif = buildMockNotifications([`anomaly_large_${txn.id}`]);
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const largeCalls = notif.createAndDispatch.mock.calls.filter(
-        (c: any[]) => c[0].metadata?.rule === 'large_debit',
-      );
-      expect(largeCalls).toHaveLength(0);
+      expect(callsForRule(notif, 'large_debit')).toHaveLength(0);
     });
   });
 
-  describe('multiple rules on same transaction', () => {
-    it('can trigger both amount-anomaly and large-debit for a single transaction', async () => {
-      // $600 at a merchant where average is $100 (6x) with 5 history txns
+  describe('noise reduction (the point of the feature)', () => {
+    it('does NOT flag a large-but-normal recurring charge (e.g. rent/mortgage)', async () => {
+      // $3,000 mortgage where the merchant averages ~$3,000 with tiny variance
+      const txn = makeTxn({ amountCents: 300_000, normalizedMerchantName: 'Langley Federal' });
+      const db = buildMockDb(txn);
+      mockExecuteSequence(db, { stats: { avgCents: 300_000, stddevCents: 500, count: 12 } });
+      const notif = buildMockNotifications();
+
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
+
+      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
+      expect(callsForRule(notif, 'large_debit')).toHaveLength(0);
+      expect(notif.createAndDispatch).not.toHaveBeenCalled();
+    });
+
+    it('an unusual large charge fires amount_anomaly ONLY (large_debit is suppressed to avoid double-alert)', async () => {
+      // $600 at a merchant that usually charges ~$100, with plenty of history
       const txn = makeTxn({ amountCents: 60_000, normalizedMerchantName: 'Acme Corp' });
       const db = buildMockDb(txn);
-      db.execute = vi
-        .fn()
-        .mockResolvedValueOnce({ rows: [{ avg_cents: '10000', txn_count: 5 }] }) // amount anomaly: trigger
-        .mockResolvedValueOnce({ rows: [] }); // duplicate: none
+      mockExecuteSequence(db, { stats: { avgCents: 10_000, stddevCents: 1_000, count: 8 } });
       const notif = buildMockNotifications();
-      const svc = makeService(db, notif);
 
-      await svc.detectAnomalies('user-1', ['txn-1']);
+      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      const rules = notif.createAndDispatch.mock.calls.map((c: any[]) => c[0].metadata?.rule);
-      expect(rules).toContain('amount_anomaly');
-      expect(rules).toContain('large_debit');
+      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(1);
+      expect(callsForRule(notif, 'large_debit')).toHaveLength(0);
     });
   });
 });
