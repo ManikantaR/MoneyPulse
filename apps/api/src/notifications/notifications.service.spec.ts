@@ -29,9 +29,13 @@ describe('NotificationsService', () => {
     const setMock = vi.fn().mockReturnValue(updateWhereChain);
     const updateMock = vi.fn().mockReturnValue({ set: setMock });
 
+    const deleteWhereMock = vi.fn().mockResolvedValue([]);
+    const deleteMock = vi.fn().mockReturnValue({ where: deleteWhereMock });
+
     mockDb = {
       insert: insertMock,
       update: updateMock,
+      delete: deleteMock,
     };
 
     mockWebhookService = {
@@ -52,6 +56,15 @@ describe('NotificationsService', () => {
       mockOutbox,
       mockAliasMapper,
     );
+  });
+
+  describe('remove', () => {
+    it('deletes the notification scoped to the owning user', async () => {
+      await service.remove('notif-1', 'user-1');
+
+      expect(mockDb.delete).toHaveBeenCalledTimes(1);
+      expect(mockDb.delete().where).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('createAndDispatch', () => {
