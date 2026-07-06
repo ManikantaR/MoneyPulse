@@ -9,6 +9,7 @@ import { registerGetAccountBalances } from './tools/get-account-balances.js';
 import { registerGetCategoryBreakdown } from './tools/get-category-breakdown.js';
 import { registerComparePeriods } from './tools/compare-periods.js';
 import { registerGetRecurringExpenses } from './tools/get-recurring-expenses.js';
+import { registerGetMerchantBreakdown } from './tools/get-merchant-breakdown.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -25,6 +26,7 @@ registerGetAccountBalances(server);
 registerGetCategoryBreakdown(server);
 registerComparePeriods(server);
 registerGetRecurringExpenses(server);
+registerGetMerchantBreakdown(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 

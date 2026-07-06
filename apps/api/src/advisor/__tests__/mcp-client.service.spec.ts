@@ -5,20 +5,21 @@ import {
   McpClientService,
 } from '../mcp-client.service';
 
-const ALL_EIGHT = [
+const ALL_TOOLS = [
   { name: 'get_account_balances', description: 'a', inputSchema: { type: 'object' } },
   { name: 'get_spending_summary', description: 'b', inputSchema: { type: 'object' } },
   { name: 'get_category_breakdown', description: 'c', inputSchema: { type: 'object' } },
   { name: 'get_budget_status', description: 'd', inputSchema: { type: 'object' } },
   { name: 'get_recurring_expenses', description: 'e', inputSchema: { type: 'object' } },
+  { name: 'get_merchant_breakdown', description: 'g', inputSchema: { type: 'object' } },
   { name: 'compare_periods', description: 'f', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
 ];
 
 describe('MCP advisor tool boundary (aggregates-only)', () => {
-  it('exposes exactly the 6 aggregate tools and excludes the 2 row-level tools', () => {
-    const out = toAdvisorTools(ALL_EIGHT);
+  it('exposes exactly the aggregate tools and excludes the 2 row-level tools', () => {
+    const out = toAdvisorTools(ALL_TOOLS);
     const names = out.map((t) => t.name).sort();
     expect(names).toEqual([...AGGREGATE_TOOL_ALLOWLIST].sort());
     expect(names).not.toContain('get_transactions');
@@ -26,7 +27,7 @@ describe('MCP advisor tool boundary (aggregates-only)', () => {
   });
 
   it('maps inputSchema → input_schema for Anthropic', () => {
-    const out = toAdvisorTools([ALL_EIGHT[0]]);
+    const out = toAdvisorTools([ALL_TOOLS[0]]);
     expect(out[0]).toMatchObject({
       name: 'get_account_balances',
       description: 'a',
