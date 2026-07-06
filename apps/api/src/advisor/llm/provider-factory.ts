@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { LlmProvider, LlmProviderId } from './types';
 import { AnthropicProvider } from './anthropic.provider';
 import { OpenAIProvider } from './openai.provider';
+import { GoogleProvider } from './google.provider';
 
 /** Constructs the right provider adapter for a resolved (provider, apiKey) pair. */
 @Injectable()
@@ -12,6 +13,8 @@ export class LlmProviderFactory {
         return new AnthropicProvider(apiKey);
       case 'openai':
         return new OpenAIProvider(apiKey);
+      case 'google':
+        return new GoogleProvider(apiKey);
       default:
         throw new Error(`Unknown LLM provider: ${provider as string}`);
     }

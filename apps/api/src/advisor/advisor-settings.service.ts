@@ -6,12 +6,13 @@ import { advisorSettings } from '../db/schema';
 import { encryptField, decryptField } from '../common/crypto';
 import { DEFAULT_MODELS, type LlmProviderId } from './llm/types';
 
-const PROVIDERS: LlmProviderId[] = ['anthropic', 'openai'];
+const PROVIDERS: LlmProviderId[] = ['anthropic', 'openai', 'google'];
 
 /** Env var that carries the API key for each provider (takes precedence over DB). */
 const ENV_KEY: Record<LlmProviderId, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
+  google: 'GOOGLE_API_KEY',
 };
 
 /** What the advisor loop needs to run: which provider, which model, and the key. */

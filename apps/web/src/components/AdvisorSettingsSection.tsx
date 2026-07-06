@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 
-type Provider = 'anthropic' | 'openai';
+type Provider = 'anthropic' | 'openai' | 'google';
 
 interface AdvisorSettingsView {
   provider: Provider;
@@ -21,6 +21,7 @@ interface AdvisorSettingsView {
 const PROVIDER_LABELS: Record<Provider, string> = {
   anthropic: 'Claude (Anthropic)',
   openai: 'OpenAI',
+  google: 'Gemini (Google)',
 };
 
 /** Global AI-advisor provider/model/key configuration (see /advisor). */
@@ -115,7 +116,7 @@ export function AdvisorSettingsSection() {
           }}
           className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30"
         >
-          {(view?.providers ?? (['anthropic', 'openai'] as Provider[])).map((p) => (
+          {(view?.providers ?? (['anthropic', 'openai', 'google'] as Provider[])).map((p) => (
             <option key={p} value={p}>
               {PROVIDER_LABELS[p]}
             </option>

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
+    "@google/genai": "^2.10.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@moneypulse/shared": "workspace:*",
     "@nestjs/bullmq": "^11.0.4",
