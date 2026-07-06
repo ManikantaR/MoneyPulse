@@ -1,13 +1,19 @@
 import pg from 'pg';
 
-const pool = new pg.Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || 'moneypulse',
-  user: process.env.DB_USER || 'moneypulse',
-  password: process.env.DB_PASSWORD!,
-  max: 5,
-});
+// Prefer a single DATABASE_URL (the API passes its own env down when it spawns us over
+// stdio), falling back to discrete DB_* vars for standalone/dev use.
+const pool = new pg.Pool(
+  process.env.DATABASE_URL
+    ? { connectionString: process.env.DATABASE_URL, max: 5 }
+    : {
+        host: process.env.DB_HOST || 'localhost',
+        port: Number(process.env.DB_PORT) || 5432,
+        database: process.env.DB_NAME || 'moneypulse',
+        user: process.env.DB_USER || 'moneypulse',
+        password: process.env.DB_PASSWORD!,
+        max: 5,
+      },
+);
 
 export async function query<T = any>(
   text: string,
