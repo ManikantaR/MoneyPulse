@@ -58,7 +58,7 @@ export interface LlmTurnParams {
   messages: LlmMessage[];
 }
 
-export type LlmProviderId = 'anthropic' | 'openai';
+export type LlmProviderId = 'anthropic' | 'openai' | 'google';
 
 export interface LlmProvider {
   readonly id: LlmProviderId;
@@ -72,4 +72,5 @@ export interface LlmProvider {
 export const DEFAULT_MODELS: Record<LlmProviderId, string> = {
   anthropic: 'claude-opus-4-8',
   openai: 'gpt-4o',
+  google: 'gemini-2.5-flash',
 };
