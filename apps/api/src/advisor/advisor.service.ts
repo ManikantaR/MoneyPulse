@@ -20,15 +20,38 @@ export const ADVISOR_DISCLAIMER =
   'Informational insights based on your own data — not personalized financial, ' +
   'investment, or tax advice. Verify before acting.';
 
-const SYSTEM_PROMPT = `You are MoneyPulse's financial insights assistant. You answer the user's questions about their own finances using ONLY the data returned by your tools.
+/** Default timezone for resolving "today"/"this month" (matches the digest default). */
+const ADVISOR_TIMEZONE = process.env.ADVISOR_TIMEZONE || 'America/New_York';
+
+/** Today's date + weekday in the advisor timezone, e.g. "2026-07-06 (Monday)". */
+function todayContext(): string {
+  const now = new Date();
+  const date = now.toLocaleDateString('en-CA', { timeZone: ADVISOR_TIMEZONE }); // YYYY-MM-DD
+  const weekday = now.toLocaleDateString('en-US', {
+    timeZone: ADVISOR_TIMEZONE,
+    weekday: 'long',
+  });
+  return `${date} (${weekday})`;
+}
+
+const SYSTEM_RULES = `You are MoneyPulse's financial insights assistant. You answer the user's questions about their own finances using ONLY the data returned by your tools.
 
 Rules:
 - Every number in your answer MUST come from a tool result. Never invent, estimate, or calculate figures yourself — if you need a number, call a tool. Quote the tool's figure as given.
-- Attach provenance: say which data a number came from (e.g. "based on your spending summary for June").
+- For a question about a specific category (dining, gas, groceries, etc.), call get_spending_summary or get_category_breakdown for the period, then read the matching category line. Category names in the data may differ from the user's wording (e.g. "Restaurants" ≈ dining, "Fuel"/"Gas" ≈ gas, "Groceries" ≈ food shopping) — match sensibly. Only say there's no data AFTER a tool actually returns none for that period.
+- Attach provenance: say which data a number came from (e.g. "based on your spending summary for June 2026").
 - If no tool can answer the question, say so plainly ("I don't have a way to answer that from your data") rather than guessing. Do not fall back to general knowledge for figures about the user's finances.
+- When the user follows up with just a period or category ("how about June", "and gas?"), reuse the intent from the previous turn.
 - You receive aggregated data only (category totals, balances, budgets, recurring merchants). You cannot see individual raw transactions or account numbers — don't claim to.
 - Keep answers concise and specific to the user's numbers. Lead with the answer.
 - For any suggestion about products, rates, or big decisions, present options with trade-offs and note this is informational, not personalized financial advice. Do not give reckless or absolute directives.`;
+
+/** Build the system prompt with the current date so relative periods resolve correctly. */
+function buildSystemPrompt(): string {
+  return `${SYSTEM_RULES}
+
+Today's date is ${todayContext()}. Resolve relative periods ("today", "this week", "this month", "last month", "year to date") against THIS date — never assume a different year or month. Spending tools take explicit from/to dates (YYYY-MM-DD); "this month" is the 1st of the current month through today, "last month" is the full previous calendar month.`;
+}
 
 export interface ChatTurn {
   role: 'user' | 'assistant';
@@ -82,6 +105,8 @@ export class AdvisorService {
       { role: 'user', content: message },
     ];
 
+    const system = buildSystemPrompt();
+
     const startMs = Date.now();
     let answer = '';
     let tokensIn = 0;
@@ -93,7 +118,7 @@ export class AdvisorService {
         for await (const chunk of provider.streamTurn({
           model: resolved.model,
           maxTokens: MAX_TOKENS,
-          system: SYSTEM_PROMPT,
+          system,
           tools,
           messages,
         })) {

@@ -11,6 +11,16 @@ function fakeStream(chunks: any[]) {
   };
 }
 
+/** A streaming chunk carrying the given candidate parts (+ optional usage). */
+function chunk(parts: any[], usage?: { in: number; out: number }) {
+  return {
+    candidates: [{ content: { parts } }],
+    ...(usage
+      ? { usageMetadata: { promptTokenCount: usage.in, candidatesTokenCount: usage.out } }
+      : {}),
+  };
+}
+
 function withClient(chunks: any[]) {
   const provider = new GoogleProvider('g-test');
   const generateContentStream = vi.fn(async () => fakeStream(chunks));
@@ -20,7 +30,7 @@ function withClient(chunks: any[]) {
 
 async function run(provider: GoogleProvider, params: LlmTurnParams) {
   const out: LlmStreamChunk[] = [];
-  for await (const chunk of provider.streamTurn(params)) out.push(chunk);
+  for await (const c of provider.streamTurn(params)) out.push(c);
   return out;
 }
 
@@ -35,11 +45,11 @@ const baseParams: LlmTurnParams = {
 describe('GoogleProvider', () => {
   it('streams text and captures a function call as a tool_use', async () => {
     const { provider } = withClient([
-      { text: 'Let me check.' },
-      {
-        functionCalls: [{ name: 'get_spending_summary', args: { from: '2026-06-01' } }],
-        usageMetadata: { promptTokenCount: 42, candidatesTokenCount: 7 },
-      },
+      chunk([{ text: 'Let me check.' }]),
+      chunk([{ functionCall: { name: 'get_spending_summary', args: { from: '2026-06-01' } } }], {
+        in: 42,
+        out: 7,
+      }),
     ]);
 
     const chunks = await run(provider, baseParams);
@@ -56,10 +66,17 @@ describe('GoogleProvider', () => {
     expect(final.result.usage).toEqual({ inputTokens: 42, outputTokens: 7 });
   });
 
-  it('ends the turn (end_turn) for a plain text answer', async () => {
+  it('does not stream the model’s internal thought text', async () => {
     const { provider } = withClient([
-      { text: 'You spent $10.', usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 4 } },
+      chunk([{ text: 'reasoning...', thought: true }, { text: 'The answer.' }]),
     ]);
+    const chunks = await run(provider, baseParams);
+    const text = chunks.filter((c) => c.type === 'text').map((c: any) => c.text).join('');
+    expect(text).toBe('The answer.');
+  });
+
+  it('ends the turn (end_turn) for a plain text answer', async () => {
+    const { provider } = withClient([chunk([{ text: 'You spent $10.' }], { in: 5, out: 4 })]);
     const chunks = await run(provider, baseParams);
     const final = chunks.find((c) => c.type === 'final') as any;
     expect(final.result.stopReason).toBe('end_turn');
@@ -68,7 +85,7 @@ describe('GoogleProvider', () => {
   });
 
   it('translates history to Gemini contents (functionCall / functionResponse) + config', async () => {
-    const { provider, generateContentStream } = withClient([{ text: 'ok' }]);
+    const { provider, generateContentStream } = withClient([chunk([{ text: 'ok' }])]);
     await run(provider, {
       ...baseParams,
       messages: [
@@ -82,10 +99,8 @@ describe('GoogleProvider', () => {
     });
 
     const arg = generateContentStream.mock.calls[0][0];
-    // system + max tokens land in config
     expect(arg.config.systemInstruction).toBe('be helpful');
     expect(arg.config.maxOutputTokens).toBe(100);
-    // tools mapped to functionDeclarations
     expect(arg.config.tools[0].functionDeclarations[0]).toEqual({
       name: 'get_spending_summary',
       description: 'sum',
@@ -93,12 +108,10 @@ describe('GoogleProvider', () => {
     });
 
     const contents = arg.contents;
-    // assistant → model with a functionCall part
     const model = contents.find((c: any) => c.role === 'model');
     expect(model.parts[0]).toEqual({
       functionCall: { name: 'get_spending_summary', args: { from: 'x' } },
     });
-    // tool_result → user functionResponse, name resolved from the matching call id
     const fnResponse = contents
       .flatMap((c: any) => c.parts)
       .find((p: any) => p.functionResponse);
@@ -108,8 +121,45 @@ describe('GoogleProvider', () => {
     });
   });
 
+  it('captures a functionCall thoughtSignature and echoes it back on the next turn', async () => {
+    const provider = new GoogleProvider('g');
+    const streams = [
+      fakeStream([
+        chunk(
+          [{ functionCall: { name: 'get_budget_status', args: {} }, thoughtSignature: 'sig-abc' }],
+          { in: 1, out: 1 },
+        ),
+      ]),
+      fakeStream([chunk([{ text: 'Budget is fine.' }])]),
+    ];
+    const gen = vi.fn(async () => streams.shift());
+    (provider as any).client = { models: { generateContentStream: gen } };
+
+    // Turn 1 → model asks for a tool; grab the synthesized call id
+    const t1 = await run(provider, baseParams);
+    const call = (t1.find((c) => c.type === 'final') as any).result.toolCalls[0];
+    expect(call.name).toBe('get_budget_status');
+
+    // Turn 2 → same provider instance, history carries the tool_use + tool_result
+    await run(provider, {
+      ...baseParams,
+      messages: [
+        { role: 'user', content: 'budget?' },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: call.id, name: call.name, input: call.input }],
+        },
+        { role: 'user', content: [{ type: 'tool_result', toolUseId: call.id, content: 'ok' }] },
+      ],
+    });
+
+    const modelPart = gen.mock.calls[1][0].contents.find((c: any) => c.role === 'model').parts[0];
+    expect(modelPart.functionCall).toEqual({ name: 'get_budget_status', args: {} });
+    expect(modelPart.thoughtSignature).toBe('sig-abc');
+  });
+
   it('omits tools from config when there are none (batch narration)', async () => {
-    const { provider, generateContentStream } = withClient([{ text: 'hi' }]);
+    const { provider, generateContentStream } = withClient([chunk([{ text: 'hi' }])]);
     await run(provider, { ...baseParams, tools: [] });
     expect(generateContentStream.mock.calls[0][0].config.tools).toBeUndefined();
   });

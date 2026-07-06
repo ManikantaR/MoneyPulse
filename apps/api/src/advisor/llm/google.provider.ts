@@ -14,10 +14,19 @@ import type {
  * tool_result→`functionResponse`) and back. Gemini function calls carry no id of their
  * own, so we synthesize a stable one per call and resolve the name from history when
  * translating tool results back.
+ *
+ * Gemini 2.5 returns an opaque `thoughtSignature` on each functionCall part that MUST be
+ * echoed back on the next turn (else a 400 "missing thought_signature"). We keep an
+ * instance-scoped map (this provider lives for one chat request, spanning all tool rounds)
+ * from synthesized call id → signature, and re-attach it when rebuilding the model turn.
  */
 export class GoogleProvider implements LlmProvider {
   readonly id = 'google' as const;
   private readonly client: GoogleGenAI;
+  /** Monotonic across all tool rounds of this request, so ids never collide. */
+  private callSeq = 0;
+  /** Synthesized call id → Gemini thoughtSignature, preserved across rounds. */
+  private readonly signatures = new Map<string, string>();
 
   constructor(apiKey: string) {
     this.client = new GoogleGenAI({ apiKey });
@@ -43,7 +52,11 @@ export class GoogleProvider implements LlmProvider {
           parts.push({ text: b.text });
         } else if (b.type === 'tool_use') {
           idToName.set(b.id, b.name);
-          parts.push({ functionCall: { name: b.name, args: b.input } });
+          const part: Part = { functionCall: { name: b.name, args: b.input } };
+          // Echo the thought signature Gemini gave us for this call — required.
+          const sig = this.signatures.get(b.id);
+          if (sig) part.thoughtSignature = sig;
+          parts.push(part);
         } else if (b.type === 'tool_result') {
           const name = idToName.get(b.toolUseId) ?? b.toolUseId;
           parts.push({
@@ -86,17 +99,23 @@ export class GoogleProvider implements LlmProvider {
     const toolCalls: LlmToolCall[] = [];
 
     for await (const chunk of stream) {
-      const delta = chunk.text;
-      if (delta) {
-        text += delta;
-        yield { type: 'text', text: delta };
-      }
-      for (const call of chunk.functionCalls ?? []) {
-        toolCalls.push({
-          id: `call_${toolCalls.length}_${call.name}`,
-          name: call.name ?? '',
-          input: (call.args ?? {}) as Record<string, unknown>,
-        });
+      // Read raw parts (not the `.text` / `.functionCalls` getters) so we can capture
+      // the per-call thoughtSignature and skip the model's internal "thought" text.
+      const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.text && !part.thought) {
+          text += part.text;
+          yield { type: 'text', text: part.text };
+        }
+        if (part.functionCall) {
+          const id = `call_${this.callSeq++}`;
+          if (part.thoughtSignature) this.signatures.set(id, part.thoughtSignature);
+          toolCalls.push({
+            id,
+            name: part.functionCall.name ?? '',
+            input: (part.functionCall.args ?? {}) as Record<string, unknown>,
+          });
+        }
       }
       if (chunk.usageMetadata) {
         usageIn = chunk.usageMetadata.promptTokenCount ?? usageIn;
