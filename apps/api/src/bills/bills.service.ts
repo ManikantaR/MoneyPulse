@@ -345,6 +345,50 @@ export class BillsService {
     return { missedCount, notified };
   }
 
+  // ── Roll forward overdue bills ───────────────────────────
+
+  /**
+   * Advance every active bill whose next_expected_date is in the past to its next
+   * FUTURE occurrence (by frequency). Without this the date never moves once a period
+   * passes, so "upcoming bills" and the cash-flow forecast go permanently empty (#84).
+   * Global sweep (all users); idempotent — future-dated bills are untouched.
+   */
+  async rollForwardOverdueBills(): Promise<{ rolled: number }> {
+    const now = new Date();
+    const overdue = await this.db
+      .select()
+      .from(schema.recurringBills)
+      .where(
+        and(
+          eq(schema.recurringBills.isActive, true),
+          lt(schema.recurringBills.nextExpectedDate, now),
+        ),
+      );
+
+    let rolled = 0;
+    for (const bill of overdue) {
+      if (!bill.nextExpectedDate) continue;
+      const original = new Date(bill.nextExpectedDate).getTime();
+      let next = new Date(bill.nextExpectedDate);
+      // Advance until future; guard against a no-op/unknown frequency.
+      for (let i = 0; i < 600 && next <= now; i++) {
+        const advanced = addFrequency(next, bill.frequency as BillFrequency);
+        if (advanced.getTime() === next.getTime()) break;
+        next = advanced;
+      }
+      if (next.getTime() !== original && next > now) {
+        await this.db
+          .update(schema.recurringBills)
+          .set({ nextExpectedDate: next, updatedAt: new Date() })
+          .where(eq(schema.recurringBills.id, bill.id));
+        rolled++;
+      }
+    }
+
+    if (rolled > 0) this.logger.log(`Rolled ${rolled} overdue bill(s) forward`);
+    return { rolled };
+  }
+
   // ── CRUD ─────────────────────────────────────────────────
 
   async findAll(userId: string) {

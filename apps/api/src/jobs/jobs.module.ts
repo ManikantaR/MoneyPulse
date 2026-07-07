@@ -8,6 +8,7 @@ import { SyncModule } from '../sync/sync.module';
 import { SyncDeliveryProcessor } from './sync-delivery.processor';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { AdvisorModule } from '../advisor/advisor.module';
+import { BillsModule } from '../bills/bills.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AdvisorModule } from '../advisor/advisor.module';
     SyncModule,
     AnalyticsModule,
     AdvisorModule,
+    BillsModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -88,6 +90,15 @@ export class JobsModule implements OnModuleInit {
       { pattern: '0 6 * * *' },
       { name: 'cashflow-sweep' },
     );
+
+    // Roll overdue recurring bills to their next occurrence (daily 5 AM UTC) so
+    // "upcoming bills" + forecast stay current. Also run once now to fix stale data.
+    await this.alertsQueue.upsertJobScheduler(
+      'daily-bills-roll-forward',
+      { pattern: '0 5 * * *' },
+      { name: 'bills-roll-forward' },
+    );
+    await this.alertsQueue.add('bills-roll-forward', {}, { removeOnComplete: true });
 
     // Frequent sync delivery sweep for outbox events.
     await this.syncQueue.upsertJobScheduler(
