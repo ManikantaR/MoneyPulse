@@ -13,11 +13,23 @@ const SUGGESTIONS = [
   'How did my spending change from last month?',
 ];
 
+/** Friendly labels for the active-provider badge. */
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: 'Claude',
+  openai: 'OpenAI',
+  google: 'Gemini',
+};
+
 /** Ask-your-money advisor chat (Phase 1, #38). */
 export default function AdvisorPage() {
   const { messages, isStreaming, error, send, stop } = useAdvisorChat();
   const [input, setInput] = useState('');
-  const [status, setStatus] = useState<{ enabled: boolean; disclaimer: string } | null>(null);
+  const [status, setStatus] = useState<{
+    enabled: boolean;
+    disclaimer: string;
+    provider?: string;
+    model?: string;
+  } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,12 +54,21 @@ export default function AdvisorPage() {
       <div className="flex items-center gap-2 mb-4">
         <Sparkles className="w-6 h-6 text-[var(--primary)]" />
         <h1 className="text-2xl font-bold">Advisor</h1>
+        {status?.enabled && status.provider && (
+          <span
+            title="Configured in Settings → AI Advisor"
+            className="ml-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/50 px-2 py-0.5 text-xs text-[var(--muted-foreground)]"
+          >
+            via {PROVIDER_LABELS[status.provider] ?? status.provider}
+            {status.model ? ` · ${status.model}` : ''}
+          </span>
+        )}
       </div>
 
       {status && !status.enabled && (
         <div className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--muted)]/50 p-3 text-sm text-[var(--muted-foreground)]">
-          The advisor isn&apos;t configured yet. Set <code>ANTHROPIC_API_KEY</code> in the
-          server environment to enable it.
+          The advisor isn&apos;t configured yet. Pick a provider and add an API key in{' '}
+          <a href="/settings" className="underline">Settings → AI Advisor</a>.
         </div>
       )}
 
