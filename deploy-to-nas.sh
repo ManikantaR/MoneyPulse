@@ -64,6 +64,8 @@ sync_code() {
         --exclude=coverage \
         --exclude=tmp \
         --exclude=.turbo \
+        --exclude=./.env \
+        --exclude=./.env.local \
         . 2>/dev/null || \
     COPYFILE_DISABLE=1 tar czf "$TMP_ARCHIVE" \
         --exclude=node_modules \
@@ -73,6 +75,8 @@ sync_code() {
         --exclude=coverage \
         --exclude=tmp \
         --exclude=.turbo \
+        --exclude=./.env \
+        --exclude=./.env.local \
         .
 
     local size
