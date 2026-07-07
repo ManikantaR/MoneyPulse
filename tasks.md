@@ -47,7 +47,11 @@ encrypted key; inline switcher in the advisor header; active-provider badge; def
   mortgage pending vs paid (loan + extra principal), auto loan same, AI nudges.
 - **Internet-trends weekly digest**: extend Phase-2 digest with web research (mortgage rates via FRED,
   savings tips) so it proactively makes the user "financially smarter."
+- **Digest → Telegram (#79)**: add Telegram as a delivery channel for the weekly advisor recap +
+  basic digests, per-user toggle, reuse `TELEGRAM_CHAT_MAP`. Two-way chat bot is already built
+  (#49/#53) — just needs `TELEGRAM_BOT_TOKEN` in the NAS `.env`.
 - Per-vendor breakdown within a category — **done** via `get_merchant_breakdown` (#63).
+- Advisor chat renders markdown/GFM tables (#77, done).
 
 ### Locked design decisions
 - Provider abstraction (#49/#57): one normalized LLM adapter; MCP tools as JSON-Schema; write-only key (AES-256-GCM); global config.
