@@ -24,6 +24,9 @@ export default function SettingsPage() {
   const [advisorDigest, setAdvisorDigest] = useState(
     settings?.advisorDigestEnabled ?? false,
   );
+  const [telegramNotifications, setTelegramNotifications] = useState(
+    settings?.telegramNotificationsEnabled ?? false,
+  );
   const [haWebhookUrl, setHaWebhookUrl] = useState(
     settings?.haWebhookUrl ?? '',
   );
@@ -48,6 +51,7 @@ export default function SettingsPage() {
         dailyDigestEnabled: dailyDigest,
         monthlyDigestEnabled: monthlyDigest,
         advisorDigestEnabled: advisorDigest,
+        telegramNotificationsEnabled: telegramNotifications,
         haWebhookUrl: haWebhookUrl || null,
         firebaseUid: firebaseUid || null,
       });
@@ -189,6 +193,23 @@ export default function SettingsPage() {
 
         <section className="space-y-4 rounded-2xl bg-[var(--surface-container-low)] p-6">
           <h2 className="text-lg font-bold">Integrations</h2>
+          <div className="flex items-start gap-3">
+            <input
+              id="telegramNotifications"
+              type="checkbox"
+              checked={telegramNotifications}
+              onChange={(e) => setTelegramNotifications(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-[var(--border)]"
+            />
+            <label htmlFor="telegramNotifications" className="text-sm font-medium">
+              Send notifications to Telegram
+              <span className="block text-xs font-normal text-[var(--on-surface-variant)]">
+                Push digests, the weekly advisor recap, and alerts (missed bills &amp; loan
+                payments) to your linked Telegram chat. Requires the bot token and your
+                chat link configured on the server.
+              </span>
+            </label>
+          </div>
           <div>
             <label htmlFor="haWebhookUrl" className="block text-sm font-semibold">
               Home Assistant Webhook URL

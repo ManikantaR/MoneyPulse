@@ -3,6 +3,7 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { WebhookService } from './webhook.service';
+import { TelegramPushService } from './telegram-push.service';
 import { OutboxService } from '../sync/outbox.service';
 import { AliasMapperService } from '../sync/alias-mapper.service';
 
@@ -23,6 +24,7 @@ export class NotificationsService {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
     private readonly webhookService: WebhookService,
+    private readonly telegramPush: TelegramPushService,
     private readonly outbox: OutboxService,
     private readonly aliasMapper: AliasMapperService,
   ) {}
@@ -147,6 +149,31 @@ export class NotificationsService {
         this.logger.warn(`HA webhook dispatch error: ${err.message}`);
       });
 
+    // Best-effort Telegram push — fire-and-forget, gated by the user's opt-in.
+    void this.pushToTelegram(input);
+
     return notification;
+  }
+
+  /**
+   * Push a notification to the user's Telegram chat when they've opted in
+   * (user_settings.telegram_notifications_enabled) and a bot token is configured.
+   * Never throws — notification delivery must not block the domain write. #79
+   */
+  private async pushToTelegram(input: CreateNotificationInput): Promise<void> {
+    if (!this.telegramPush.enabled) return;
+    try {
+      const rows = await this.db
+        .select({ enabled: schema.userSettings.telegramNotificationsEnabled })
+        .from(schema.userSettings)
+        .where(eq(schema.userSettings.userId, input.userId))
+        .limit(1);
+      if (!rows[0]?.enabled) return;
+
+      const text = `${input.title}\n\n${input.message}`;
+      await this.telegramPush.sendToUser(input.userId, text);
+    } catch (err) {
+      this.logger.warn(`Telegram push dispatch error: ${(err as Error).message}`);
+    }
   }
 }

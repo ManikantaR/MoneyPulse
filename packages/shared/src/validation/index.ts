@@ -211,6 +211,7 @@ export const updateUserSettingsSchema = z.object({
   dailyDigestEnabled: z.boolean().optional(),
   monthlyDigestEnabled: z.boolean().optional(),
   advisorDigestEnabled: z.boolean().optional(),
+  telegramNotificationsEnabled: z.boolean().optional(),
   notificationEmail: z.email().nullable().optional(),
   firebaseUid: z.string().max(128).nullable().optional(),
 });
