@@ -17,6 +17,9 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_budget_status',
   'get_recurring_expenses',
   'get_merchant_breakdown',
+  'get_cashflow_summary',
+  'get_income_breakdown',
+  'get_net_worth',
   'compare_periods',
 ]);
 
