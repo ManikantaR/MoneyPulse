@@ -459,6 +459,33 @@ export const investmentSnapshots = pgTable('investment_snapshots', {
     .defaultNow(),
 });
 
+// ── Loans (mortgage / auto payoff tracker) ──────────────────
+
+export const loans = pgTable('loans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  name: varchar('name', { length: 100 }).notNull(),
+  /** Merchant substring identifying this loan's payment transactions (e.g. "Langley Federal"). */
+  lenderPattern: varchar('lender_pattern', { length: 200 }).notNull(),
+  loanType: varchar('loan_type', { length: 30 }).notNull().default('mortgage'),
+  /** Balance at start_date (user-entered). */
+  originalBalanceCents: integer('original_balance_cents').notNull(),
+  /** APR in basis points (3.25% → 325). */
+  aprBps: integer('apr_bps').notNull(),
+  termMonths: integer('term_months'),
+  startDate: date('start_date').notNull(),
+  /** Regular scheduled principal+interest payment. */
+  scheduledPaymentCents: integer('scheduled_payment_cents').notNull(),
+  /** Optional merchant substring for separate extra-principal payments. */
+  extraPrincipalPattern: varchar('extra_principal_pattern', { length: 200 }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
 // ── AI Prompt Logs ──────────────────────────────────────────
 
 export const aiPromptTypeEnum = pgEnum('ai_prompt_type', [

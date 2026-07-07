@@ -45,9 +45,12 @@ Bills roll-forward (#84, done): daily sweep advances overdue `next_expected_date
 future occurrence (+ runs once on boot) so `get_upcoming_bills` + forecast + digest bills work.
 
 ### Big features (own phases — need schema/design)
-- **Loan payoff tracker** (mortgage + auto): new `loans` table (principal, rate, term, extra-principal
-  payments), amortization + payoff projection, periodic "pay it down faster" nudges. User wants:
-  mortgage pending vs paid (loan + extra principal), auto loan same, AI nudges.
+- **Loan payoff tracker** (mortgage + auto) — Phase 1 backend done (#88): `loans` table (migration 0011),
+  amortization engine (`apps/mcp-server/src/lib/amortization.ts`), `get_loan_status` MCP tool (balance,
+  principal/interest paid, extra principal, payoff date, "add $X/mo → months+interest saved"), CRUD `/loans`.
+  **Next:** seed the user's loans via `POST /loans` (lender pattern, initial balance, apr_bps, start date,
+  scheduled payment, extra-principal pattern); auto-split scheduled P+I vs extra-principal txns;
+  missing-payment detection; Loans web page; payoff nudges in the digest.
 - **Internet-trends weekly digest**: extend Phase-2 digest with web research (mortgage rates via FRED,
   savings tips) so it proactively makes the user "financially smarter."
 - **Digest → Telegram (#79)**: add Telegram as a delivery channel for the weekly advisor recap +
