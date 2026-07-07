@@ -1,6 +1,8 @@
 # MoneyPulse — Roadmap & Tasks
 
 Living index of in-flight work. GitHub issues are the source of truth; this is the map.
+**Deploy:** `echo "y" | ./deploy-to-nas.sh [api|web|all|db:migrate]` (api spawns the bundled
+MCP server over stdio; `db:migrate` runs migrations). Domain `https://moneypulse.home.manikantar.com`.
 
 ## 🚀 Epic: AI Financial Advisor (#36)
 
@@ -8,36 +10,64 @@ Private, self-hosted advisor over real finances. **LLM is the interface; determi
 
 | Phase | Issue | Status |
 |---|---|---|
-| Phase 0 — MCP server (semantic layer, 8 user-scoped tools) | #37 | ✅ Merged (#41) |
-| Phase 1 — Ask-your-money NL chat (MVP) | #38 | ✅ Merged (#49) — deployed |
-| Phase 2 — Weekly digest (proactive) | #39 | 🔀 In review (#51) |
+| Phase 0 — MCP server (semantic layer, user-scoped tools) | #37 | ✅ Merged (#41) |
+| Phase 1 — Ask-your-money NL chat (web + Telegram) | #38 | ✅ Merged (#49) — deployed |
+| Phase 2 — Weekly digest (proactive) | #39 | ✅ Merged (#51) — deployed |
 | Phase 3 — Goal planners (car / college / safe-to-spend) | #40 | ⏳ Planned |
 
-**Deferred / later:** real-time nudges, in-app insights feed, draft-actions-to-approve, mortgage & insurance modules.
+### Providers (advisor is provider-agnostic — Settings → AI Advisor)
+Claude (#49) · OpenAI (#49) · **Gemini** (#57, `@google/genai`, thought_signature handled #59).
+Key precedence: env (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GOOGLE_API_KEY`) → encrypted DB key
+(needs `ENCRYPTION_KEY`). Default models: `claude-opus-4-8` / `gpt-4o` / `gemini-2.5-flash`.
+**To use: set a provider key in Settings → AI Advisor (stored encrypted) or NAS `.env`.**
 
-### Supporting tasks
-| Task | Issue | Status |
+## 🔧 Advisor tool-coverage expansion (in progress)
+
+MCP tools the advisor can call (aggregates-only allowlist in `mcp-client.service.ts`):
+`get_account_balances`, `get_spending_summary`, `get_category_breakdown` (+parent subtotals #61),
+`get_budget_status`, `compare_periods`, `get_recurring_expenses`, `get_merchant_breakdown` (#63),
+`get_cashflow_summary` · `get_income_breakdown` · `get_net_worth` (#65). Row-level
+`get_transactions`/`search_transactions` are **excluded** from the cloud allowlist.
+
+| Batch | Tools | Status |
 |---|---|---|
-| Wire MCP server into NAS docker-compose | #43 | ⏳ Open |
-| Triage leftover sync-status/transactions branch | #42 | ⏳ Open |
+| 1a | cash flow + savings rate, income breakdown, net worth (current + trend) | ✅ #65 deployed |
+| — | **net worth: include investments/brokerage** (currently accounts-only, understates) | ⏳ next |
+| 1b | forecast / safe-to-spend, upcoming bills, subscriptions + price changes | ⏳ |
+| 1c | category trend over time, budget on-track history, unusual-charges feed | ⏳ |
+
+### Big features (own phases — need schema/design)
+- **Loan payoff tracker** (mortgage + auto): new `loans` table (principal, rate, term, extra-principal
+  payments), amortization + payoff projection, periodic "pay it down faster" nudges. User wants:
+  mortgage pending vs paid (loan + extra principal), auto loan same, AI nudges.
+- **Internet-trends weekly digest**: extend Phase-2 digest with web research (mortgage rates via FRED,
+  savings tips) so it proactively makes the user "financially smarter."
+- Per-vendor breakdown within a category — **done** via `get_merchant_breakdown` (#63).
 
 ### Locked design decisions
-- **Provider abstraction (shipped in #49):** Claude *or* OpenAI, selectable in Settings → AI Advisor. Single normalized LLM adapter layer; MCP tools passed as JSON-Schema to either. API key stored write-only (AES-256-GCM in DB via `ENCRYPTION_KEY`) with env-var precedence (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`). Global (one config per app). Ollama skipped (weak tool-calling breaks grounding).
-- **Weekly digest (#51):** deterministic signals (category WoW deltas, top drivers, upcoming bills, subscription price changes, anomalies from #32) → LLM ranks/narrates top 3–5 with **no tools**, no new numbers → notification center + Home Assistant, ISO-week dedupe. Opt-in via `user_settings.advisor_digest_enabled`; sweep gated on advisor configured. Cron `advisor-digest-weekly` Mon 13:00 UTC.
-- Cloud Claude (`claude-opus-4-8`) default for reasoning; **aggregates only** to cloud (raw statements/account numbers stay on NAS).
-- MCP tools = semantic layer; **refuse-don't-guess**, never free-form SQL, LLM never does arithmetic.
-- Provenance on every number; independent verifier pass; "insights, not advice" framing.
-- External data via free APIs (FRED, BLS CE); recurrence = merchant-group + modal-interval + tolerance + jitter (≥3).
+- Provider abstraction (#49/#57): one normalized LLM adapter; MCP tools as JSON-Schema; write-only key (AES-256-GCM); global config.
+- Weekly digest (#51): deterministic signals → LLM ranks/narrates top 3–5 (no tools, no new numbers) → notifications + Home Assistant, ISO-week dedupe. Opt-in `user_settings.advisor_digest_enabled`.
+- **Aggregates only** to cloud (raw statements/account numbers/descriptions stay on NAS); merchant tools use cleaned merchant names, never raw description.
+- **Refuse-don't-guess**; LLM never does arithmetic; provenance on every number.
+- Advisor prompt injects **today's date** (`ADVISOR_TIMEZONE`, default America/New_York) so relative periods resolve; match user wording to the category/parent names the tools actually return (#59/#61).
+- External data via free APIs (FRED, BLS CE) for the trends digest.
 
-## ✅ Recently shipped (notification thread)
-- #49 — Advisor Phase 1 chat + provider abstraction (Claude/OpenAI, web-configurable, encrypted key)
-- #50 — migration idempotency: made 0002/0003/0006 replay-safe + added 0007/0008; fixed NAS `__drizzle_migrations` drift (only 0000/0001 were recorded), so `db:migrate` now succeeds cleanly
-- #48 — forecast bill dates parsed as local calendar dates (UTC off-by-one)
-- #28 — notification dropdown opaque/readable
-- #30 — Tailwind v4 `@theme` design tokens (fixed app-wide `bg-card` no-op)
-- #32 — statistical spending-anomaly baselines (cut false positives)
-- #34 — notification center v2 (dismiss, grouping, severity, timestamps)
+### Infra / deploy notes
+- MCP server is **bundled into the API image** (#43): `MCP_SERVER_ENTRY=/app/mcp-server/dist/index.js`, spawned over stdio, reuses the API's `DATABASE_URL`.
+- Telegram advisor is **long-polling** (out-dial `getUpdates`, #53) — no inbound URL (LAN-only). Off until `TELEGRAM_BOT_TOKEN` set.
+- `deploy-to-nas.sh` prunes `apps/`+`packages/` before extract (#54) so deleted files don't linger and break the build.
+
+## ✅ Recently shipped
+- #67 — transactions showed one day early (UTC-midnight dates rendered in local tz) — format in UTC
+- #65 — advisor Batch 1a: cash flow + savings rate, income breakdown, net worth (current + trend)
+- #63 — `get_merchant_breakdown` (top vendors, optional category filter)
+- #61 — match category wording to real taxonomy + parent subtotals in get_category_breakdown
+- #59 — Gemini thought_signature fix + inject current date into advisor prompt
+- #57 — add Google Gemini provider
+- #54 — deploy prune stale source · #53 — Telegram webhook → long-polling · #43 — bundle MCP into API image
+- #51 — Phase 2 weekly digest · #49 — Phase 1 advisor + provider abstraction
+- #50 — migration idempotency / NAS drift fix · #48 — forecast local-date parse
 
 ## Backlog (unscheduled)
-- #22 — Year-over-Year comparison
-- #27 — Dependabot deps bump
+- #42 — triage leftover sync-status/transactions branch
+- #22 — Year-over-Year comparison · #27 — Dependabot deps bump
