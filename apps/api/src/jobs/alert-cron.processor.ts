@@ -7,6 +7,7 @@ import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
 import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
 import { BillsService } from '../bills/bills.service';
+import { LoansService } from '../loans/loans.service';
 
 @Processor('alerts')
 export class AlertCronProcessor extends WorkerHost {
@@ -19,6 +20,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly forecastService: ForecastService,
     private readonly advisorDigestService: AdvisorDigestService,
     private readonly billsService: BillsService,
+    private readonly loansService: LoansService,
   ) {
     super();
   }
@@ -68,6 +70,15 @@ export class AlertCronProcessor extends WorkerHost {
       case 'bills-roll-forward': {
         const { rolled } = await this.billsService.rollForwardOverdueBills();
         this.logger.log(`Bills roll-forward: ${rolled} advanced`);
+        break;
+      }
+
+      case 'loan-missed-check': {
+        const { checked, missed, notified } =
+          await this.loansService.checkMissedLoanPayments();
+        this.logger.log(
+          `Loan missed-check: ${checked} loans, ${missed} missed, ${notified} notified`,
+        );
         break;
       }
 

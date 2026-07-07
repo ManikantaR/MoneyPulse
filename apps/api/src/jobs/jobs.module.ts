@@ -9,6 +9,7 @@ import { SyncDeliveryProcessor } from './sync-delivery.processor';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { AdvisorModule } from '../advisor/advisor.module';
 import { BillsModule } from '../bills/bills.module';
+import { LoansModule } from '../loans/loans.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { BillsModule } from '../bills/bills.module';
     AnalyticsModule,
     AdvisorModule,
     BillsModule,
+    LoansModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -99,6 +101,15 @@ export class JobsModule implements OnModuleInit {
       { name: 'bills-roll-forward' },
     );
     await this.alertsQueue.add('bills-roll-forward', {}, { removeOnComplete: true });
+
+    // Detect missed loan payments (daily 5:30 AM UTC) — flags a loan whose lender
+    // debit didn't show up this cycle. Also run once now.
+    await this.alertsQueue.upsertJobScheduler(
+      'daily-loan-missed-check',
+      { pattern: '30 5 * * *' },
+      { name: 'loan-missed-check' },
+    );
+    await this.alertsQueue.add('loan-missed-check', {}, { removeOnComplete: true });
 
     // Frequent sync delivery sweep for outbox events.
     await this.syncQueue.upsertJobScheduler(

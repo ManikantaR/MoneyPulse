@@ -1,12 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { Landmark, Plus, Pencil, Trash2, X, Sparkles, AlertTriangle } from 'lucide-react';
+import { Landmark, Plus, Pencil, Trash2, X, Sparkles, AlertTriangle, BellRing } from 'lucide-react';
 import { formatCents } from '@/lib/format';
 import { MobileCard } from '@/components/MobileCard';
 import type { Loan, LoanType, CreateLoanInput } from '@moneypulse/shared';
 import { computeLoanState, projectPayoff } from '@moneypulse/shared';
-import { useLoans, useCreateLoan, useUpdateLoan, useDeleteLoan } from '@/lib/hooks/useLoans';
+import {
+  useLoans,
+  useCreateLoan,
+  useUpdateLoan,
+  useDeleteLoan,
+  useCheckMissedLoans,
+} from '@/lib/hooks/useLoans';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -358,8 +364,14 @@ function LoanCard({ loan, onEdit }: { loan: Loan; onEdit: () => void }) {
 /** Loan payoff tracker — manage mortgage / auto / other loans. */
 export default function LoansPage() {
   const { data, isLoading } = useLoans();
+  const checkMissed = useCheckMissedLoans();
   const [editing, setEditing] = useState<Loan | null>(null);
   const [adding, setAdding] = useState(false);
+  const [checkResult, setCheckResult] = useState<{
+    checked: number;
+    missed: number;
+    notified: number;
+  } | null>(null);
 
   const loans: Loan[] = data?.data ?? [];
   const showForm = adding || editing !== null;
@@ -382,12 +394,39 @@ export default function LoansPage() {
           </p>
         </div>
         {!showForm && (
-          <button onClick={() => setAdding(true)}
-            className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 transition-opacity">
-            <Plus className="h-4 w-4" /> Add loan
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            {loans.length > 0 && (
+              <button
+                onClick={() =>
+                  checkMissed.mutateAsync().then((res) => setCheckResult(res.data))
+                }
+                disabled={checkMissed.isPending}
+                className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold hover:bg-[var(--muted)] disabled:opacity-50 transition-colors">
+                <BellRing className="h-4 w-4" />
+                {checkMissed.isPending ? 'Checking…' : 'Check payments'}
+              </button>
+            )}
+            <button onClick={() => setAdding(true)}
+              className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 transition-opacity">
+              <Plus className="h-4 w-4" /> Add loan
+            </button>
+          </div>
         )}
       </div>
+
+      {checkResult && (
+        <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+          <span>
+            Checked {checkResult.checked} loan{checkResult.checked !== 1 ? 's' : ''} —{' '}
+            {checkResult.missed === 0
+              ? 'all payments accounted for.'
+              : `${checkResult.missed} possible missed, ${checkResult.notified} alert${checkResult.notified !== 1 ? 's' : ''} sent.`}
+          </span>
+          <button onClick={() => setCheckResult(null)}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <LoanForm

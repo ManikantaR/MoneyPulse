@@ -35,6 +35,21 @@ export function useUpdateLoan() {
   });
 }
 
+/** Check for missed loan payments (fires notifications). */
+export function useCheckMissedLoans() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ data: { checked: number; missed: number; notified: number } }>(
+        '/loans/check-missed',
+        {},
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
 /** Delete (soft) a tracked loan. */
 export function useDeleteLoan() {
   const queryClient = useQueryClient();
