@@ -22,6 +22,7 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_net_worth',
   'get_upcoming_bills',
   'get_subscriptions',
+  'get_cashflow_forecast',
   'compare_periods',
 ]);
 
