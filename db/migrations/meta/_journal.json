@@ -71,6 +71,13 @@
       "when": 1783200200000,
       "tag": "0009_advisor_digest_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783200300000,
+      "tag": "0010_advisor_per_provider_keys",
+      "breakpoints": true
     }
   ]
 }

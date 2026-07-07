@@ -72,5 +72,5 @@ export interface LlmProvider {
 export const DEFAULT_MODELS: Record<LlmProviderId, string> = {
   anthropic: 'claude-opus-4-8',
   openai: 'gpt-4o',
-  google: 'gemini-2.5-flash',
+  google: 'gemini-3.5-flash',
 };

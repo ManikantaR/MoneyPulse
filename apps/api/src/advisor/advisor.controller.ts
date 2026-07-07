@@ -48,6 +48,8 @@ export class AdvisorController {
         provider: view.provider,
         model: view.model,
         disclaimer: ADVISOR_DISCLAIMER,
+        configuredProviders: view.configuredProviders,
+        defaultModels: view.defaultModels,
       },
     };
   }
@@ -81,6 +83,14 @@ export class AdvisorController {
         provider = (body.provider as LlmProviderId) ?? 'anthropic';
         model = body.model?.trim() || DEFAULT_MODELS[provider];
         apiKey = body.apiKey.trim();
+      } else if (body.provider) {
+        // Test the selected provider's stored key.
+        provider = body.provider as LlmProviderId;
+        const resolved = await this.settings.resolveFor(provider, body.model);
+        if (!resolved) {
+          return { data: { ok: false, error: `No API key configured for ${provider}.` } };
+        }
+        ({ model, apiKey } = resolved);
       } else {
         const resolved = await this.settings.resolve();
         if (!resolved) {

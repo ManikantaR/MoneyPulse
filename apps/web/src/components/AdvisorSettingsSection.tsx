@@ -6,6 +6,12 @@ import { api } from '@/lib/api';
 
 type Provider = 'anthropic' | 'openai' | 'google';
 
+interface ProviderKeyStatus {
+  hasKey: boolean;
+  keySource: 'env' | 'db' | null;
+  keyMasked: string | null;
+}
+
 interface AdvisorSettingsView {
   provider: Provider;
   model: string;
@@ -16,6 +22,8 @@ interface AdvisorSettingsView {
   canStoreKey: boolean;
   providers: Provider[];
   defaultModels: Record<Provider, string>;
+  providerStatus: Record<Provider, ProviderKeyStatus>;
+  configuredProviders: Provider[];
 }
 
 const PROVIDER_LABELS: Record<Provider, string> = {
@@ -48,6 +56,9 @@ export function AdvisorSettingsSection() {
   }, []);
 
   const isError = message.toLowerCase().includes('fail') || message.includes('✗');
+
+  // Key state for the currently-selected provider (each provider has its own key).
+  const ps = view?.providerStatus?.[provider];
 
   async function save() {
     setBusy(true);
@@ -96,9 +107,10 @@ export function AdvisorSettingsSection() {
         <h2 className="text-lg font-bold">AI Advisor</h2>
       </div>
       <p className="text-sm text-[var(--muted-foreground)]">
-        Choose the model that powers the Advisor chat. Your API key is stored encrypted and
-        never shown again. An <code>ANTHROPIC_API_KEY</code>/<code>OPENAI_API_KEY</code> set in
-        the server environment takes precedence.
+        Choose the model that powers the Advisor chat. Each provider keeps its own API key
+        (stored encrypted, never shown again), so you can switch providers without re-entering
+        keys. A matching <code>ANTHROPIC_API_KEY</code>/<code>OPENAI_API_KEY</code>/
+        <code>GOOGLE_API_KEY</code> in the server environment takes precedence.
       </p>
 
       <div>
@@ -119,6 +131,7 @@ export function AdvisorSettingsSection() {
           {(view?.providers ?? (['anthropic', 'openai', 'google'] as Provider[])).map((p) => (
             <option key={p} value={p}>
               {PROVIDER_LABELS[p]}
+              {view?.providerStatus?.[p]?.hasKey ? ' ✓' : ''}
             </option>
           ))}
         </select>
@@ -143,20 +156,20 @@ export function AdvisorSettingsSection() {
           API key
         </label>
         <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-          {view?.keySource === 'env'
-            ? `Using the server environment key (${view.keyMasked}). Entering one here has no effect while the env var is set.`
-            : view?.hasKey
-              ? `A key is saved (${view.keyMasked}). Enter a new one to replace it.`
+          {ps?.keySource === 'env'
+            ? `Using the server environment key (${ps.keyMasked}). Entering one here has no effect while the env var is set.`
+            : ps?.hasKey
+              ? `A key is saved for ${PROVIDER_LABELS[provider]} (${ps.keyMasked}). Enter a new one to replace it.`
               : view?.canStoreKey === false
                 ? 'Set ENCRYPTION_KEY on the server to store a key here, or use the environment variable.'
-                : 'No key saved yet.'}
+                : `No key saved for ${PROVIDER_LABELS[provider]} yet.`}
         </p>
         <input
           id="advisor-key"
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder={view?.hasKey ? '•••••••• (unchanged)' : 'sk-…'}
+          placeholder={ps?.hasKey ? '•••••••• (unchanged)' : 'sk-…'}
           autoComplete="off"
           className="mt-1.5 block w-full rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-sm font-mono placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30"
         />

@@ -592,7 +592,11 @@ export const advisorSettings = pgTable('advisor_settings', {
   id: integer('id').primaryKey().default(1),
   provider: varchar('provider', { length: 20 }).notNull().default('anthropic'),
   model: varchar('model', { length: 100 }),
+  /** Legacy single key (pre per-provider); migrated into the per-provider columns below. */
   apiKeyCiphertext: text('api_key_ciphertext'),
+  anthropicKeyCiphertext: text('anthropic_key_ciphertext'),
+  openaiKeyCiphertext: text('openai_key_ciphertext'),
+  googleKeyCiphertext: text('google_key_ciphertext'),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

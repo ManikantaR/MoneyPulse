@@ -15,13 +15,26 @@ const ENV_KEY: Record<LlmProviderId, string> = {
   google: 'GOOGLE_API_KEY',
 };
 
+/** Row column holding each provider's encrypted key. */
+const KEY_COLUMN: Record<LlmProviderId, string> = {
+  anthropic: 'anthropicKeyCiphertext',
+  openai: 'openaiKeyCiphertext',
+  google: 'googleKeyCiphertext',
+};
+
 /** What the advisor loop needs to run: which provider, which model, and the key. */
 export interface ResolvedAdvisorConfig {
   provider: LlmProviderId;
   model: string;
   apiKey: string;
-  /** Where the key came from — surfaced (not the key) so the UI can explain state. */
   keySource: 'env' | 'db';
+}
+
+/** Per-provider key state (no secret — just whether/where a key exists + a mask). */
+export interface ProviderKeyStatus {
+  hasKey: boolean;
+  keySource: 'env' | 'db' | null;
+  keyMasked: string | null;
 }
 
 /** Public, key-free view of the current settings for the web UI. */
@@ -29,22 +42,23 @@ export interface AdvisorSettingsView {
   provider: LlmProviderId;
   model: string;
   enabled: boolean;
-  /** True when a key is available from either env or the DB. */
   hasKey: boolean;
   keySource: 'env' | 'db' | null;
-  /** Masked hint like `sk-…a1b2`, or null. Never the full key. */
   keyMasked: string | null;
-  /** True when at-rest key storage is possible (ENCRYPTION_KEY present). */
   canStoreKey: boolean;
   providers: LlmProviderId[];
   defaultModels: Record<LlmProviderId, string>;
+  /** Per-provider key state so the UI can show configured providers + drive the switcher. */
+  providerStatus: Record<LlmProviderId, ProviderKeyStatus>;
+  /** Providers that currently have a key (env or DB) — ready to be selected. */
+  configuredProviders: LlmProviderId[];
 }
 
 /**
  * Reads/writes the global advisor settings singleton and resolves the effective
- * provider/model/key. Precedence for the key: provider env var first, then the
- * (decrypted) DB value — so ops can always pin a key via the NAS .env while the
- * web UI stays a convenience layer. The key is never returned to callers.
+ * provider/model/key. Each provider has its own encrypted key so switching provider
+ * never sends the wrong key. Key precedence: provider env var first, then the
+ * (decrypted) per-provider DB value. Keys are never returned to callers.
  */
 @Injectable()
 export class AdvisorSettingsService {
@@ -64,12 +78,7 @@ export class AdvisorSettingsService {
     return !!hex && hex.length === 64;
   }
 
-  /** Load the singleton row (id=1), or null if never saved. */
-  private async loadRow(): Promise<{
-    provider: string;
-    model: string | null;
-    apiKeyCiphertext: string | null;
-  } | null> {
+  private async loadRow(): Promise<any | null> {
     const rows = await this.db
       .select()
       .from(advisorSettings)
@@ -82,66 +91,90 @@ export class AdvisorSettingsService {
     return this.config.get<string>(ENV_KEY[provider]);
   }
 
-  /** Resolve the effective config, or null if no key is available anywhere. */
-  async resolve(): Promise<ResolvedAdvisorConfig | null> {
-    const row = await this.loadRow();
-    const provider: LlmProviderId =
-      row && this.isProvider(row.provider) ? row.provider : 'anthropic';
-    const model = row?.model || DEFAULT_MODELS[provider];
+  private ciphertext(row: any | null, provider: LlmProviderId): string | null {
+    return (row?.[KEY_COLUMN[provider]] as string | null) ?? null;
+  }
 
-    const envKey = this.envKey(provider);
-    if (envKey) {
-      return { provider, model, apiKey: envKey, keySource: 'env' };
-    }
-    if (row?.apiKeyCiphertext && this.canStoreKey()) {
+  /** Effective key for a provider (env → per-provider DB), or null. */
+  private keyFor(
+    row: any | null,
+    provider: LlmProviderId,
+  ): { apiKey: string; keySource: 'env' | 'db' } | null {
+    const env = this.envKey(provider);
+    if (env) return { apiKey: env, keySource: 'env' };
+    const ct = this.ciphertext(row, provider);
+    if (ct && this.canStoreKey()) {
       try {
-        const apiKey = decryptField(row.apiKeyCiphertext);
-        if (apiKey) return { provider, model, apiKey, keySource: 'db' };
+        const apiKey = decryptField(ct);
+        if (apiKey) return { apiKey, keySource: 'db' };
       } catch (err: any) {
-        this.logger.error(`Failed to decrypt advisor API key: ${err.message}`);
+        this.logger.error(`Failed to decrypt ${provider} advisor key: ${err.message}`);
       }
     }
     return null;
   }
 
+  private activeProvider(row: any | null): LlmProviderId {
+    return row && this.isProvider(row.provider) ? row.provider : 'anthropic';
+  }
+
+  /** Resolve the effective config for the active provider, or null if it has no key. */
+  async resolve(): Promise<ResolvedAdvisorConfig | null> {
+    const row = await this.loadRow();
+    const provider = this.activeProvider(row);
+    const model = row?.model || DEFAULT_MODELS[provider];
+    const key = this.keyFor(row, provider);
+    return key ? { provider, model, apiKey: key.apiKey, keySource: key.keySource } : null;
+  }
+
+  /** Resolve for a specific provider (used to test a provider's stored key). */
+  async resolveFor(
+    provider: LlmProviderId,
+    model?: string,
+  ): Promise<{ model: string; apiKey: string } | null> {
+    const row = await this.loadRow();
+    const key = this.keyFor(row, provider);
+    if (!key) return null;
+    return { model: model?.trim() || row?.model || DEFAULT_MODELS[provider], apiKey: key.apiKey };
+  }
+
   /** Key-free settings view for the web UI. */
   async view(): Promise<AdvisorSettingsView> {
     const row = await this.loadRow();
-    const provider: LlmProviderId =
-      row && this.isProvider(row.provider) ? row.provider : 'anthropic';
+    const provider = this.activeProvider(row);
     const model = row?.model || DEFAULT_MODELS[provider];
 
-    const envKey = this.envKey(provider);
-    const hasDbKey = !!row?.apiKeyCiphertext && this.canStoreKey();
-    const keySource: 'env' | 'db' | null = envKey ? 'env' : hasDbKey ? 'db' : null;
-
-    let keyMasked: string | null = null;
-    if (envKey) {
-      keyMasked = this.mask(envKey);
-    } else if (hasDbKey) {
-      try {
-        keyMasked = this.mask(decryptField(row!.apiKeyCiphertext!));
-      } catch {
-        keyMasked = null;
-      }
+    const providerStatus = {} as Record<LlmProviderId, ProviderKeyStatus>;
+    for (const p of PROVIDERS) {
+      const key = this.keyFor(row, p);
+      providerStatus[p] = {
+        hasKey: !!key,
+        keySource: key?.keySource ?? null,
+        keyMasked: key ? this.mask(key.apiKey) : null,
+      };
     }
+    const active = providerStatus[provider];
+    const configuredProviders = PROVIDERS.filter((p) => providerStatus[p].hasKey);
 
     return {
       provider,
       model,
-      enabled: keySource !== null,
-      hasKey: keySource !== null,
-      keySource,
-      keyMasked,
+      enabled: active.hasKey,
+      hasKey: active.hasKey,
+      keySource: active.keySource,
+      keyMasked: active.keyMasked,
       canStoreKey: this.canStoreKey(),
       providers: PROVIDERS,
       defaultModels: DEFAULT_MODELS,
+      providerStatus,
+      configuredProviders,
     };
   }
 
   /**
-   * Update provider/model, and optionally the API key. Passing an apiKey stores
-   * it encrypted; omitting it leaves the stored key untouched (write-only field).
+   * Update the active provider/model, and optionally a key. A provided apiKey is stored
+   * (encrypted) in the *selected provider's* column; omitting it leaves keys untouched —
+   * so switching provider never overwrites or misuses another provider's key.
    */
   async update(input: {
     provider?: string;
@@ -152,30 +185,27 @@ export class AdvisorSettingsService {
     const provider =
       input.provider && this.isProvider(input.provider)
         ? input.provider
-        : row && this.isProvider(row.provider)
-          ? row.provider
-          : 'anthropic';
+        : this.activeProvider(row);
 
-    // Empty string ⇒ leave model default (null); non-empty ⇒ set it.
     const model =
       input.model !== undefined ? input.model.trim() || null : (row?.model ?? null);
 
-    let apiKeyCiphertext = row?.apiKeyCiphertext ?? null;
+    const keyUpdate: Record<string, string> = {};
     if (input.apiKey !== undefined && input.apiKey.trim()) {
       if (!this.canStoreKey()) {
         throw new Error(
           'Cannot store an API key: ENCRYPTION_KEY is not configured on the server.',
         );
       }
-      apiKeyCiphertext = encryptField(input.apiKey.trim());
+      keyUpdate[KEY_COLUMN[provider]] = encryptField(input.apiKey.trim());
     }
 
     await this.db
       .insert(advisorSettings)
-      .values({ id: 1, provider, model, apiKeyCiphertext, updatedAt: new Date() })
+      .values({ id: 1, provider, model, ...keyUpdate, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: advisorSettings.id,
-        set: { provider, model, apiKeyCiphertext, updatedAt: new Date() },
+        set: { provider, model, ...keyUpdate, updatedAt: new Date() },
       });
 
     return this.view();
