@@ -39,7 +39,10 @@ encrypted key; inline switcher in the advisor header; active-provider badge; def
 | 1a | cash flow + savings rate, income breakdown, net worth (current + trend) | ✅ #65 deployed |
 | 1b-1 | net worth incl. investments, upcoming bills, subscriptions | ✅ #75 |
 | 1b-2 | cash-flow forecast / safe-to-spend | ✅ #82 |
-| 1c | category trend over time, budget on-track history, unusual-charges feed | ⏳ next |
+| 1c | category trend, budget history, unusual-charges feed | ✅ #85 |
+
+**Known data gap (#84):** `recurring_bills.next_expected_date` never rolls forward (all in the past) →
+`get_upcoming_bills` + forecast bill line + digest bills signal show empty until fixed.
 
 ### Big features (own phases — need schema/design)
 - **Loan payoff tracker** (mortgage + auto): new `loans` table (principal, rate, term, extra-principal

@@ -16,6 +16,9 @@ import { registerGetNetWorth } from './tools/get-net-worth.js';
 import { registerGetUpcomingBills } from './tools/get-upcoming-bills.js';
 import { registerGetSubscriptions } from './tools/get-subscriptions.js';
 import { registerGetCashflowForecast } from './tools/get-cashflow-forecast.js';
+import { registerGetCategoryTrend } from './tools/get-category-trend.js';
+import { registerGetBudgetHistory } from './tools/get-budget-history.js';
+import { registerGetRecentAnomalies } from './tools/get-recent-anomalies.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -39,6 +42,9 @@ registerGetNetWorth(server);
 registerGetUpcomingBills(server);
 registerGetSubscriptions(server);
 registerGetCashflowForecast(server);
+registerGetCategoryTrend(server);
+registerGetBudgetHistory(server);
+registerGetRecentAnomalies(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 
