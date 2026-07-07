@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Landmark, Plus, Pencil, Trash2, X, Sparkles } from 'lucide-react';
+import { Landmark, Plus, Pencil, Trash2, X, Sparkles, AlertTriangle } from 'lucide-react';
 import { formatCents } from '@/lib/format';
 import { MobileCard } from '@/components/MobileCard';
 import type { Loan, LoanType, CreateLoanInput } from '@moneypulse/shared';
+import { computeLoanState, projectPayoff } from '@moneypulse/shared';
 import { useLoans, useCreateLoan, useUpdateLoan, useDeleteLoan } from '@/lib/hooks/useLoans';
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -29,6 +30,89 @@ function formatStartDate(dateStr: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   });
+}
+
+function formatMonths(months: number): string {
+  if (!Number.isFinite(months)) return '—';
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (y === 0) return `${m} mo`;
+  if (m === 0) return `${y} yr`;
+  return `${y} yr ${m} mo`;
+}
+
+// ── Payoff status (client-side amortization) ──────────────────
+
+/**
+ * Live payoff summary computed from the loan's own fields — no server round trip and
+ * nothing sensitive leaves the browser. Extras are folded into the scheduled payment
+ * (the recommended data model), so we replay with no separate extra-principal stream.
+ * Pattern-based extra-principal splitting is a Phase-2, advisor-side feature.
+ */
+function LoanStatusCard({ loan }: { loan: Loan }) {
+  const inputs = {
+    originalBalanceCents: loan.originalBalanceCents,
+    aprBps: loan.aprBps,
+    scheduledPaymentCents: loan.scheduledPaymentCents,
+    startDate: loan.startDate,
+  };
+  const state = computeLoanState(inputs, []);
+  const proj = projectPayoff(state.currentBalanceCents, loan.aprBps, loan.scheduledPaymentCents);
+
+  const paidCents = loan.originalBalanceCents - state.currentBalanceCents;
+  const pctPaid = loan.originalBalanceCents > 0
+    ? Math.min(100, Math.max(0, (paidCents / loan.originalBalanceCents) * 100))
+    : 0;
+  const nonAmortizing = !state.amortizes || !proj.amortizes;
+
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">{loan.name}</span>
+          <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium text-[var(--primary)]">
+            {LOAN_TYPE_LABELS[loan.loanType]}
+          </span>
+        </div>
+        <span className="text-lg font-bold tabular-nums">{formatCents(state.currentBalanceCents)}</span>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+          <div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${pctPaid}%` }} />
+        </div>
+        <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+          {pctPaid.toFixed(1)}% paid off · {formatCents(paidCents)} of {formatCents(loan.originalBalanceCents)}
+        </p>
+      </div>
+
+      {nonAmortizing ? (
+        <div className="flex items-start gap-2 rounded-md bg-[var(--destructive)]/10 px-3 py-2 text-xs text-[var(--destructive)]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            The monthly payment doesn&apos;t cover interest at this APR — the balance won&apos;t
+            amortize. Check the payment amount and APR.
+          </span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <p className="text-xs text-[var(--muted-foreground)]">Payoff</p>
+            <p className="text-sm font-semibold">{formatStartDate(proj.payoffDate)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--muted-foreground)]">Time left</p>
+            <p className="text-sm font-semibold">{formatMonths(proj.monthsRemaining)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--muted-foreground)]">Interest left</p>
+            <p className="text-sm font-semibold">{formatCents(proj.remainingInterestCents)}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Form ──────────────────────────────────────────────────────
@@ -325,8 +409,19 @@ export default function LoansPage() {
         </p>
       )}
 
+      {/* Payoff status */}
+      {loans.length > 0 && (
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {loans.map((loan) => (
+            <LoanStatusCard key={loan.id} loan={loan} />
+          ))}
+        </section>
+      )}
+
       {loans.length > 0 && (
         <>
+          {/* Manage / details table */}
+          <h2 className="text-lg font-bold">Details</h2>
           {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto rounded-lg border border-[var(--border)]">
             <table className="w-full text-left text-sm">
