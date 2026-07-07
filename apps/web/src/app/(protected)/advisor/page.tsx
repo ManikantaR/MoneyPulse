@@ -29,15 +29,38 @@ export default function AdvisorPage() {
     disclaimer: string;
     provider?: string;
     model?: string;
+    configuredProviders?: string[];
+    defaultModels?: Record<string, string>;
   } | null>(null);
+  const [switching, setSwitching] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const loadStatus = () =>
     fetch(`${API_BASE}/advisor/status`, { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => j && setStatus(j.data))
       .catch(() => {});
+
+  useEffect(() => {
+    loadStatus();
   }, []);
+
+  /** Switch the active provider inline (uses that provider's stored key). */
+  const switchProvider = async (next: string) => {
+    if (!next || next === status?.provider) return;
+    setSwitching(true);
+    try {
+      await fetch(`${API_BASE}/advisor/settings`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: next, model: status?.defaultModels?.[next] }),
+      });
+      await loadStatus();
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,13 +78,33 @@ export default function AdvisorPage() {
         <Sparkles className="w-6 h-6 text-[var(--primary)]" />
         <h1 className="text-2xl font-bold">Advisor</h1>
         {status?.enabled && status.provider && (
-          <span
-            title="Configured in Settings → AI Advisor"
-            className="ml-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/50 px-2 py-0.5 text-xs text-[var(--muted-foreground)]"
-          >
-            via {PROVIDER_LABELS[status.provider] ?? status.provider}
-            {status.model ? ` · ${status.model}` : ''}
-          </span>
+          <div className="ml-1 flex items-center gap-1.5">
+            {(status.configuredProviders?.length ?? 0) > 1 ? (
+              <select
+                value={status.provider}
+                disabled={switching}
+                onChange={(e) => switchProvider(e.target.value)}
+                title="Switch provider — uses that provider's saved key"
+                className="rounded-full border border-[var(--border)] bg-[var(--muted)]/50 px-2 py-0.5 text-xs text-[var(--muted-foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 disabled:opacity-50"
+              >
+                {status.configuredProviders!.map((p) => (
+                  <option key={p} value={p}>
+                    via {PROVIDER_LABELS[p] ?? p}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span
+                title="Configured in Settings → AI Advisor"
+                className="rounded-full border border-[var(--border)] bg-[var(--muted)]/50 px-2 py-0.5 text-xs text-[var(--muted-foreground)]"
+              >
+                via {PROVIDER_LABELS[status.provider] ?? status.provider}
+              </span>
+            )}
+            {status.model && (
+              <span className="text-xs text-[var(--muted-foreground)]">· {status.model}</span>
+            )}
+          </div>
         )}
       </div>
 

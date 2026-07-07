@@ -33,49 +33,89 @@ function make(env: Record<string, string | undefined>, row: any = null) {
   return { svc, db };
 }
 
-describe('AdvisorSettingsService', () => {
+describe('AdvisorSettingsService (per-provider keys)', () => {
   it('resolve prefers the provider env key over the stored DB key', async () => {
-    const row = { provider: 'anthropic', model: 'claude-opus-4-8', apiKeyCiphertext: encryptField('db-key') };
+    const row = {
+      provider: 'anthropic',
+      model: 'claude-opus-4-8',
+      anthropicKeyCiphertext: encryptField('db-key'),
+    };
     const { svc } = make({ ENCRYPTION_KEY: HEX_KEY, ANTHROPIC_API_KEY: 'env-key' }, row);
-    const resolved = await svc.resolve();
-    expect(resolved).toMatchObject({ provider: 'anthropic', apiKey: 'env-key', keySource: 'env' });
+    expect(await svc.resolve()).toMatchObject({
+      provider: 'anthropic',
+      apiKey: 'env-key',
+      keySource: 'env',
+    });
   });
 
-  it('resolve falls back to the decrypted DB key when no env key', async () => {
-    const row = { provider: 'openai', model: 'gpt-4o', apiKeyCiphertext: encryptField('sk-db-secret') };
+  it('resolve falls back to the decrypted per-provider DB key', async () => {
+    const row = {
+      provider: 'openai',
+      model: 'gpt-4o',
+      openaiKeyCiphertext: encryptField('sk-db-secret'),
+    };
     const { svc } = make({ ENCRYPTION_KEY: HEX_KEY }, row);
-    const resolved = await svc.resolve();
-    expect(resolved).toMatchObject({ provider: 'openai', model: 'gpt-4o', apiKey: 'sk-db-secret', keySource: 'db' });
+    expect(await svc.resolve()).toMatchObject({
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: 'sk-db-secret',
+      keySource: 'db',
+    });
   });
 
-  it('resolve returns null when no key is available anywhere', async () => {
-    const { svc } = make({ ENCRYPTION_KEY: HEX_KEY }, { provider: 'anthropic', model: null, apiKeyCiphertext: null });
+  it('resolve returns null when the active provider has no key — even if another does', async () => {
+    // The bug this fixes: provider switched to google, but only an OpenAI key is stored.
+    const row = {
+      provider: 'google',
+      model: null,
+      openaiKeyCiphertext: encryptField('sk-openai'),
+    };
+    const { svc } = make({ ENCRYPTION_KEY: HEX_KEY }, row);
     expect(await svc.resolve()).toBeNull();
   });
 
-  it('view masks the key and never returns it in full', async () => {
-    const row = { provider: 'anthropic', model: null, apiKeyCiphertext: encryptField('sk-abcdefgh1234') };
+  it('view masks each provider key and reports configured providers', async () => {
+    const row = {
+      provider: 'google',
+      model: 'gemini-3.5-flash',
+      openaiKeyCiphertext: encryptField('sk-abcdefgh1234'),
+      googleKeyCiphertext: encryptField('AIzaSyXXXXwxyz'),
+    };
     const { svc } = make({ ENCRYPTION_KEY: HEX_KEY }, row);
     const view = await svc.view();
-    expect(view.enabled).toBe(true);
-    expect(view.keySource).toBe('db');
-    expect(view.keyMasked).toBe('sk-…1234');
-    expect(view.model).toBe('claude-opus-4-8'); // default filled in
+
+    expect(view.enabled).toBe(true); // active = google, which has a key
+    expect(view.provider).toBe('google');
+    expect(view.model).toBe('gemini-3.5-flash');
+    expect(view.configuredProviders.sort()).toEqual(['google', 'openai']);
+    expect(view.providerStatus.openai.keyMasked).toBe('sk-…1234');
+    expect(view.providerStatus.google.keyMasked).toBe('AIz…wxyz');
+    expect(view.providerStatus.anthropic.hasKey).toBe(false);
     expect(JSON.stringify(view)).not.toContain('abcdefgh');
   });
 
-  it('update encrypts the API key and persists provider/model', async () => {
-    const { svc, db } = make({ ENCRYPTION_KEY: HEX_KEY });
-    await svc.update({ provider: 'openai', model: 'gpt-4o', apiKey: 'sk-plaintext' });
+  it('update stores the key in the selected provider column, leaving others untouched', async () => {
+    const row = { provider: 'openai', model: 'gpt-4o', openaiKeyCiphertext: encryptField('sk-old') };
+    const { svc, db } = make({ ENCRYPTION_KEY: HEX_KEY }, row);
+    await svc.update({ provider: 'google', model: 'gemini-3.5-flash', apiKey: 'AIza-new' });
     const stored = (db as any).captured.values;
-    expect(stored.provider).toBe('openai');
-    expect(stored.model).toBe('gpt-4o');
-    expect(stored.apiKeyCiphertext).not.toBe('sk-plaintext');
-    expect(stored.apiKeyCiphertext).toContain(':'); // iv:tag:ciphertext
+    expect(stored.provider).toBe('google');
+    expect(stored.model).toBe('gemini-3.5-flash');
+    expect(stored.googleKeyCiphertext).toContain(':'); // iv:tag:ciphertext
+    expect(stored.googleKeyCiphertext).not.toBe('AIza-new');
+    expect(stored.openaiKeyCiphertext).toBeUndefined(); // not overwritten
+  });
+
+  it('switching provider without a key leaves all keys untouched', async () => {
+    const { svc, db } = make({ ENCRYPTION_KEY: HEX_KEY });
+    await svc.update({ provider: 'anthropic' });
+    const stored = (db as any).captured.values;
+    expect(stored.provider).toBe('anthropic');
+    expect(stored.anthropicKeyCiphertext).toBeUndefined();
   });
 
   it('update refuses to store a key when ENCRYPTION_KEY is absent', async () => {
-    const { svc } = make({}); // canStoreKey() false
+    const { svc } = make({});
     await expect(svc.update({ provider: 'openai', apiKey: 'sk-x' })).rejects.toThrow(
       /ENCRYPTION_KEY/,
     );
