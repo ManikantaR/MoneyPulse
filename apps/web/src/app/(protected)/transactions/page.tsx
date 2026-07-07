@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Search, Download, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Paperclip, Plus } from 'lucide-react';
 import { CategoryCombobox, type CategoryOption } from '@/components/CategoryCombobox';
@@ -42,6 +42,25 @@ export default function TransactionsPage() {
     excludeTransfers: searchParams.get('excludeTransfers') || undefined,
   }));
   const [search, setSearch] = useState(searchParams.get('search') || '');
+
+  // Re-sync filters when the URL params change (e.g. a dashboard drill-down navigates
+  // into an already-mounted page). The initial useState only runs once on mount, so
+  // without this a second drill-down keeps the previous filter. UI filter edits update
+  // state directly (no URL change), so they aren't clobbered by this effect.
+  useEffect(() => {
+    setQuery((q) => ({
+      ...q,
+      page: 1,
+      accountId: searchParams.get('accountId') || undefined,
+      categoryId: searchParams.get('categoryId') || undefined,
+      from: searchParams.get('from') || undefined,
+      to: searchParams.get('to') || undefined,
+      isCredit: searchParams.get('isCredit') || undefined,
+      excludeTransfers: searchParams.get('excludeTransfers') || undefined,
+    }));
+    setSearch(searchParams.get('search') || '');
+  }, [searchParams]);
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   const [autoCategResult, setAutoCategResult] = useState<string | null>(null);
