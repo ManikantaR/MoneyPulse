@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, Send, Square } from 'lucide-react';
 import { useAdvisorChat } from '@/lib/hooks/useAdvisorChat';
+import { MarkdownMessage } from '@/components/MarkdownMessage';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
@@ -139,13 +140,23 @@ export default function AdvisorPage() {
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
             <div
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                 m.role === 'user'
-                  ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
-                  : 'bg-[var(--card)] border border-[var(--border)]'
+                  ? 'whitespace-pre-wrap bg-[var(--primary)] text-[var(--primary-foreground)]'
+                  : 'border border-[var(--border)] bg-[var(--card)]'
               }`}
             >
-              {m.content || (isStreaming && i === messages.length - 1 ? '…' : '')}
+              {m.role === 'assistant' ? (
+                m.content ? (
+                  <MarkdownMessage>{m.content}</MarkdownMessage>
+                ) : isStreaming && i === messages.length - 1 ? (
+                  '…'
+                ) : (
+                  ''
+                )
+              ) : (
+                m.content
+              )}
             </div>
           </div>
         ))}
