@@ -6,6 +6,7 @@ import { DigestService } from '../analytics/digest.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
 import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
+import { BillsService } from '../bills/bills.service';
 
 @Processor('alerts')
 export class AlertCronProcessor extends WorkerHost {
@@ -17,6 +18,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
     private readonly advisorDigestService: AdvisorDigestService,
+    private readonly billsService: BillsService,
   ) {
     super();
   }
@@ -62,6 +64,12 @@ export class AlertCronProcessor extends WorkerHost {
       case 'cashflow-sweep':
         await this.forecastService.checkAndAlertAll();
         break;
+
+      case 'bills-roll-forward': {
+        const { rolled } = await this.billsService.rollForwardOverdueBills();
+        this.logger.log(`Bills roll-forward: ${rolled} advanced`);
+        break;
+      }
 
       default:
         this.logger.warn(`Unknown alert job: ${job.name}`);

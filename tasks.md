@@ -41,8 +41,8 @@ encrypted key; inline switcher in the advisor header; active-provider badge; def
 | 1b-2 | cash-flow forecast / safe-to-spend | ✅ #82 |
 | 1c | category trend, budget history, unusual-charges feed | ✅ #85 |
 
-**Known data gap (#84):** `recurring_bills.next_expected_date` never rolls forward (all in the past) →
-`get_upcoming_bills` + forecast bill line + digest bills signal show empty until fixed.
+Bills roll-forward (#84, done): daily sweep advances overdue `next_expected_date` to the next
+future occurrence (+ runs once on boot) so `get_upcoming_bills` + forecast + digest bills work.
 
 ### Big features (own phases — need schema/design)
 - **Loan payoff tracker** (mortgage + auto): new `loans` table (principal, rate, term, extra-principal

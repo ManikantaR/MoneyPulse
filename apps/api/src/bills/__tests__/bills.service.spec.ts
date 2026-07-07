@@ -332,4 +332,37 @@ describe('BillsService', () => {
       await expect(service.update(billId, 'other-user', {})).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('rollForwardOverdueBills', () => {
+    function makeSvc(overdue: any[]) {
+      const updates: any[] = [];
+      const db = {
+        select: () => ({ from: () => ({ where: async () => overdue }) }),
+        update: () => ({ set: (v: any) => ({ where: async () => updates.push(v) }) }),
+      };
+      const svc = new BillsService(db as any, mockNotifications as any);
+      return { svc, updates };
+    }
+
+    it('advances an overdue monthly bill to the next future date', async () => {
+      const past = new Date();
+      past.setMonth(past.getMonth() - 3);
+      const { svc, updates } = makeSvc([
+        { ...baseBill, nextExpectedDate: past, frequency: 'monthly' },
+      ]);
+
+      const { rolled } = await svc.rollForwardOverdueBills();
+
+      expect(rolled).toBe(1);
+      expect(updates).toHaveLength(1);
+      expect(updates[0].nextExpectedDate.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('does nothing when no bills are overdue', async () => {
+      const { svc, updates } = makeSvc([]);
+      const { rolled } = await svc.rollForwardOverdueBills();
+      expect(rolled).toBe(0);
+      expect(updates).toHaveLength(0);
+    });
+  });
 });
