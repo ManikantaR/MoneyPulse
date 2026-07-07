@@ -136,6 +136,26 @@ export interface RecurringBill {
   updatedAt: string;
 }
 
+export type LoanType = 'mortgage' | 'auto' | 'personal' | 'student' | 'other';
+
+/** A tracked amortizing loan (mortgage / auto / etc.) for payoff tracking. */
+export interface Loan {
+  id: string;
+  userId: string;
+  name: string;
+  lenderPattern: string;
+  loanType: LoanType;
+  originalBalanceCents: number;
+  aprBps: number;
+  termMonths: number | null;
+  startDate: string;
+  scheduledPaymentCents: number;
+  extraPrincipalPattern: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A recurring bill projected as a subscription with annualized cost and price-change detection. */
 export interface SubscriptionItem {
   id: string;
