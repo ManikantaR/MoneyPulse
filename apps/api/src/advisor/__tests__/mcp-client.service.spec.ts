@@ -15,6 +15,8 @@ const ALL_TOOLS = [
   { name: 'get_cashflow_summary', description: 'h', inputSchema: { type: 'object' } },
   { name: 'get_income_breakdown', description: 'i', inputSchema: { type: 'object' } },
   { name: 'get_net_worth', description: 'j', inputSchema: { type: 'object' } },
+  { name: 'get_upcoming_bills', description: 'k', inputSchema: { type: 'object' } },
+  { name: 'get_subscriptions', description: 'l', inputSchema: { type: 'object' } },
   { name: 'compare_periods', description: 'f', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },

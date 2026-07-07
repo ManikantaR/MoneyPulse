@@ -26,14 +26,19 @@ Key precedence: env (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GOOGLE_API_KEY`) → 
 MCP tools the advisor can call (aggregates-only allowlist in `mcp-client.service.ts`):
 `get_account_balances`, `get_spending_summary`, `get_category_breakdown` (+parent subtotals #61),
 `get_budget_status`, `compare_periods`, `get_recurring_expenses`, `get_merchant_breakdown` (#63),
-`get_cashflow_summary` · `get_income_breakdown` · `get_net_worth` (#65). Row-level
+`get_cashflow_summary` · `get_income_breakdown` · `get_net_worth` (#65, +investments #75),
+`get_upcoming_bills` · `get_subscriptions` (#75). Row-level
 `get_transactions`/`search_transactions` are **excluded** from the cloud allowlist.
+
+Providers use **per-provider keys** (#73/#74): each of Claude/OpenAI/Gemini stores its own
+encrypted key; inline switcher in the advisor header; active-provider badge; default
+`gemini-3.5-flash`. Migration 0010 added the key columns.
 
 | Batch | Tools | Status |
 |---|---|---|
 | 1a | cash flow + savings rate, income breakdown, net worth (current + trend) | ✅ #65 deployed |
-| — | **net worth: include investments/brokerage** (currently accounts-only, understates) | ⏳ next |
-| 1b | forecast / safe-to-spend, upcoming bills, subscriptions + price changes | ⏳ |
+| 1b-1 | net worth incl. investments, upcoming bills, subscriptions | ✅ #75 |
+| 1b-2 | forecast / safe-to-spend | ⏳ next |
 | 1c | category trend over time, budget on-track history, unusual-charges feed | ⏳ |
 
 ### Big features (own phases — need schema/design)

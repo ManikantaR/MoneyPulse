@@ -20,6 +20,8 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_cashflow_summary',
   'get_income_breakdown',
   'get_net_worth',
+  'get_upcoming_bills',
+  'get_subscriptions',
   'compare_periods',
 ]);
 
