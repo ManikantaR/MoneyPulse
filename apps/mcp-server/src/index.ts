@@ -10,6 +10,9 @@ import { registerGetCategoryBreakdown } from './tools/get-category-breakdown.js'
 import { registerComparePeriods } from './tools/compare-periods.js';
 import { registerGetRecurringExpenses } from './tools/get-recurring-expenses.js';
 import { registerGetMerchantBreakdown } from './tools/get-merchant-breakdown.js';
+import { registerGetCashflowSummary } from './tools/get-cashflow-summary.js';
+import { registerGetIncomeBreakdown } from './tools/get-income-breakdown.js';
+import { registerGetNetWorth } from './tools/get-net-worth.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -27,6 +30,9 @@ registerGetCategoryBreakdown(server);
 registerComparePeriods(server);
 registerGetRecurringExpenses(server);
 registerGetMerchantBreakdown(server);
+registerGetCashflowSummary(server);
+registerGetIncomeBreakdown(server);
+registerGetNetWorth(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 
