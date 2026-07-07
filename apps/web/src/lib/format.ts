@@ -28,11 +28,14 @@ export function formatCentsCompact(cents: number): string {
  * Supports both YYYY-MM-DD and full ISO-8601 datetime strings.
  */
 export function formatDate(dateStr: string): string {
-  const date = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
+  // Transaction/bill dates are calendar dates stored at UTC midnight. Parse and format
+  // in UTC so a Jul-1 value never renders as "Jun 30" in a behind-UTC browser timezone.
+  const date = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00Z');
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(date);
 }
 
@@ -41,10 +44,11 @@ export function formatDate(dateStr: string): string {
  * Supports both YYYY-MM-DD and full ISO-8601 datetime strings.
  */
 export function formatDateShort(dateStr: string): string {
-  const date = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
+  const date = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00Z');
   return new Intl.DateTimeFormat('en-US', {
     month: 'numeric',
     day: 'numeric',
+    timeZone: 'UTC',
   }).format(date);
 }
 
