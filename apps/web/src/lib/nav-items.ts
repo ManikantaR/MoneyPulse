@@ -14,6 +14,7 @@ import {
   CalendarClock,
   Repeat,
   Sparkles,
+  HandCoins,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -31,6 +32,7 @@ export const navItems: NavItem[] = [
   { href: '/bills', label: 'Bills', icon: CalendarClock, placement: 'tab' },
   // Drawer items
   { href: '/accounts', label: 'Accounts', icon: Landmark, placement: 'drawer' },
+  { href: '/loans', label: 'Loans', icon: HandCoins, placement: 'drawer' },
   { href: '/investments', label: 'Investments', icon: TrendingUp, placement: 'drawer' },
   { href: '/budgets', label: 'Budgets', icon: Wallet, placement: 'drawer' },
   { href: '/categories', label: 'Categories', icon: Tags, placement: 'drawer' },
