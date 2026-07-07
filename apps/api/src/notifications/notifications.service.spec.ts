@@ -4,6 +4,7 @@ describe('NotificationsService', () => {
   let service: NotificationsService;
   let mockDb: any;
   let mockWebhookService: any;
+  let mockTelegramPush: any;
   let mockOutbox: any;
   let mockAliasMapper: any;
 
@@ -42,6 +43,12 @@ describe('NotificationsService', () => {
       sendWebhook: vi.fn().mockResolvedValue(false),
     };
 
+    // Disabled by default so createAndDispatch skips the Telegram path (no user-settings read).
+    mockTelegramPush = {
+      enabled: false,
+      sendToUser: vi.fn().mockResolvedValue(false),
+    };
+
     mockOutbox = {
       enqueue: vi.fn().mockResolvedValue(undefined),
     };
@@ -53,6 +60,7 @@ describe('NotificationsService', () => {
     service = new NotificationsService(
       mockDb,
       mockWebhookService,
+      mockTelegramPush,
       mockOutbox,
       mockAliasMapper,
     );

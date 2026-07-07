@@ -54,6 +54,7 @@ export interface UserSettings {
   dailyDigestEnabled: boolean;
   monthlyDigestEnabled: boolean;
   advisorDigestEnabled: boolean;
+  telegramNotificationsEnabled: boolean;
   notificationEmail: string | null;
   firebaseUid: string | null;
 }
