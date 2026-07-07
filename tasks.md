@@ -48,9 +48,13 @@ future occurrence (+ runs once on boot) so `get_upcoming_bills` + forecast + dig
 - **Loan payoff tracker** (mortgage + auto) — Phase 1 backend done (#88): `loans` table (migration 0011),
   amortization engine (`apps/mcp-server/src/lib/amortization.ts`), `get_loan_status` MCP tool (balance,
   principal/interest paid, extra principal, payoff date, "add $X/mo → months+interest saved"), CRUD `/loans`.
-  **Next:** seed the user's loans via `POST /loans` (lender pattern, initial balance, apr_bps, start date,
-  scheduled payment, extra-principal pattern); auto-split scheduled P+I vs extra-principal txns;
-  missing-payment detection; Loans web page; payoff nudges in the digest.
+  **Loans web page** (#92, done): `/loans` CRUD (add/edit/delete) with dollar→cents / percent→bps
+  conversion, drawer nav (HandCoins); `Loan` type in shared. Seed loans here (not direct DB — the
+  classifier blocks `ssh docker exec` prod writes; must go through `POST /loans`).
+  **Next:** auto-split scheduled P+I vs extra-principal txns (Phase 2 — match by amount since both
+  Langley txns share the merchant name); missing-payment detection; payoff status shown on the
+  Loans page (needs amortization moved to shared or a `/loans/:id/status` endpoint); payoff nudges
+  in the digest.
 - **Internet-trends weekly digest**: extend Phase-2 digest with web research (mortgage rates via FRED,
   savings tips) so it proactively makes the user "financially smarter."
 - **Digest → Telegram (#79)**: add Telegram as a delivery channel for the weekly advisor recap +
