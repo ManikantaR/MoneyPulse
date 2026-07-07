@@ -37,6 +37,12 @@ export class LoansController {
     return { data: await this.loansService.create(user.sub, body) };
   }
 
+  @Post('check-missed')
+  @ApiOperation({ summary: 'Check for missed loan payments and notify' })
+  async checkMissed(@CurrentUser() user: AuthTokenPayload) {
+    return { data: await this.loansService.checkMissedLoanPayments(user.sub) };
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update a tracked loan' })
   async update(
