@@ -31,14 +31,50 @@ export function registerGetNetWorth(server: McpServer) {
          GROUP BY a.id, a.starting_balance_cents`,
         [userId],
       );
-      let assets = 0;
+      let cashAssets = 0;
       let liabilities = 0;
       for (const r of balRows) {
         const bal = Number(r.bal);
-        if (bal >= 0) assets += bal;
+        if (bal >= 0) cashAssets += bal;
         else liabilities += bal; // negative
       }
+
+      // Current investment/brokerage value = latest snapshot balance per active account.
+      const investRows = await query(
+        `SELECT COALESCE(SUM(latest.balance_cents), 0) AS invest_cents
+         FROM investment_accounts ia
+         JOIN LATERAL (
+           SELECT balance_cents FROM investment_snapshots s
+           WHERE s.investment_account_id = ia.id
+           ORDER BY s.date DESC LIMIT 1
+         ) latest ON true
+         WHERE ia.user_id = $1 AND ia.deleted_at IS NULL`,
+        [userId],
+      );
+      const investments = Number(investRows[0]?.invest_cents ?? 0);
+      const assets = cashAssets + investments;
       const netWorth = assets + liabilities;
+
+      // Investment value at each month-end (latest snapshot on/before month end).
+      const investTrend = await query(
+        `SELECT to_char(m, 'YYYY-MM') AS ym, COALESCE(SUM(sv.balance_cents), 0) AS invest_cents
+         FROM generate_series(
+                date_trunc('month', CURRENT_DATE) - make_interval(months => $2 - 1),
+                date_trunc('month', CURRENT_DATE),
+                interval '1 month'
+              ) AS m
+         LEFT JOIN investment_accounts ia ON ia.user_id = $1 AND ia.deleted_at IS NULL
+         LEFT JOIN LATERAL (
+           SELECT balance_cents FROM investment_snapshots s
+           WHERE s.investment_account_id = ia.id AND s.date < (m + interval '1 month')
+           ORDER BY s.date DESC LIMIT 1
+         ) sv ON true
+         GROUP BY m ORDER BY m`,
+        [userId, params.months],
+      );
+      const investByMonth = new Map<string, number>(
+        investTrend.map((r) => [r.ym as string, Number(r.invest_cents)]),
+      );
 
       // Month-end net worth = starting balances + cumulative signed transactions by month.
       const trendRows = await query(
@@ -65,15 +101,22 @@ export function registerGetNetWorth(server: McpServer) {
       const recent = trendRows.slice(-params.months);
       const trendLines = recent.map((r) => {
         const label = new Date(r.m).toISOString().slice(0, 7); // YYYY-MM
-        return `${label}: ${signed(Number(r.net_worth_cents))}`;
+        const cash = Number(r.net_worth_cents);
+        const invest = investByMonth.get(label) ?? 0;
+        return `${label}: ${signed(cash + invest)}`;
       });
+
+      const assetLine =
+        investments > 0
+          ? `  Assets: ${dollars(assets)} (cash ${dollars(cashAssets)} + investments ${dollars(investments)})`
+          : `  Assets: ${dollars(assets)}`;
 
       const text = [
         `Net worth: ${signed(netWorth)}`,
-        `  Assets: ${dollars(assets)}`,
+        assetLine,
         `  Liabilities: ${signed(liabilities)}`,
         '',
-        `Month-end net worth (last ${recent.length} month${recent.length === 1 ? '' : 's'}):`,
+        `Month-end net worth (last ${recent.length} month${recent.length === 1 ? '' : 's'}, incl. investments):`,
         trendLines.length ? trendLines.join('\n') : '(not enough history)',
       ].join('\n');
 

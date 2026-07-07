@@ -13,6 +13,8 @@ import { registerGetMerchantBreakdown } from './tools/get-merchant-breakdown.js'
 import { registerGetCashflowSummary } from './tools/get-cashflow-summary.js';
 import { registerGetIncomeBreakdown } from './tools/get-income-breakdown.js';
 import { registerGetNetWorth } from './tools/get-net-worth.js';
+import { registerGetUpcomingBills } from './tools/get-upcoming-bills.js';
+import { registerGetSubscriptions } from './tools/get-subscriptions.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -33,6 +35,8 @@ registerGetMerchantBreakdown(server);
 registerGetCashflowSummary(server);
 registerGetIncomeBreakdown(server);
 registerGetNetWorth(server);
+registerGetUpcomingBills(server);
+registerGetSubscriptions(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 
