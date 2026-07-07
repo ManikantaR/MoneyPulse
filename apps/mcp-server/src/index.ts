@@ -19,6 +19,7 @@ import { registerGetCashflowForecast } from './tools/get-cashflow-forecast.js';
 import { registerGetCategoryTrend } from './tools/get-category-trend.js';
 import { registerGetBudgetHistory } from './tools/get-budget-history.js';
 import { registerGetRecentAnomalies } from './tools/get-recent-anomalies.js';
+import { registerGetLoanStatus } from './tools/get-loan-status.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -45,6 +46,7 @@ registerGetCashflowForecast(server);
 registerGetCategoryTrend(server);
 registerGetBudgetHistory(server);
 registerGetRecentAnomalies(server);
+registerGetLoanStatus(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 

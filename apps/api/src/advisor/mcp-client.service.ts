@@ -26,6 +26,7 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_category_trend',
   'get_budget_history',
   'get_recent_anomalies',
+  'get_loan_status',
   'compare_periods',
 ]);
 

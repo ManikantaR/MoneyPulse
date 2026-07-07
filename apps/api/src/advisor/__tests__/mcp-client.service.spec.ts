@@ -21,6 +21,7 @@ const ALL_TOOLS = [
   { name: 'get_category_trend', description: 'n', inputSchema: { type: 'object' } },
   { name: 'get_budget_history', description: 'o', inputSchema: { type: 'object' } },
   { name: 'get_recent_anomalies', description: 'p', inputSchema: { type: 'object' } },
+  { name: 'get_loan_status', description: 'q', inputSchema: { type: 'object' } },
   { name: 'compare_periods', description: 'f', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },

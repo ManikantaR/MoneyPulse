@@ -316,3 +316,22 @@ export const addSnapshotSchema = z.object({
 export type CreateInvestmentAccountInput = z.infer<typeof createInvestmentAccountSchema>;
 export type UpdateInvestmentAccountInput = z.infer<typeof updateInvestmentAccountSchema>;
 export type AddSnapshotInput = z.infer<typeof addSnapshotSchema>;
+
+// ── Loans (mortgage / auto payoff tracker) ───────────────────
+
+export const createLoanSchema = z.object({
+  name: z.string().min(1).max(100),
+  lenderPattern: z.string().min(1).max(200),
+  loanType: z.enum(['mortgage', 'auto', 'personal', 'student', 'other']).default('mortgage'),
+  originalBalanceCents: z.int().positive(),
+  aprBps: z.int().min(0).max(100000),
+  termMonths: z.int().positive().max(600).optional(),
+  startDate: z.iso.date(),
+  scheduledPaymentCents: z.int().positive(),
+  extraPrincipalPattern: z.string().max(200).nullable().optional(),
+});
+
+export const updateLoanSchema = createLoanSchema.partial();
+
+export type CreateLoanInput = z.infer<typeof createLoanSchema>;
+export type UpdateLoanInput = z.infer<typeof updateLoanSchema>;

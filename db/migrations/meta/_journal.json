@@ -78,6 +78,13 @@
       "when": 1783200300000,
       "tag": "0010_advisor_per_provider_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783200400000,
+      "tag": "0011_loans",
+      "breakpoints": true
     }
   ]
 }

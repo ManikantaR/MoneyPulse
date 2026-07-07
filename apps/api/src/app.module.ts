@@ -21,6 +21,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { AiLogsModule } from './ai-logs/ai-logs.module';
 import { SyncModule } from './sync/sync.module';
 import { BillsModule } from './bills/bills.module';
+import { LoansModule } from './loans/loans.module';
 import { InvestmentsModule } from './investments/investments.module';
 import { AdvisorModule } from './advisor/advisor.module';
 
@@ -65,6 +66,7 @@ import { AdvisorModule } from './advisor/advisor.module';
     JobsModule,
     AiLogsModule,
     BillsModule,
+    LoansModule,
     InvestmentsModule,
     AdvisorModule,
     HealthModule,
