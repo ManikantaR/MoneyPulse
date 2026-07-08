@@ -39,6 +39,16 @@ describe('formatDate', () => {
   it('should format ISO date string for display', () => {
     expect(formatDate('2026-03-15')).toBe('Mar 15, 2026');
   });
+
+  // Regression for #55: a Jul-1 business date must never render as Jun 30 in a
+  // behind-UTC timezone, whether the API sends a date-only or a full-ISO value.
+  it('renders a date-only Jul 1 as Jul 1 (not Jun 30)', () => {
+    expect(formatDate('2026-07-01')).toBe('Jul 1, 2026');
+  });
+
+  it('renders a UTC-midnight ISO Jul 1 as Jul 1 (not Jun 30)', () => {
+    expect(formatDate('2026-07-01T00:00:00.000Z')).toBe('Jul 1, 2026');
+  });
 });
 
 describe('formatDateShort', () => {

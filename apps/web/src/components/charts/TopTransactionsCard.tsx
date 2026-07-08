@@ -1,6 +1,5 @@
-import { formatCents } from '@/lib/format';
+import { formatCents, formatDate } from '@/lib/format';
 import type { Transaction } from '@moneypulse/shared';
-import { format } from 'date-fns';
 import { Flame } from 'lucide-react';
 
 interface TopTransactionsCardProps {
@@ -41,7 +40,7 @@ export function TopTransactionsCard({ transactions }: TopTransactionsCardProps) 
                   {tx.merchantName || tx.description}
                 </p>
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  {format(new Date(tx.date), 'MMM d, yyyy')}
+                  {formatDate(tx.date)}
                 </p>
               </div>
               <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--destructive)]">
