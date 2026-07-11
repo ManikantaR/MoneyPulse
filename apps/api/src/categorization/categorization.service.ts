@@ -5,6 +5,7 @@ import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { RuleEngineService } from './rule-engine.service';
 import { AiCategorizerService } from './ai-categorizer.service';
 import { LearningService } from './learning.service';
+import { TransactionProjectionService } from '../sync/transaction-projection.service';
 
 interface CategorizationStats {
   total: number;
@@ -29,6 +30,7 @@ export class CategorizationService {
     private readonly ruleEngine: RuleEngineService,
     private readonly aiCategorizer: AiCategorizerService,
     private readonly learningService: LearningService,
+    private readonly projection: TransactionProjectionService,
   ) {}
 
   /**
@@ -112,6 +114,11 @@ export class CategorizationService {
           .set({ categoryId, updatedAt: new Date() })
           .where(inArray(schema.transactions.id, ids));
       }
+      // Reproject so the web reflects the rule-assigned category instead of the
+      // uncategorized state projected at import time. #89
+      await this.projection.reprojectByIds(
+        [...categorizedByCategoryId.values()].flat(),
+      );
     }
 
     if (stillUncategorized.length === 0) return stats;
@@ -132,6 +139,7 @@ export class CategorizationService {
       );
 
       const remainingAfterAi: any[] = [];
+      const aiCategorizedIds: string[] = [];
 
       for (let i = 0; i < stillUncategorized.length; i++) {
         const result = aiResults[i];
@@ -155,6 +163,7 @@ export class CategorizationService {
               result.confidence,
             );
 
+            aiCategorizedIds.push(stillUncategorized[i].id);
             stats.categorizedByAi++;
           } else {
             remainingAfterAi.push(stillUncategorized[i]);
@@ -167,6 +176,9 @@ export class CategorizationService {
           remainingAfterAi.push(stillUncategorized[i]);
         }
       }
+
+      // Reproject AI-assigned transactions so the web leaves "Uncategorized". #89
+      await this.projection.reprojectByIds(aiCategorizedIds);
 
       stats.uncategorized = remainingAfterAi.length;
     } catch (err: any) {
@@ -205,6 +217,9 @@ export class CategorizationService {
       transactionId,
       newCategoryId,
     );
+
+    // Reproject the override so the web reflects the corrected category. #89
+    await this.projection.reprojectByIds([transactionId]);
   }
 
   /**
@@ -321,6 +336,11 @@ export class CategorizationService {
         .set({ categoryId, updatedAt: new Date() })
         .where(inArray(schema.transactions.id, ids));
     }
+
+    // Reproject rule-assigned transactions so the web leaves "Uncategorized". #89
+    await this.projection.reprojectByIds(
+      [...categorizedByCategoryId.values()].flat(),
+    );
 
     return { categorizedByRule: ruleCount, uncategorizedIds: stillUncategorizedIds };
   }

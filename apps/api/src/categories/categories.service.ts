@@ -15,6 +15,7 @@ import type {
   UpdateCategoryInput,
 } from '@moneypulse/shared';
 import { OutboxService } from '../sync/outbox.service';
+import { AliasMapperService } from '../sync/alias-mapper.service';
 
 /**
  * Service for managing the category tree.
@@ -28,6 +29,7 @@ export class CategoriesService {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
     @Optional() private readonly outbox?: OutboxService,
+    @Optional() private readonly aliasMapper?: AliasMapperService,
   ) {}
 
   /**
@@ -223,7 +225,7 @@ export class CategoriesService {
   }
 
   private async enqueueCategoryEvent(category: any, userId?: string): Promise<void> {
-    if (!this.outbox || !userId) return;
+    if (!this.outbox || !this.aliasMapper || !userId) return;
     try {
       await this.outbox.enqueue({
         eventType: 'category.projected.v1',
@@ -231,10 +233,16 @@ export class CategoriesService {
         aggregateId: category.id,
         userId,
         payload: {
+          // Web ingest keys category docs on `categoryId` and reads
+          // `parentCategoryId`; both are obfuscated aliases so raw local UUIDs
+          // never leave the NAS and match the aliased categoryId on transactions. #90
+          categoryId: this.aliasMapper.toAliasId('category', category.id),
           name: category.name,
           icon: category.icon ?? null,
           color: category.color ?? null,
-          parentId: category.parentId ?? null,
+          parentCategoryId: category.parentId
+            ? this.aliasMapper.toAliasId('category', category.parentId)
+            : null,
           sortOrder: category.sortOrder ?? 0,
           isTransfer: category.isTransfer ?? false,
         },
