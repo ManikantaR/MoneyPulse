@@ -17,7 +17,8 @@ import {
   asc,
   ilike,
   sql,
-  between,
+  gte,
+  lt,
   count,
   inArray,
 } from 'drizzle-orm';
@@ -30,6 +31,29 @@ import type {
 } from '@moneypulse/shared';
 import { createHash } from 'crypto';
 import { encryptField, decryptField } from '../common/crypto';
+
+/**
+ * Normalize a transaction business date to a stable, timezone-free `YYYY-MM-DD`
+ * string. Transaction dates are calendar dates, not instants — emitting a full
+ * `...T00:00:00.000Z` timestamp lets clients in negative-UTC-offset timezones
+ * render `Jul 1` as `Jun 30`. Accepts a Date or an ISO/date-only string; passes
+ * null/undefined through unchanged. See issue #55.
+ */
+export function toBusinessDate(value: unknown): unknown {
+  if (value == null) return value;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'string') return value.slice(0, 10);
+  return value;
+}
+
+/**
+ * Parse a `YYYY-MM-DD` (or ISO) date query bound to the UTC-midnight instant of
+ * that calendar day, so range filtering matches the UTC-midnight semantics used
+ * when transaction dates are stored. See issue #55.
+ */
+export function utcDayStart(dateStr: string): Date {
+  return new Date(`${dateStr.slice(0, 10)}T00:00:00.000Z`);
+}
 
 @Injectable()
 export class TransactionsService {
@@ -138,13 +162,12 @@ export class TransactionsService {
       conditions.push(eq(schema.transactions.categoryId, query.categoryId));
     }
     if (query.from && query.to) {
-      conditions.push(
-        between(
-          schema.transactions.date,
-          new Date(query.from),
-          new Date(query.to),
-        ),
-      );
+      // Filter on UTC calendar-day bounds: [from 00:00Z, to+1day 00:00Z) so the
+      // whole `to` day is included regardless of the stored time-of-day. #55
+      const toExclusive = utcDayStart(query.to);
+      toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+      conditions.push(gte(schema.transactions.date, utcDayStart(query.from)));
+      conditions.push(lt(schema.transactions.date, toExclusive));
     }
     if (query.search) {
       conditions.push(
@@ -433,6 +456,9 @@ export class TransactionsService {
     if (!txn) return txn;
     return {
       ...txn,
+      // Emit the business date as a stable `YYYY-MM-DD` calendar date so clients
+      // never shift it a day across timezones. #55
+      date: toBusinessDate(txn.date),
       originalDescription: decryptField(txn.originalDescription),
     };
   }
