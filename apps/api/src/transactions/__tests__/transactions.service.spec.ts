@@ -4,6 +4,7 @@ import { TransactionsService } from '../transactions.service';
 import { DATABASE_CONNECTION } from '../../db/db.module';
 import { OutboxService } from '../../sync/outbox.service';
 import { AliasMapperService } from '../../sync/alias-mapper.service';
+import { TransactionProjectionService } from '../../sync/transaction-projection.service';
 
 vi.mock('../../common/crypto', () => ({
   encryptField: vi.fn().mockReturnValue('encrypted_test_value'),
@@ -40,17 +41,17 @@ describe('TransactionsService', () => {
 
     mockAliasMapper = { toAliasId: vi.fn().mockReturnValue('alias-abc123') };
 
-    const mockOutbox = {
-      enqueue: vi.fn().mockResolvedValue(undefined),
-      enqueueInTx: vi.fn().mockResolvedValue(undefined),
+    const mockProjection = {
+      project: vi.fn().mockResolvedValue(undefined),
+      projectInTx: vi.fn().mockResolvedValue(undefined),
+      reprojectByIds: vi.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TransactionsService,
         { provide: DATABASE_CONNECTION, useValue: mockDb },
-        { provide: OutboxService, useValue: mockOutbox },
-        { provide: AliasMapperService, useValue: mockAliasMapper },
+        { provide: TransactionProjectionService, useValue: mockProjection },
       ],
     }).compile();
 
@@ -169,9 +170,12 @@ describe('TransactionsService', () => {
       };
       mockAliasMapper = { toAliasId: vi.fn().mockReturnValue('alias-abc123') };
 
+      // Use the real projection service so payload assertions exercise the
+      // actual buildPayload/isTransfer logic through mockOutbox.enqueue.
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           TransactionsService,
+          TransactionProjectionService,
           { provide: DATABASE_CONNECTION, useValue: mockDb },
           { provide: OutboxService, useValue: mockOutbox },
           { provide: AliasMapperService, useValue: mockAliasMapper },

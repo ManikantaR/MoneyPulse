@@ -6,8 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
-import { OutboxService } from '../sync/outbox.service';
-import { AliasMapperService } from '../sync/alias-mapper.service';
+import { TransactionProjectionService } from '../sync/transaction-projection.service';
 import * as schema from '../db/schema';
 import {
   eq,
@@ -61,8 +60,7 @@ export class TransactionsService {
 
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
-    private readonly outbox: OutboxService,
-    private readonly aliasMapper: AliasMapperService,
+    private readonly projection: TransactionProjectionService,
   ) {}
 
   /**
@@ -117,7 +115,7 @@ export class TransactionsService {
         .returning();
 
       const inserted = this.decryptTxn(rows[0]);
-      await this.enqueueTransactionEventInTx(tx, 'transaction.projected.v1', inserted);
+      await this.projection.projectInTx(tx, 'transaction.projected.v1', inserted);
       return inserted;
     });
 
@@ -329,8 +327,8 @@ export class TransactionsService {
       .returning();
     const updatedRow = this.decryptTxn(rows[0]);
     // Best-effort: sync outbox failures (e.g. ALIAS_SECRET not configured) must
-    // not roll back the domain write. enqueueTransactionEvent already catches.
-    await this.enqueueTransactionEvent('transaction.projected.v1', updatedRow);
+    // not roll back the domain write. project() already catches.
+    await this.projection.project('transaction.projected.v1', updatedRow);
     return updatedRow;
   }
 
@@ -409,6 +407,13 @@ export class TransactionsService {
       )
       .returning();
 
+    // Reproject the now-split parent (so the web can flag/exclude it) and the new
+    // child transactions, so the cloud projection reflects the split. #89
+    await this.projection.reprojectByIds([
+      parent.id,
+      ...children.map((c: any) => c.id),
+    ]);
+
     return { parent: { ...parent, isSplitParent: true }, children: children.map((c: any) => this.decryptTxn(c)) };
   }
 
@@ -430,6 +435,10 @@ export class TransactionsService {
         ),
       )
       .returning({ id: schema.transactions.id });
+
+    // Reproject each recategorized transaction so the web projection reflects
+    // the new category instead of showing stale "Uncategorized". #89
+    await this.projection.reprojectByIds(updated.map((u: any) => u.id));
 
     return { updatedCount: updated.length };
   }
@@ -461,96 +470,5 @@ export class TransactionsService {
       date: toBusinessDate(txn.date),
       originalDescription: decryptField(txn.originalDescription),
     };
-  }
-
-  /**
-   * Enqueue a safe, PII-free projection event within an existing DB transaction.
-   * Look up the is_transfer flag for a category. Returns false when the
-   * transaction has no category or the category row is not found.
-   */
-  private async resolveIsTransfer(
-    executor: any,
-    categoryId: string | null | undefined,
-  ): Promise<boolean> {
-    if (!categoryId) return false;
-    const rows = await executor
-      .select({ isTransfer: schema.categories.isTransfer })
-      .from(schema.categories)
-      .where(eq(schema.categories.id, categoryId))
-      .limit(1);
-    return rows[0]?.isTransfer ?? false;
-  }
-
-  /**
-   * Alias mapping errors propagate so the outer transaction can roll back atomically.
-   * If ALIAS_SECRET is missing, the domain write is rolled back and the caller receives an error.
-   */
-  private async enqueueTransactionEventInTx(
-    tx: any,
-    eventType: string,
-    txn: any,
-  ): Promise<void> {
-    const isTransfer = await this.resolveIsTransfer(tx, txn.categoryId);
-    const payload: Record<string, unknown> = {
-      transactionAliasId: this.aliasMapper.toAliasId('transaction', txn.id),
-      accountAliasId: this.aliasMapper.toAliasId('account', txn.accountId),
-      amountCents: txn.amountCents,
-      date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
-      categoryId: txn.categoryId ?? null,
-      isCredit: txn.isCredit,
-      isTransfer,
-      isManual: txn.isManual ?? false,
-      tags: txn.tags ?? [],
-      originalAmountCents: txn.originalAmountCents ?? null,
-      currencyCode: txn.currencyCode ?? null,
-    };
-
-    await this.outbox.enqueueInTx(tx, {
-      eventType,
-      aggregateType: 'transaction',
-      aggregateId: txn.id,
-      userId: txn.userId,
-      payload,
-    });
-  }
-
-  /**
-   * Enqueue a safe, PII-free projection event for the sync outbox (best-effort).
-   * Aliasing and outbox insert errors are caught and logged so the domain operation
-   * succeeds even when sync secrets are missing or the outbox insert fails.
-   * Prefer enqueueTransactionEventInTx when atomicity with the domain write is required.
-   */
-  private async enqueueTransactionEvent(
-    eventType: string,
-    txn: any,
-  ): Promise<void> {
-    try {
-      const isTransfer = await this.resolveIsTransfer(this.db, txn.categoryId);
-      const payload: Record<string, unknown> = {
-        transactionAliasId: this.aliasMapper.toAliasId('transaction', txn.id),
-        accountAliasId: this.aliasMapper.toAliasId('account', txn.accountId),
-        amountCents: txn.amountCents,
-        date: txn.date instanceof Date ? txn.date.toISOString() : txn.date,
-        categoryId: txn.categoryId ?? null,
-        isCredit: txn.isCredit,
-        isTransfer,
-        isManual: txn.isManual ?? false,
-        tags: txn.tags ?? [],
-        originalAmountCents: txn.originalAmountCents ?? null,
-        currencyCode: txn.currencyCode ?? null,
-      };
-
-      await this.outbox.enqueue({
-        eventType,
-        aggregateType: 'transaction',
-        aggregateId: txn.id,
-        userId: txn.userId,
-        payload,
-      });
-    } catch (err) {
-      this.logger.warn(
-        `Skipping outbox enqueue for transaction ${txn.id}: ${(err as Error).message}`,
-      );
-    }
   }
 }

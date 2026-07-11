@@ -216,7 +216,11 @@ export class SyncController {
             accountAliasId: this.aliasMapper.toAliasId('account', txn.account_id),
             amountCents: txn.amount_cents,
             date: new Date(txn.date).toISOString(),
-            categoryId: txn.category_id ?? null,
+            // Alias the local category UUID so backfilled rows match the aliased
+            // categoryId emitted by the live path and category docs. #90
+            categoryId: txn.category_id
+              ? this.aliasMapper.toAliasId('category', txn.category_id)
+              : null,
             isCredit: txn.is_credit,
             isTransfer: txn.is_transfer,
             isManual: false,
@@ -274,11 +278,15 @@ export class SyncController {
           aggregateId: cat.id,
           userId,
           payload: {
-            categoryId: cat.id,
+            // Aliased identifiers so backfilled category docs key and link
+            // identically to the live emitter (categories.service). #90
+            categoryId: this.aliasMapper.toAliasId('category', cat.id),
             name: cat.name,
             icon: cat.icon,
             color: cat.color,
-            parentCategoryId: cat.parent_id ?? null,
+            parentCategoryId: cat.parent_id
+              ? this.aliasMapper.toAliasId('category', cat.parent_id)
+              : null,
             sortOrder: cat.sort_order ?? 0,
             isTransfer: cat.is_transfer ?? false,
           },
