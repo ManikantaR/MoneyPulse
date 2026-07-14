@@ -1,0 +1,6 @@
+{
+  "notificationAliasId": "a1_9999999999999999999999999999999999999999",
+  "type": "spending_anomaly",
+  "title": "Unusual spend",
+  "body": "You spent $600 at Fictional Merchant"
+}

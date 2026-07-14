@@ -4,6 +4,8 @@ import { NotFoundException } from '@nestjs/common';
 describe('BudgetsService', () => {
   let service: BudgetsService;
   let mockDb: any;
+  let mockOutbox: any;
+  let mockAliasMapper: any;
 
   const TEST_USER = 'user-1';
   const TEST_HOUSEHOLD = 'hh-1';
@@ -23,7 +25,13 @@ describe('BudgetsService', () => {
       set: vi.fn().mockReturnThis(),
       execute: vi.fn().mockResolvedValue({ rows: [] }),
     };
-    service = new BudgetsService(mockDb);
+    mockOutbox = {
+      enqueue: vi.fn().mockResolvedValue(undefined),
+    };
+    mockAliasMapper = {
+      toAliasId: vi.fn((entity: string, id: string) => `alias:${entity}:${id}`),
+    };
+    service = new BudgetsService(mockDb, mockOutbox, mockAliasMapper);
   });
 
   describe('findBudgets', () => {
@@ -72,9 +80,21 @@ describe('BudgetsService', () => {
         amountCents: 50000,
         period: 'monthly' as const,
       };
+      mockDb.returning.mockResolvedValue([{ id: 'b-1', ...input, householdId: null }]);
       const result = await service.createBudget(TEST_USER, input);
-      expect(result).toEqual({ id: 'b-1' });
+      expect(result).toEqual({ id: 'b-1', ...input, householdId: null });
       expect(mockDb.insert).toHaveBeenCalled();
+      expect(mockOutbox.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'budget.projected.v1',
+          payload: {
+            categoryId: 'alias:category:cat-1',
+            amountCents: 50000,
+            period: 'monthly',
+            householdId: null,
+          },
+        }),
+      );
     });
 
     it('should reject creating budget for foreign household', async () => {
@@ -96,12 +116,21 @@ describe('BudgetsService', () => {
         period: 'monthly' as const,
         householdId: TEST_HOUSEHOLD,
       };
+      mockDb.returning.mockResolvedValue([{ id: 'b-1', ...input }]);
       const result = await service.createBudget(
         TEST_USER,
         input,
         TEST_HOUSEHOLD,
       );
-      expect(result).toEqual({ id: 'b-1' });
+      expect(result).toEqual({ id: 'b-1', ...input });
+      expect(mockOutbox.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            categoryId: 'alias:category:cat-1',
+            householdId: 'alias:household:hh-1',
+          }),
+        }),
+      );
     });
   });
 

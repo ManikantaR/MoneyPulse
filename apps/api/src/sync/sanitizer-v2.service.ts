@@ -1,10 +1,34 @@
 import { Injectable } from '@nestjs/common';
+import { getSyncPayloadSchema } from '@moneypulse/shared';
 import { SYNC_BANNED_FIELDS, SYNC_PII_PATTERNS } from './sync.constants';
 import type { SyncPolicyResult } from './sync.types';
 
 @Injectable()
 export class SanitizerV2Service {
-  sanitizePayload(payload: Record<string, unknown>): SyncPolicyResult {
+  sanitizePayload(
+    eventType: string,
+    payload: Record<string, unknown>,
+  ): SyncPolicyResult {
+    const schema = getSyncPayloadSchema(eventType);
+    if (!schema) {
+      return {
+        policyPassed: false,
+        policyReason: 'POLICY_FAIL_SCHEMA',
+        policyReasonDetail: `Unknown sync event type: ${eventType}`,
+        sanitizedPayload: {},
+      };
+    }
+
+    const parsed = schema.safeParse(payload);
+    if (!parsed.success) {
+      return {
+        policyPassed: false,
+        policyReason: 'POLICY_FAIL_SCHEMA',
+        policyReasonDetail: this.formatSchemaIssues(parsed.error.issues),
+        sanitizedPayload: {},
+      };
+    }
+
     const bannedField = this.findBannedField(payload);
     if (bannedField) {
       return {
@@ -23,7 +47,7 @@ export class SanitizerV2Service {
       };
     }
 
-    const sanitizedPayload = this.dropUndefined(payload);
+    const sanitizedPayload = this.dropUndefined(parsed.data);
     return {
       policyPassed: true,
       policyReason: 'POLICY_PASS',
@@ -76,6 +100,17 @@ export class SanitizerV2Service {
     }
 
     return false;
+  }
+
+  private formatSchemaIssues(
+    issues: Array<{ path: PropertyKey[]; message: string }>,
+  ): string {
+    return issues
+      .map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+        return `${path}: ${issue.message}`;
+      })
+      .join('; ');
   }
 
   private dropUndefined(

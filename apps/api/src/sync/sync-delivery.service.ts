@@ -47,13 +47,17 @@ export class SyncDeliveryService {
   }
 
   private async deliverOne(row: OutboxRow): Promise<void> {
-    const policy = this.sanitizer.sanitizePayload(row.payload_json);
+    const policy = this.sanitizer.sanitizePayload(
+      row.event_type,
+      row.payload_json,
+    );
 
     if (!policy.policyPassed) {
       await this.markPolicyFailed(
         row,
         policy.policyReason,
         hashSyncPayload(row.payload_json),
+        policy.policyReasonDetail,
       );
       return;
     }
@@ -194,13 +198,15 @@ export class SyncDeliveryService {
     row: OutboxRow,
     reason: string,
     payloadHash: string,
+    reasonDetail?: string,
   ): Promise<void> {
+    const policyReason = reasonDetail ? `${reason}: ${reasonDetail}` : reason;
     await this.db
       .update(schema.outboxEvents)
       .set({
         status: 'policy_failed',
         policyPassed: false,
-        policyReason: reason,
+        policyReason,
         updatedAt: new Date(),
       })
       .where(sql`${schema.outboxEvents.id} = ${row.id}`);
@@ -209,7 +215,7 @@ export class SyncDeliveryService {
       row,
       payloadHash,
       false,
-      reason,
+      policyReason,
       row.attempts + 1,
       null,
       'POLICY',

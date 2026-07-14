@@ -1,0 +1,9 @@
+{
+  "categoryId": "a1_7777777777777777777777777777777777777777",
+  "name": "Groceries",
+  "icon": "cart",
+  "color": "#16a34a",
+  "parentCategoryId": "a1_8888888888888888888888888888888888888888",
+  "sortOrder": 12,
+  "isTransfer": false
+}

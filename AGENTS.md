@@ -8,6 +8,7 @@ This repository is the local-first MoneyPulse application: NestJS API, Next.js w
 - Preserve local-first privacy guarantees. Cloud sync, AI categorization, exports, and integrations must never weaken the primary local data boundary.
 - Prefer vertical slices with explicit file inventories, validation commands, and acceptance criteria.
 - Keep backend, frontend, shared package, and PDF parser changes coordinated in specs when a feature crosses boundaries.
+- Any change to `apps/api/src/sync/` payload shapes must update the shared sync-contract schema and the matching golden fixture in the same PR.
 - Use the rubber-duck loop in `docs/agentic/rule-set.md` for every plan, spec, bug fix, and implementation.
 
 ## Key Paths

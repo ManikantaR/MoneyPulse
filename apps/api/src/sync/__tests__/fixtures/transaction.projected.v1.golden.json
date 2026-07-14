@@ -1,0 +1,14 @@
+{
+  "transactionAliasId": "a1_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "accountAliasId": "a1_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "amountCents": -8450,
+  "date": "2026-07-10T00:00:00.000Z",
+  "categoryId": "a1_cccccccccccccccccccccccccccccccccccccccc",
+  "isCredit": false,
+  "isTransfer": false,
+  "isManual": false,
+  "isSplitParent": false,
+  "tags": ["groceries", "weekly"],
+  "originalAmountCents": null,
+  "currencyCode": "USD"
+}
