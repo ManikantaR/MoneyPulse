@@ -334,7 +334,7 @@ describe('TransactionsService', () => {
   });
 
   describe('split editing', () => {
-    it('replaces existing child rows and reprojects the parent plus new children', async () => {
+    it('updates existing child rows and reprojects the parent plus children', async () => {
       const parent = {
         ...baseTxn,
         amountCents: 10000,
@@ -343,19 +343,31 @@ describe('TransactionsService', () => {
         isSplitParent: true,
         merchantName: 'Walmart',
       };
-      const insertedChildren = [
+      const existingChildren = [
+        { ...baseTxn, id: 'child-1', amountCents: 5000, parentTransactionId: 'txn-1' },
+        { ...baseTxn, id: 'child-2', amountCents: 5000, parentTransactionId: 'txn-1' },
+      ];
+      const updatedChildren = [
         { ...baseTxn, id: 'child-1', amountCents: 6000, parentTransactionId: 'txn-1' },
         { ...baseTxn, id: 'child-2', amountCents: 4000, parentTransactionId: 'txn-1' },
       ];
 
       vi.spyOn(service, 'findById').mockResolvedValue(parent as any);
       mockDb.transaction = vi.fn().mockImplementation(async (fn: any) => {
+        const returning = vi
+          .fn()
+          .mockResolvedValueOnce([updatedChildren[0]])
+          .mockResolvedValueOnce([updatedChildren[1]]);
         const tx = {
-          delete: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          from: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockResolvedValue(existingChildren),
+          update: vi.fn().mockReturnThis(),
+          set: vi.fn().mockReturnThis(),
           where: vi.fn().mockReturnThis(),
           insert: vi.fn().mockReturnThis(),
           values: vi.fn().mockReturnThis(),
-          returning: vi.fn().mockResolvedValue(insertedChildren),
+          returning,
         };
         return fn(tx);
       });
@@ -374,6 +386,10 @@ describe('TransactionsService', () => {
         'child-2',
       ]);
       expect(result.children).toHaveLength(2);
+      expect(result.children.map((child: any) => child.id)).toEqual([
+        'child-1',
+        'child-2',
+      ]);
     });
 
     it('rejects editing a transaction that is not already split', async () => {

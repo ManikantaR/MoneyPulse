@@ -442,33 +442,72 @@ export class TransactionsService {
     }
 
     const children = await this.db.transaction(async (tx: any) => {
-      await tx
-        .delete(schema.transactions)
-        .where(eq(schema.transactions.parentTransactionId, id));
-
-      const childRows = await tx
-        .insert(schema.transactions)
-        .values(
-          input.splits.map((split: any, idx: number) => ({
-            accountId: parent.accountId,
-            userId,
-            txnHash: createHash('sha256')
-              .update(`${parent.id}|split|${idx}|edit`)
-              .digest('hex'),
-            date: parent.date,
-            description: split.description || parent.description,
-            originalDescription: encryptField(parent.originalDescription),
-            amountCents: split.amountCents,
-            categoryId: split.categoryId ?? null,
-            merchantName: parent.merchantName ?? null,
-            isCredit: parent.isCredit,
-            isManual: parent.isManual ?? false,
-            parentTransactionId: parent.id,
-            sourceFileId: parent.sourceFileId,
-            tags: [],
-          })),
+      const existingChildren = await tx
+        .select()
+        .from(schema.transactions)
+        .where(
+          and(
+            eq(schema.transactions.parentTransactionId, id),
+            isNull(schema.transactions.deletedAt),
+          ),
         )
-        .returning();
+        .orderBy(asc(schema.transactions.createdAt), asc(schema.transactions.id));
+
+      const now = new Date();
+      const childRows = [];
+
+      for (let idx = 0; idx < input.splits.length; idx++) {
+        const split = input.splits[idx];
+        const childValues = {
+          accountId: parent.accountId,
+          userId,
+          date: parent.date,
+          description: split.description || parent.description,
+          originalDescription: encryptField(parent.originalDescription),
+          amountCents: split.amountCents,
+          categoryId: split.categoryId ?? null,
+          merchantName: parent.merchantName ?? null,
+          isCredit: parent.isCredit,
+          isManual: parent.isManual ?? false,
+          parentTransactionId: parent.id,
+          sourceFileId: parent.sourceFileId,
+          tags: [],
+          updatedAt: now,
+        };
+
+        if (existingChildren[idx]) {
+          const [updatedChild] = await tx
+            .update(schema.transactions)
+            .set(childValues)
+            .where(eq(schema.transactions.id, existingChildren[idx].id))
+            .returning();
+          childRows.push(updatedChild);
+        } else {
+          const [insertedChild] = await tx
+            .insert(schema.transactions)
+            .values({
+              ...childValues,
+              txnHash: createHash('sha256')
+                .update(`${parent.id}|split|${idx}|${now.getTime()}`)
+                .digest('hex'),
+            })
+            .returning();
+          childRows.push(insertedChild);
+        }
+      }
+
+      const surplusChildren = existingChildren.slice(input.splits.length);
+      if (surplusChildren.length > 0) {
+        await tx
+          .update(schema.transactions)
+          .set({ deletedAt: now, updatedAt: now })
+          .where(
+            inArray(
+              schema.transactions.id,
+              surplusChildren.map((child: any) => child.id),
+            ),
+          );
+      }
 
       return childRows.map((c: any) => this.decryptTxn(c));
     });
