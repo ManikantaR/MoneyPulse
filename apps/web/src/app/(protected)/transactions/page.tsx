@@ -535,6 +535,16 @@ export default function TransactionsPage() {
                   </td>
                   <td className="px-6 py-5 max-w-[300px] truncate">
                     <span className="font-medium">{txn.description}</span>
+                    {txn.isSplitParent ? (
+                      <span className="ml-2 inline-flex rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--primary)]">
+                        Split Parent
+                      </span>
+                    ) : null}
+                    {txn.parentTransactionId ? (
+                      <span className="ml-2 inline-flex rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+                        Split Child
+                      </span>
+                    ) : null}
                     {txn.merchantName && (
                       <span className="ml-2 text-xs text-[var(--muted-foreground)]">
                         {txn.merchantName}
@@ -606,7 +616,10 @@ export default function TransactionsPage() {
                 key={txn.id}
                 onClick={() => setSelectedTxn(txn as Transaction)}
                 fields={[
-                  { primary: true, value: txn.description },
+                  {
+                    primary: true,
+                    value: `${txn.description}${txn.isSplitParent ? ' · Split Parent' : txn.parentTransactionId ? ' · Split Child' : ''}`,
+                  },
                   {
                     amount: true,
                     amountColor,

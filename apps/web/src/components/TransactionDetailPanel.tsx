@@ -131,19 +131,27 @@ export function TransactionDetailPanel({
           {transaction.merchantName && (
             <DetailRow label="Merchant" value={transaction.merchantName} />
           )}
-          {transaction.isSplitParent ? (
-            <span className="inline-flex items-center rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
-              Split
-            </span>
-          ) : (
-            <button
-              onClick={() => setShowSplitEditor(true)}
-              className="mt-1 flex items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--muted)] transition-colors"
-            >
-              <Scissors className="h-3.5 w-3.5" />
-              Split
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {transaction.isSplitParent ? (
+              <span className="inline-flex items-center rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Split Parent
+              </span>
+            ) : null}
+            {transaction.parentTransactionId ? (
+              <span className="inline-flex items-center rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+                Split Child
+              </span>
+            ) : null}
+            {!transaction.parentTransactionId ? (
+              <button
+                onClick={() => setShowSplitEditor(true)}
+                className="mt-1 flex items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--muted)] transition-colors"
+              >
+                <Scissors className="h-3.5 w-3.5" />
+                {transaction.isSplitParent ? 'Edit Split' : 'Split'}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {showSplitEditor ? (

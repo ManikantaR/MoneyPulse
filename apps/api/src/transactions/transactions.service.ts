@@ -183,9 +183,6 @@ export class TransactionsService {
       );
     }
 
-    // Exclude split parents from list
-    conditions.push(eq(schema.transactions.isSplitParent, false));
-
     const whereCondition = and(...conditions);
 
     const [{ total }] = await this.db
@@ -415,6 +412,91 @@ export class TransactionsService {
     ]);
 
     return { parent: { ...parent, isSplitParent: true }, children: children.map((c: any) => this.decryptTxn(c)) };
+  }
+
+  /**
+   * Replace the children of an already-split transaction.
+   */
+  async editSplit(
+    id: string,
+    userId: string,
+    input: SplitTransactionInput,
+  ) {
+    const parent = await this.findById(id);
+    if (!parent || parent.userId !== userId) throw new NotFoundException();
+
+    if (!parent.isSplitParent) {
+      throw new BadRequestException(
+        'Transaction has not been split yet. Create a split before editing it.',
+      );
+    }
+
+    const splitTotal = input.splits.reduce(
+      (sum: number, s: any) => sum + s.amountCents,
+      0,
+    );
+    if (splitTotal !== parent.amountCents) {
+      throw new BadRequestException(
+        `Split amounts (${splitTotal}) must equal parent amount (${parent.amountCents})`,
+      );
+    }
+
+    const children = await this.db.transaction(async (tx: any) => {
+      await tx
+        .delete(schema.transactions)
+        .where(eq(schema.transactions.parentTransactionId, id));
+
+      const childRows = await tx
+        .insert(schema.transactions)
+        .values(
+          input.splits.map((split: any, idx: number) => ({
+            accountId: parent.accountId,
+            userId,
+            txnHash: createHash('sha256')
+              .update(`${parent.id}|split|${idx}|edit`)
+              .digest('hex'),
+            date: parent.date,
+            description: split.description || parent.description,
+            originalDescription: encryptField(parent.originalDescription),
+            amountCents: split.amountCents,
+            categoryId: split.categoryId ?? null,
+            merchantName: parent.merchantName ?? null,
+            isCredit: parent.isCredit,
+            isManual: parent.isManual ?? false,
+            parentTransactionId: parent.id,
+            sourceFileId: parent.sourceFileId,
+            tags: [],
+          })),
+        )
+        .returning();
+
+      return childRows.map((c: any) => this.decryptTxn(c));
+    });
+
+    await this.projection.reprojectByIds([
+      parent.id,
+      ...children.map((c: any) => c.id),
+    ]);
+
+    return { parent, children };
+  }
+
+  /**
+   * Return the child rows for a split parent in deterministic display order.
+   */
+  async findSplitChildren(parentId: string) {
+    const rows = await this.db
+      .select()
+      .from(schema.transactions)
+      .where(
+        and(
+          eq(schema.transactions.parentTransactionId, parentId),
+          isNull(schema.transactions.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.transactions.createdAt), asc(schema.transactions.id));
+
+    return rows.map((row: any) => this.decryptTxn(row));
   }
 
   /**

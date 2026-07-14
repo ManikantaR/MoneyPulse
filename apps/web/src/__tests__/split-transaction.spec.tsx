@@ -40,12 +40,19 @@ vi.mock('@/lib/hooks/useCategories', () => ({
 }));
 
 const mockMutate = vi.fn();
+const mockEditMutate = vi.fn();
+const mockUseSplitChildren = vi.fn();
 
 vi.mock('@/lib/hooks/useTransactions', () => ({
   useSplitTransaction: () => ({
     mutate: mockMutate,
     isPending: false,
   }),
+  useEditSplitTransaction: () => ({
+    mutate: mockEditMutate,
+    isPending: false,
+  }),
+  useSplitChildren: (...args: unknown[]) => mockUseSplitChildren(...args),
 }));
 
 function renderWithQuery(ui: React.ReactElement) {
@@ -82,6 +89,12 @@ const baseTxn: Transaction = {
 
 beforeEach(() => {
   mockMutate.mockClear();
+  mockEditMutate.mockClear();
+  mockUseSplitChildren.mockReset();
+  mockUseSplitChildren.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+  });
 });
 
 describe('SplitTransactionEditor', () => {
@@ -226,6 +239,76 @@ describe('SplitTransactionEditor', () => {
     capturedSuccess();
 
     expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('loads existing split rows and saves edits through the edit hook', async () => {
+    const user = userEvent.setup();
+    mockUseSplitChildren.mockReturnValue({
+      data: {
+        data: {
+          parent: { ...baseTxn, isSplitParent: true },
+          children: [
+            {
+              ...baseTxn,
+              id: 'child-1',
+              amountCents: 6000,
+              categoryId: 'cat-1',
+              description: 'Groceries',
+              parentTransactionId: 'txn-1',
+            },
+            {
+              ...baseTxn,
+              id: 'child-2',
+              amountCents: 4000,
+              categoryId: 'cat-2',
+              description: 'Utilities',
+              parentTransactionId: 'txn-1',
+            },
+          ],
+        },
+      },
+      isLoading: false,
+    });
+
+    renderWithQuery(
+      <SplitTransactionEditor
+        transaction={{ ...baseTxn, isSplitParent: true }}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('60.00')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('40.00')).toBeInTheDocument();
+    });
+
+    const inputs = screen.getAllByRole('spinbutton');
+    await user.clear(inputs[0]);
+    await user.type(inputs[0], '65');
+    await user.clear(inputs[1]);
+    await user.type(inputs[1], '35');
+
+    const selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[1], 'cat-2');
+
+    await user.click(
+      screen.getByRole('button', { name: /save split changes/i }),
+    );
+
+    expect(mockEditMutate).toHaveBeenCalledWith(
+      {
+        id: 'txn-1',
+        splits: [
+          { amountCents: 6500, categoryId: 'cat-1', description: 'Groceries' },
+          { amountCents: 3500, categoryId: 'cat-2', description: 'Utilities' },
+        ],
+      },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    );
   });
 
   it('prevents removing rows below 2', () => {

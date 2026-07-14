@@ -152,6 +152,26 @@ export class TransactionsController {
   }
 
   /**
+   * GET /transactions/:id/split — Return the current child rows for a split parent.
+   */
+  @Get(':id/split')
+  @ApiOperation({ summary: 'Get split children for a parent transaction' })
+  async getSplit(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const txn = await this.txnService.findByIdForUser(
+      id,
+      user.sub,
+      user.householdId,
+    );
+    if (!txn) throw new NotFoundException('Transaction not found');
+
+    const children = await this.txnService.findSplitChildren(id);
+    return { data: { parent: txn, children } };
+  }
+
+  /**
    * PATCH /transactions/:id — Update description, category, tags, or other mutable fields.
    * Emits a `transaction_edited` audit log entry on success.
    *
@@ -228,6 +248,31 @@ export class TransactionsController {
     await this.auditService.log({
       userId: user.sub,
       action: 'transaction_split',
+      entityType: 'transaction',
+      entityId: id,
+      newValue: { childCount: result.children.length },
+    });
+
+    return { data: result };
+  }
+
+  /**
+   * PATCH /transactions/:id/split — Replace the children of an existing split.
+   */
+  @Patch(':id/split')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Edit split transaction children' })
+  async editSplit(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(splitTransactionSchema))
+    body: SplitTransactionInput,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const result = await this.txnService.editSplit(id, user.sub, body);
+
+    await this.auditService.log({
+      userId: user.sub,
+      action: 'transaction_split_edited',
       entityType: 'transaction',
       entityId: id,
       newValue: { childCount: result.children.length },

@@ -27,6 +27,7 @@
 | 8 | Planned | Investment tracking: manual snapshots, 4 platform parsers, net worth | [PHASE8-SPEC.md](PHASE8-SPEC.md) | None |
 | 9 | Done | Firebase sync: outbox, alias mapper, HMAC signing, delivery worker | [PHASE9-SYNC-SPEC.md](PHASE9-SYNC-SPEC.md) | **Primary** — feeds moneypulse-web |
 | 10 | In Progress | Feature enhancements: receipt OCR, recurring bills, anomaly alerts | [PHASE10-FEATURES-SPEC.md](PHASE10-FEATURES-SPEC.md) | Partial — some features sync to web |
+| 11 | Planned | Financial awareness: insights feed, daily brief, watchdog detectors, EIA/FRED market data, proactive advisor, semantic search | [PHASE11-AWARENESS-SPEC.md](PHASE11-AWARENESS-SPEC.md) | None (Web Push, not Firestore) |
 
 ## Notes
 

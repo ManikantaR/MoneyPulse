@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, X as XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCents } from '@/lib/format';
 import { useCategories } from '@/lib/hooks/useCategories';
-import { useSplitTransaction } from '@/lib/hooks/useTransactions';
+import {
+  useEditSplitTransaction,
+  useSplitChildren,
+  useSplitTransaction,
+} from '@/lib/hooks/useTransactions';
 import { CategoryCombobox } from '@/components/CategoryCombobox';
 import type { CategoryOption } from '@/components/CategoryCombobox';
 import type { Transaction } from '@moneypulse/shared';
@@ -45,6 +49,10 @@ export function SplitTransactionEditor({
   const [apiError, setApiError] = useState<string | null>(null);
 
   const { data: categoriesData } = useCategories();
+  const { data: splitData, isLoading: splitLoading } = useSplitChildren(
+    transaction.id,
+    transaction.isSplitParent,
+  );
   const categoryOptions: CategoryOption[] = (categoriesData?.data ?? []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -53,6 +61,25 @@ export function SplitTransactionEditor({
   }));
 
   const splitTransaction = useSplitTransaction();
+  const editSplitTransaction = useEditSplitTransaction();
+  const activeMutation = transaction.isSplitParent
+    ? editSplitTransaction
+    : splitTransaction;
+
+  useEffect(() => {
+    if (!transaction.isSplitParent) return;
+    const children = splitData?.data.children ?? [];
+    if (children.length === 0) return;
+
+    setRows(
+      children.map((child) => ({
+        amountStr: (child.amountCents / 100).toFixed(2),
+        categoryId: child.categoryId ?? '',
+        description:
+          child.description === transaction.description ? '' : child.description,
+      })),
+    );
+  }, [splitData, transaction.description, transaction.isSplitParent]);
 
   const rowCents = rows.map((r) => parseCents(r.amountStr));
   const sumCents = rowCents.reduce((a, b) => a + b, 0);
@@ -64,7 +91,8 @@ export function SplitTransactionEditor({
     allPositive &&
     allCategorized &&
     rows.length >= 2 &&
-    !splitTransaction.isPending;
+    !activeMutation.isPending &&
+    !splitLoading;
 
   function addRow() {
     setRows((prev) => [...prev, { amountStr: '0.00', categoryId: '', description: '' }]);
@@ -86,7 +114,7 @@ export function SplitTransactionEditor({
       categoryId: r.categoryId,
       ...(r.description.trim() && { description: r.description.trim() }),
     }));
-    splitTransaction.mutate(
+    activeMutation.mutate(
       { id: transaction.id, splits },
       {
         onSuccess: () => onSuccess(),
@@ -103,7 +131,7 @@ export function SplitTransactionEditor({
       {/* Sub-header */}
       <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-3">
         <span className="text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
-          Split Transaction
+          {transaction.isSplitParent ? 'Edit Split' : 'Split Transaction'}
         </span>
         <button
           onClick={onCancel}
@@ -115,6 +143,11 @@ export function SplitTransactionEditor({
 
       {/* Scrollable rows */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+        {splitLoading ? (
+          <div className="rounded-xl border border-[var(--border)] px-4 py-6 text-sm text-[var(--muted-foreground)]">
+            Loading split details…
+          </div>
+        ) : null}
         {rows.map((row, i) => (
           <div
             key={i}
@@ -212,7 +245,13 @@ export function SplitTransactionEditor({
           disabled={!canSubmit}
           className="w-full rounded-xl bg-[var(--primary)] py-2.5 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 transition-opacity disabled:opacity-40"
         >
-          {splitTransaction.isPending ? 'Splitting…' : 'Split Transaction'}
+          {activeMutation.isPending
+            ? transaction.isSplitParent
+              ? 'Saving…'
+              : 'Splitting…'
+            : transaction.isSplitParent
+              ? 'Save Split Changes'
+              : 'Split Transaction'}
         </button>
       </div>
     </div>

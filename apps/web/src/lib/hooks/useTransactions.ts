@@ -19,6 +19,11 @@ export interface PaginatedTransactions {
   totalPages: number;
 }
 
+export interface SplitTransactionResponse {
+  parent: Transaction;
+  children: Transaction[];
+}
+
 /** Query parameters for the transactions list endpoint. */
 export interface TransactionQueryParams {
   [key: string]: QueryParamValue;
@@ -41,6 +46,18 @@ export function useTransactions(params: TransactionQueryParams = {}) {
   return useQuery({
     queryKey: ['transactions', params],
     queryFn: () => api.get<PaginatedTransactions>('/transactions', { params }),
+  });
+}
+
+/** Fetch the child rows for a split parent transaction. */
+export function useSplitChildren(transactionId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['transactions', transactionId, 'split'],
+    queryFn: () =>
+      api.get<{ data: SplitTransactionResponse }>(
+        `/transactions/${transactionId}/split`,
+      ),
+    enabled: enabled && Boolean(transactionId),
   });
 }
 
@@ -128,10 +145,29 @@ export function useSplitTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, splits }: { id: string } & SplitTransactionInput) =>
-      api.post<{ data: { splits: Transaction[] } }>(`/transactions/${id}/split`, { splits }),
+      api.post<{ data: SplitTransactionResponse }>(`/transactions/${id}/split`, { splits }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
+/** Replace the children of an existing split parent transaction. */
+export function useEditSplitTransaction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, splits }: { id: string } & SplitTransactionInput) =>
+      api.patch<{ data: SplitTransactionResponse }>(
+        `/transactions/${id}/split`,
+        { splits },
+      ),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      queryClient.invalidateQueries({
+        queryKey: ['transactions', vars.id, 'split'],
+      });
     },
   });
 }

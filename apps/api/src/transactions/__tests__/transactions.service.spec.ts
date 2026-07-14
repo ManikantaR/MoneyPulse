@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TransactionsService } from '../transactions.service';
 import { DATABASE_CONNECTION } from '../../db/db.module';
 import { OutboxService } from '../../sync/outbox.service';
@@ -15,6 +15,11 @@ describe('TransactionsService', () => {
   let service: TransactionsService;
   let mockDb: any;
   let mockAliasMapper: { toAliasId: ReturnType<typeof vi.fn> };
+  let mockProjection: {
+    project: ReturnType<typeof vi.fn>;
+    projectInTx: ReturnType<typeof vi.fn>;
+    reprojectByIds: ReturnType<typeof vi.fn>;
+  };
 
   const baseTxn = {
     id: 'txn-1',
@@ -41,7 +46,7 @@ describe('TransactionsService', () => {
 
     mockAliasMapper = { toAliasId: vi.fn().mockReturnValue('alias-abc123') };
 
-    const mockProjection = {
+    mockProjection = {
       project: vi.fn().mockResolvedValue(undefined),
       projectInTx: vi.fn().mockResolvedValue(undefined),
       reprojectByIds: vi.fn().mockResolvedValue(undefined),
@@ -325,6 +330,66 @@ describe('TransactionsService', () => {
       });
 
       expect(result.amountCents).toBe(1000);
+    });
+  });
+
+  describe('split editing', () => {
+    it('replaces existing child rows and reprojects the parent plus new children', async () => {
+      const parent = {
+        ...baseTxn,
+        amountCents: 10000,
+        description: 'WALMART',
+        originalDescription: 'WALMART',
+        isSplitParent: true,
+        merchantName: 'Walmart',
+      };
+      const insertedChildren = [
+        { ...baseTxn, id: 'child-1', amountCents: 6000, parentTransactionId: 'txn-1' },
+        { ...baseTxn, id: 'child-2', amountCents: 4000, parentTransactionId: 'txn-1' },
+      ];
+
+      vi.spyOn(service, 'findById').mockResolvedValue(parent as any);
+      mockDb.transaction = vi.fn().mockImplementation(async (fn: any) => {
+        const tx = {
+          delete: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          insert: vi.fn().mockReturnThis(),
+          values: vi.fn().mockReturnThis(),
+          returning: vi.fn().mockResolvedValue(insertedChildren),
+        };
+        return fn(tx);
+      });
+
+      const result = await service.editSplit('txn-1', 'user-1', {
+        splits: [
+          { amountCents: 6000, categoryId: 'cat-1', description: 'Groceries' },
+          { amountCents: 4000, categoryId: 'cat-2', description: 'Household' },
+        ],
+      });
+
+      expect(mockDb.transaction).toHaveBeenCalled();
+      expect(mockProjection.reprojectByIds).toHaveBeenCalledWith([
+        'txn-1',
+        'child-1',
+        'child-2',
+      ]);
+      expect(result.children).toHaveLength(2);
+    });
+
+    it('rejects editing a transaction that is not already split', async () => {
+      vi.spyOn(service, 'findById').mockResolvedValue({
+        ...baseTxn,
+        isSplitParent: false,
+      } as any);
+
+      await expect(
+        service.editSplit('txn-1', 'user-1', {
+          splits: [
+            { amountCents: 6000, categoryId: 'cat-1' },
+            { amountCents: 4000, categoryId: 'cat-2' },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });
