@@ -9,6 +9,7 @@ export interface SyncPolicyResult {
   policyReason: SyncPolicyReason;
   sanitizedPayload: Record<string, unknown>;
   bannedField?: string;
+  policyReasonDetail?: string;
 }
 
 export interface SignedPayload {

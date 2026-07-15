@@ -153,16 +153,41 @@ describe('SyncDeliveryService', () => {
       expect(auditArg.errorCode).toBe('POLICY');
     });
 
+    it('stores schema issue details in policy_reason for schema failures', async () => {
+      const db = buildDb();
+      const sanitizer = new SanitizerV2Service();
+      vi.spyOn(sanitizer, 'sanitizePayload').mockReturnValue({
+        policyPassed: false,
+        policyReason: 'POLICY_FAIL_SCHEMA',
+        policyReasonDetail: 'categoryId: Invalid string',
+        sanitizedPayload: {},
+      });
+      const service = buildService(db, sanitizer, buildAliasMapper(), buildSigning());
+
+      db.execute.mockResolvedValue({ rows: [makeRow()] });
+      await service.deliverPending();
+
+      const setArg = db.set.mock.calls[0][0];
+      expect(setArg.policyReason).toBe(
+        'POLICY_FAIL_SCHEMA: categoryId: Invalid string',
+      );
+    });
+
     it('does not call fetch when policy fails', async () => {
       const db = buildDb();
       db.execute.mockResolvedValue({ rows: [makeRow()] });
       const fetchSpy = vi.fn();
       global.fetch = fetchSpy;
+      const sanitizer = buildSanitizer(false);
 
-      const service = buildService(db, buildSanitizer(false), buildAliasMapper(), buildSigning());
+      const service = buildService(db, sanitizer, buildAliasMapper(), buildSigning());
       await service.deliverPending();
 
       expect(fetchSpy).not.toHaveBeenCalled();
+      expect(sanitizer.sanitizePayload).toHaveBeenCalledWith(
+        'transaction.projected.v1',
+        makeRow().payload_json,
+      );
     });
   });
 

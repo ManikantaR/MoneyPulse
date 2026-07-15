@@ -9,6 +9,7 @@ import type {
   UpdateSavingsGoalInput,
 } from '@moneypulse/shared';
 import { OutboxService } from '../sync/outbox.service';
+import { AliasMapperService } from '../sync/alias-mapper.service';
 
 @Injectable()
 export class BudgetsService {
@@ -17,6 +18,7 @@ export class BudgetsService {
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
     @Optional() private readonly outbox?: OutboxService,
+    @Optional() private readonly aliasMapper?: AliasMapperService,
   ) {}
 
   // ── Budgets ──────────────────────────────────────────────
@@ -249,7 +251,7 @@ export class BudgetsService {
   }
 
   private async enqueueBudgetEvent(budget: any, userId: string): Promise<void> {
-    if (!this.outbox) return;
+    if (!this.outbox || !this.aliasMapper) return;
     try {
       await this.outbox.enqueue({
         eventType: 'budget.projected.v1',
@@ -257,10 +259,12 @@ export class BudgetsService {
         aggregateId: budget.id,
         userId,
         payload: {
-          categoryId: budget.categoryId,
+          categoryId: this.aliasMapper.toAliasId('category', budget.categoryId),
           amountCents: budget.amountCents,
           period: budget.period,
-          householdId: budget.householdId ?? null,
+          householdId: budget.householdId
+            ? this.aliasMapper.toAliasId('household', budget.householdId)
+            : null,
         },
       });
     } catch (err: unknown) {
