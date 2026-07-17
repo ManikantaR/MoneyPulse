@@ -1,7 +1,8 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { AccountFreshnessService } from '../analytics/account-freshness.service';
 import * as path from 'node:path';
 
 /**
@@ -37,6 +38,12 @@ export interface AdvisorToolDef {
   input_schema: Record<string, any>;
 }
 
+/** Response from a tool call, optionally including a caveat about data freshness. */
+export interface ToolCallResult {
+  text: string;
+  dataCaveat?: string;
+}
+
 /**
  * Filter raw MCP tools down to the aggregate allowlist and map them to Anthropic tool
  * defs. Pure + exported so the aggregates-only boundary is unit-testable without a
@@ -68,7 +75,12 @@ export class McpClientService implements OnModuleDestroy {
   private readonly logger = new Logger(McpClientService.name);
   private readonly clients = new Map<string, Promise<Client>>();
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional()
+    @Inject(AccountFreshnessService)
+    private readonly freshnessService?: AccountFreshnessService,
+  ) {}
 
   private serverCommand(): { command: string; args: string[] } {
     const command = this.config.get<string>('MCP_SERVER_CMD') || 'node';
@@ -122,10 +134,17 @@ export class McpClientService implements OnModuleDestroy {
   }
 
   /**
-   * Call an aggregate tool and return its text content. Rejects any name not on the
-   * allowlist — defense in depth so a hallucinated/row-level tool can never run.
+   * Call an aggregate tool and return its text content with optional data freshness caveat.
+   * Rejects any name not on the allowlist — defense in depth so a hallucinated/row-level
+   * tool can never run.
+   *
+   * If the tool touches stale accounts, includes a dataCaveat in the result.
    */
-  async callTool(userId: string, name: string, args: Record<string, any>): Promise<string> {
+  async callTool(
+    userId: string,
+    name: string,
+    args: Record<string, any>,
+  ): Promise<ToolCallResult> {
     if (!AGGREGATE_TOOL_ALLOWLIST.has(name)) {
       throw new Error(`Tool "${name}" is not an allowed advisor tool.`);
     }
@@ -136,7 +155,83 @@ export class McpClientService implements OnModuleDestroy {
       .filter((b: any) => b?.type === 'text')
       .map((b: any) => b.text)
       .join('\n');
-    return text || '(no data)';
+
+    // Check if this tool might involve stale accounts and add caveat if needed
+    let dataCaveat: string | undefined;
+    try {
+      dataCaveat = await this.checkAndBuildDataCaveat(userId, name, args);
+    } catch (err: any) {
+      this.logger.warn(`Failed to compute data caveat: ${err.message}`);
+    }
+
+    return {
+      text: text || '(no data)',
+      dataCaveat,
+    };
+  }
+
+  /**
+   * Check if a tool call involves stale accounts and build an appropriate caveat.
+   * Returns undefined if all accounts are fresh or if freshness service is unavailable.
+   * Fetches freshness data once (not twice) to avoid redundant DB fanout.
+   *
+   * NOTE on args scoping: The caveat is emitted globally (across all user accounts)
+   * rather than scoped to the specific accounts named in args. This is intentional:
+   * data freshness is a user-level property, and even queries scoped to fresh accounts
+   * should warn if OTHER accounts are stale and may affect cross-account analysis
+   * (e.g., net-worth, cashflow forecasts). Per Phase-11 Architecture Principle 1,
+   * freshness concerns are local-first and holistic.
+   */
+  private async checkAndBuildDataCaveat(
+    userId: string,
+    toolName: string,
+    args: Record<string, any>,
+  ): Promise<string | undefined> {
+    if (!this.freshnessService) {
+      return undefined;
+    }
+
+    // Only certain tools benefit from freshness caveats
+    const toolsNeedingFreshnessCheck = new Set([
+      'get_spending_summary',
+      'get_category_breakdown',
+      'get_income_breakdown',
+      'get_merchant_breakdown',
+      'get_budget_status',
+      'get_cashflow_summary',
+      'compare_periods',
+    ]);
+
+    if (!toolsNeedingFreshnessCheck.has(toolName)) {
+      return undefined;
+    }
+
+    try {
+      // Fetch freshness data once; getAccountFreshness already scans all accounts
+      const freshness = await this.freshnessService.getAccountFreshness(userId);
+      const staleAccounts = freshness.accounts.filter(
+        (acc) => acc.status === 'stale',
+      );
+
+      if (staleAccounts.length === 0) {
+        return undefined;
+      }
+
+      // Build caveat message
+      const accountList = staleAccounts
+        .map(
+          (acc) =>
+            `${acc.nickname} (no data since ${acc.lastTransactionDate?.toISOString().split('T')[0] || 'unknown'})`,
+        )
+        .join('; ');
+
+      return `⚠️ Data freshness note: ${accountList}. Figures may be incomplete.`;
+    } catch (err: any) {
+      this.logger.debug(
+        `Error building freshness caveat: ${err.message}`,
+      );
+      return undefined;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

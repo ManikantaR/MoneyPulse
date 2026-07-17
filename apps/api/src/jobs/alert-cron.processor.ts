@@ -5,6 +5,7 @@ import { AlertEngineService } from '../notifications/alert-engine.service';
 import { DigestService } from '../analytics/digest.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
+import { FreshnessDetectorService } from '../analytics/freshness-detector.service';
 import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
 import { BillsService } from '../bills/bills.service';
 import { LoansService } from '../loans/loans.service';
@@ -18,6 +19,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly digestService: DigestService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
+    private readonly freshnessDetectorService: FreshnessDetectorService,
     private readonly advisorDigestService: AdvisorDigestService,
     private readonly billsService: BillsService,
     private readonly loansService: LoansService,
@@ -78,6 +80,14 @@ export class AlertCronProcessor extends WorkerHost {
           await this.loansService.checkMissedLoanPayments();
         this.logger.log(
           `Loan missed-check: ${checked} loans, ${missed} missed, ${notified} notified`,
+        );
+        break;
+      }
+
+      case 'freshness-check': {
+        const insights = await this.freshnessDetectorService.detectAllFreshness();
+        this.logger.log(
+          `Freshness check complete: ${insights.length} staleness alerts generated`,
         );
         break;
       }
