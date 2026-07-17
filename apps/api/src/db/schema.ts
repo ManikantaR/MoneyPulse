@@ -112,6 +112,9 @@ export const userSettings = pgTable('user_settings', {
     .default(false),
   notificationEmail: varchar('notification_email', { length: 255 }),
   firebaseUid: varchar('firebase_uid', { length: 128 }),
+  freshnessThresholdDays: integer('freshness_threshold_days')
+    .notNull()
+    .default(14),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -134,6 +137,8 @@ export const accounts = pgTable('accounts', {
   startingBalanceCents: integer('starting_balance_cents').notNull().default(0),
   creditLimitCents: integer('credit_limit_cents'),
   csvFormatConfig: jsonb('csv_format_config'),
+  expectedImportCadenceDays: integer('expected_import_cadence_days'),
+  isDormant: boolean('is_dormant').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

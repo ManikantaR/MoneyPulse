@@ -111,6 +111,7 @@ export class AdvisorService {
     let answer = '';
     let tokensIn = 0;
     let tokensOut = 0;
+    const dataCaveats = new Set<string>(); // Collect unique caveats
 
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -141,7 +142,11 @@ export class AdvisorService {
         for (const call of final.toolCalls) {
           let content: string;
           try {
-            content = await this.mcp.callTool(userId, call.name, call.input);
+            const result = await this.mcp.callTool(userId, call.name, call.input);
+            content = result.text;
+            if (result.dataCaveat) {
+              dataCaveats.add(result.dataCaveat);
+            }
           } catch (err: any) {
             content = `Tool error: ${err.message}`;
           }
@@ -152,6 +157,13 @@ export class AdvisorService {
           });
         }
         messages.push({ role: 'user', content: toolResults });
+      }
+
+      // Append caveats to the answer
+      if (dataCaveats.size > 0) {
+        const caveatText = '\n\n' + Array.from(dataCaveats).join('\n');
+        yield caveatText;
+        answer += caveatText;
       }
     } finally {
       this.logTurn(userId, resolved.model, message, answer, startMs, tokensIn, tokensOut);

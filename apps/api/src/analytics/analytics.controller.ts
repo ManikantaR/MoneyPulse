@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 import { BalanceSnapshotService } from './balance-snapshot.service';
 import { ForecastService } from './forecast.service';
+import { AccountFreshnessService } from './account-freshness.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -28,6 +29,7 @@ export class AnalyticsController {
     private readonly analyticsService: AnalyticsService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
+    private readonly accountFreshnessService: AccountFreshnessService,
   ) {}
 
   /**
@@ -252,6 +254,23 @@ export class AnalyticsController {
     @CurrentUser() user: AuthTokenPayload,
   ) {
     const data = await this.forecastService.forecast(user.sub, query.days);
+    return { data };
+  }
+
+  /**
+   * GET /analytics/freshness — Data freshness status for all active accounts.
+   * Returns per-account freshness status and overall coverage metrics.
+   *
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: FreshnessOverview }` with per-account status and coverage summary.
+   * @throws {UnauthorizedException} If the request is not authenticated.
+   */
+  @Get('freshness')
+  @ApiOperation({ summary: 'Data freshness status for all accounts' })
+  async freshness(@CurrentUser() user: AuthTokenPayload) {
+    const data = await this.accountFreshnessService.getAccountFreshness(
+      user.sub,
+    );
     return { data };
   }
 }
