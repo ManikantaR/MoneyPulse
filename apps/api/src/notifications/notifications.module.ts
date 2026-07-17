@@ -5,6 +5,8 @@ import { AlertEngineService } from './alert-engine.service';
 import { WebhookService } from './webhook.service';
 import { EmailService } from './email.service';
 import { TelegramPushService } from './telegram-push.service';
+import { WebPushService } from './web-push.service';
+import { NotificationPreferencesService } from './notification-preferences.service';
 import { SyncModule } from '../sync/sync.module';
 
 @Module({
@@ -15,8 +17,10 @@ import { SyncModule } from '../sync/sync.module';
     WebhookService,
     EmailService,
     TelegramPushService,
+    WebPushService,
+    NotificationPreferencesService,
   ],
   controllers: [NotificationsController],
-  exports: [NotificationsService, AlertEngineService],
+  exports: [NotificationsService, AlertEngineService, WebPushService, NotificationPreferencesService],
 })
 export class NotificationsModule {}

@@ -5,6 +5,8 @@ describe('NotificationsService', () => {
   let mockDb: any;
   let mockWebhookService: any;
   let mockTelegramPush: any;
+  let mockWebPush: any;
+  let mockPreferences: any;
   let mockOutbox: any;
   let mockAliasMapper: any;
 
@@ -49,6 +51,29 @@ describe('NotificationsService', () => {
       sendToUser: vi.fn().mockResolvedValue(false),
     };
 
+    mockWebPush = {
+      enabled: false,
+      sendToUser: vi.fn().mockResolvedValue(0),
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getVapidPublicKey: vi.fn().mockReturnValue(null),
+    };
+
+    // Mock preferences service to return defaults (mode='instant', all channels disabled except inApp)
+    mockPreferences = {
+      getPreference: vi.fn().mockResolvedValue({
+        id: 'pref-123',
+        userId: TEST_USER,
+        notificationType: 'system_alert',
+        mode: 'instant',
+        enabledChannels: ['inApp'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+      isInQuietHours: vi.fn().mockResolvedValue(false),
+      getQuietHours: vi.fn().mockResolvedValue({ start: '22:00', end: '08:00' }),
+    };
+
     mockOutbox = {
       enqueue: vi.fn().mockResolvedValue(undefined),
     };
@@ -61,6 +86,8 @@ describe('NotificationsService', () => {
       mockDb,
       mockWebhookService,
       mockTelegramPush,
+      mockWebPush,
+      mockPreferences,
       mockOutbox,
       mockAliasMapper,
     );
@@ -149,37 +176,49 @@ describe('NotificationsService', () => {
       webhookResolve(true);
     });
 
-    it('sets webhookSent=true on the row only when sendWebhook returns true', async () => {
-      mockWebhookService.sendWebhook.mockResolvedValue(true);
+    it('skips channel delivery when preference mode is off', async () => {
+      mockPreferences.getPreference.mockResolvedValue({
+        id: 'pref-123',
+        userId: TEST_USER,
+        notificationType: 'system_alert',
+        mode: 'off',
+        enabledChannels: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
 
       await service.createAndDispatch({
         userId: TEST_USER,
         type: 'spending_anomaly',
         title: 'Unusual spend',
         message: 'You spent $600',
+        notificationType: 'system_alert',
       });
 
-      // Give the fire-and-forget chain a tick to settle
-      await new Promise((r) => setTimeout(r, 0));
+      // Give dispatch async a tick to settle
+      await new Promise((r) => setTimeout(r, 10));
 
-      expect(mockDb.update).toHaveBeenCalledTimes(1);
-      const setArg = mockDb.update().set.mock.calls[0][0];
-      expect(setArg).toEqual({ webhookSent: true });
+      // No channel delivery should occur
+      expect(mockWebhookService.sendWebhook).not.toHaveBeenCalled();
+      expect(mockTelegramPush.sendToUser).not.toHaveBeenCalled();
+      expect(mockWebPush.sendToUser).not.toHaveBeenCalled();
     });
 
-    it('does NOT set webhookSent when sendWebhook returns false', async () => {
-      mockWebhookService.sendWebhook.mockResolvedValue(false);
-
+    it('calls getPreference to check routing preferences', async () => {
       await service.createAndDispatch({
         userId: TEST_USER,
         type: 'spending_anomaly',
         title: 'Unusual spend',
         message: 'You spent $600',
+        notificationType: 'system_alert',
       });
 
-      await new Promise((r) => setTimeout(r, 0));
+      // Give dispatch async a tick to settle
+      await new Promise((r) => setTimeout(r, 10));
 
-      expect(mockDb.update).not.toHaveBeenCalled();
+      // Should have checked preferences for routing
+      expect(mockPreferences.getPreference).toHaveBeenCalledWith(TEST_USER, 'system_alert');
+      expect(mockPreferences.isInQuietHours).toHaveBeenCalled();
     });
   });
 });

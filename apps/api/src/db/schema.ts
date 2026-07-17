@@ -48,6 +48,43 @@ export const ruleMatchTypeEnum = pgEnum('rule_match_type', [
 ]);
 export const ruleFieldEnum = pgEnum('rule_field', ['description', 'merchant']);
 export const themeEnum = pgEnum('theme', ['light', 'dark', 'system']);
+export const notificationSeverityEnum = pgEnum('notification_severity', [
+  'info',
+  'insight',
+  'warning',
+  'critical',
+]);
+export const notificationSourceEnum = pgEnum('notification_source', [
+  'watchdog',
+  'freshness',
+  'market',
+  'advisor',
+  'budget',
+  'system',
+]);
+export const notificationTypeEnum = pgEnum('notification_type', [
+  'loan_payment_due',
+  'loan_payment_missed',
+  'bill_due',
+  'budget_overage',
+  'anomaly_detected',
+  'data_freshness',
+  'market_event',
+  'advisor_insight',
+  'system_alert',
+]);
+export const notificationModeEnum = pgEnum('notification_mode', [
+  'instant',
+  'brief',
+  'off',
+]);
+export const notificationChannelEnum = pgEnum('notification_channel', [
+  'inApp',
+  'telegram',
+  'webPush',
+  'email',
+  'haWebhook',
+]);
 
 // ── Households ──────────────────────────────────────────────
 
@@ -115,6 +152,8 @@ export const userSettings = pgTable('user_settings', {
   freshnessThresholdDays: integer('freshness_threshold_days')
     .notNull()
     .default(14),
+  quietHoursStart: varchar('quiet_hours_start', { length: 5 }).default('22:00'),
+  quietHoursEnd: varchar('quiet_hours_end', { length: 5 }).default('08:00'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -396,21 +435,94 @@ export const recurringBills = pgTable(
 
 // ── Notifications ───────────────────────────────────────────
 
-export const notifications = pgTable('notifications', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  type: varchar('type', { length: 50 }).notNull(),
-  title: varchar('title', { length: 200 }).notNull(),
-  message: text('message').notNull(),
-  isRead: boolean('is_read').notNull().default(false),
-  webhookSent: boolean('webhook_sent').notNull().default(false),
-  metadata: jsonb('metadata'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    type: varchar('type', { length: 50 }).notNull(),
+    title: varchar('title', { length: 200 }).notNull(),
+    message: text('message').notNull(),
+    isRead: boolean('is_read').notNull().default(false),
+    webhookSent: boolean('webhook_sent').notNull().default(false),
+    severity: notificationSeverityEnum('severity').notNull().default('insight'),
+    source: notificationSourceEnum('source').notNull().default('system'),
+    data: jsonb('data').notNull().default('{}'),
+    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_notifications_user_severity_created').on(
+      table.userId,
+      table.severity,
+      table.createdAt.desc(),
+    ),
+    index('idx_notifications_user_dismissed').on(table.userId, table.dismissedAt),
+  ],
+);
+
+// ── Notification Preferences ───────────────────────────────
+
+export const notificationPreferences = pgTable(
+  'notification_preferences',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    notificationType: notificationTypeEnum('notification_type').notNull(),
+    mode: notificationModeEnum('mode').notNull().default('instant'),
+    enabledChannels: jsonb('enabled_channels').notNull().default('["inApp"]'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('uq_notification_prefs_user_type').on(
+      table.userId,
+      table.notificationType,
+    ),
+    index('idx_notification_prefs_user').on(table.userId),
+  ],
+);
+
+// ── Push Subscriptions ──────────────────────────────────────
+
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    userAgent: varchar('user_agent', { length: 500 }),
+    lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('uq_push_subscriptions_user_endpoint').on(
+      table.userId,
+      table.endpoint,
+    ),
+    index('idx_push_subscriptions_user').on(table.userId),
+  ],
+);
 
 // ── Audit Logs ──────────────────────────────────────────────
 
@@ -658,6 +770,8 @@ export const userRelations = relations(users, ({ one, many }) => ({
   budgets: many(budgets),
   savingsGoals: many(savingsGoals),
   notifications: many(notifications),
+  notificationPreferences: many(notificationPreferences),
+  pushSubscriptions: many(pushSubscriptions),
 }));
 
 export const accountRelations = relations(accounts, ({ one, many }) => ({
@@ -749,3 +863,23 @@ export const recurringBillRelations = relations(recurringBills, ({ one }) => ({
     references: [categories.id],
   }),
 }));
+
+export const notificationPreferencesRelations = relations(
+  notificationPreferences,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [notificationPreferences.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const pushSubscriptionsRelations = relations(
+  pushSubscriptions,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [pushSubscriptions.userId],
+      references: [users.id],
+    }),
+  }),
+);
