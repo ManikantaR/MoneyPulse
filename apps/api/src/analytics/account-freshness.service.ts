@@ -194,6 +194,6 @@ export class AccountFreshnessService {
         AND ${schema.transactions.deletedAt} IS NULL
     `);
 
-    return result.rows?.map((row) => row.account_id) ?? [];
+    return result.rows?.map((row: { account_id: string }) => row.account_id) ?? [];
   }
 }
