@@ -54,11 +54,8 @@ export class FreshnessDetectorService {
         continue;
       }
 
-      // Check if we already created an insight for this week
-      const dedupeKey = this.getDedupeKey(
-        accountStatus.accountId,
-        accountStatus.lastTransactionDate,
-      );
+      // Check if we already created an insight for this week (based on current date, not last txn)
+      const dedupeKey = this.getDedupeKey(accountStatus.accountId);
 
       const existingInsight = await this.db.execute(sql`
         SELECT id
@@ -109,14 +106,16 @@ export class FreshnessDetectorService {
   }
 
   /**
-   * Generate a dedupe key for freshness insights
+   * Generate a dedupe key for freshness insights based on CURRENT week.
    * Format: freshness_<accountId>_<isoWeek>
-   * The same account stale condition generates max one insight per week
+   * The same account stale condition generates max one insight per week.
+   * Uses current date (NOW) to compute the week, not the last transaction date,
+   * so a persistently stale account dedupes correctly across week boundaries.
    */
-  private getDedupeKey(accountId: string, lastTxnDate: Date | null): string {
-    const refDate = lastTxnDate || new Date();
-    // Calculate ISO week number
-    const d = new Date(Date.UTC(refDate.getFullYear(), refDate.getMonth(), refDate.getDate()));
+  private getDedupeKey(accountId: string): string {
+    const now = new Date();
+    // Calculate ISO week number for today
+    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
     const dayNum = d.getUTCDay() || 7;
     d.setUTCDate(d.getUTCDate() + 4 - dayNum);
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));

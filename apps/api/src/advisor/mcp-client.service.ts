@@ -173,6 +173,14 @@ export class McpClientService implements OnModuleDestroy {
   /**
    * Check if a tool call involves stale accounts and build an appropriate caveat.
    * Returns undefined if all accounts are fresh or if freshness service is unavailable.
+   * Fetches freshness data once (not twice) to avoid redundant DB fanout.
+   *
+   * NOTE on args scoping: The caveat is emitted globally (across all user accounts)
+   * rather than scoped to the specific accounts named in args. This is intentional:
+   * data freshness is a user-level property, and even queries scoped to fresh accounts
+   * should warn if OTHER accounts are stale and may affect cross-account analysis
+   * (e.g., net-worth, cashflow forecasts). Per Phase-11 Architecture Principle 1,
+   * freshness concerns are local-first and holistic.
    */
   private async checkAndBuildDataCaveat(
     userId: string,
@@ -199,14 +207,7 @@ export class McpClientService implements OnModuleDestroy {
     }
 
     try {
-      const staleAccountIds = await this.freshnessService.getStaleAccountIds(
-        userId,
-      );
-      if (staleAccountIds.length === 0) {
-        return undefined;
-      }
-
-      // Get freshness info for stale accounts
+      // Fetch freshness data once; getAccountFreshness already scans all accounts
       const freshness = await this.freshnessService.getAccountFreshness(userId);
       const staleAccounts = freshness.accounts.filter(
         (acc) => acc.status === 'stale',
