@@ -99,6 +99,27 @@
       "when": 1784252982966,
       "tag": "0013_data_freshness",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784253000000,
+      "tag": "0014_notifications_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784253100000,
+      "tag": "0015_notification_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784253200000,
+      "tag": "0016_push_subscriptions",
+      "breakpoints": true
     }
   ]
 }

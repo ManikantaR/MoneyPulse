@@ -52,6 +52,7 @@
     "postgres": "^3.4.8",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -67,6 +68,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "@types/supertest": "^7.2.0",
+    "@types/web-push": "^3.6.3",
     "@vitest/coverage-v8": "^4.1.0",
     "drizzle-kit": "^0.31.10",
     "supertest": "^7.2.2",
