@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { AlertEngineService } from '../notifications/alert-engine.service';
 import { DigestService } from '../analytics/digest.service';
+import { BriefService } from '../analytics/brief.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
 import { FreshnessDetectorService } from '../analytics/freshness-detector.service';
@@ -17,6 +18,7 @@ export class AlertCronProcessor extends WorkerHost {
   constructor(
     private readonly alertEngine: AlertEngineService,
     private readonly digestService: DigestService,
+    private readonly briefService: BriefService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
     private readonly freshnessDetectorService: FreshnessDetectorService,
@@ -55,6 +57,10 @@ export class AlertCronProcessor extends WorkerHost {
 
       case 'digest-monthly':
         await this.digestService.deliverAllEnabled('monthly');
+        break;
+
+      case 'daily-brief-sweep':
+        await this.briefService.deliverAllEnabled();
         break;
 
       case 'advisor-digest-weekly':

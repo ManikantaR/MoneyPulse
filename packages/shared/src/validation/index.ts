@@ -214,6 +214,8 @@ export const updateUserSettingsSchema = z.object({
   telegramNotificationsEnabled: z.boolean().optional(),
   notificationEmail: z.email().nullable().optional(),
   firebaseUid: z.string().max(128).nullable().optional(),
+  dailyBriefEnabled: z.boolean().optional(),
+  dailyBriefHour: z.number().int().min(0).max(23).optional(),
 });
 
 export const sendDigestSchema = z.object({

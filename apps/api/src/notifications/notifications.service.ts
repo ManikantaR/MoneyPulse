@@ -176,6 +176,35 @@ export class NotificationsService {
       );
   }
 
+  /**
+   * Fetch insights that were routed to "brief" batching (11.3 dispatch) and haven't
+   * yet been folded into a delivered daily brief. Undismissed only.
+   */
+  async getUnbriefedInsights(userId: string, limit = 5) {
+    return this.db
+      .select()
+      .from(schema.notifications)
+      .where(
+        and(
+          eq(schema.notifications.userId, userId),
+          isNull(schema.notifications.dismissedAt),
+          isNull(schema.notifications.briefedAt),
+          inArray(schema.notifications.source, ['watchdog', 'freshness', 'market']),
+        ),
+      )
+      .orderBy(desc(schema.notifications.createdAt))
+      .limit(limit);
+  }
+
+  /** Mark notifications as folded into a delivered brief — idempotent, never re-sent. */
+  async markBriefed(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db
+      .update(schema.notifications)
+      .set({ briefedAt: new Date() })
+      .where(inArray(schema.notifications.id, ids));
+  }
+
   async findByMetadata(userId: string, dedupeKey: string): Promise<boolean> {
     const rows = await this.db.execute(sql`
       SELECT 1 FROM ${schema.notifications}
@@ -260,8 +289,13 @@ export class NotificationsService {
       // If disabled, skip all dispatch
       if (prefs.mode === 'off') return;
 
-      // Check quiet hours
-      const inQuietHours = await this.preferencesService.isInQuietHours(userId);
+      // Check quiet hours. The daily brief IS the batched/quiet-hours-respecting
+      // delivery (sent once at the user's configured hour), so it must never be
+      // deferred into another brief — that would silently swallow it forever.
+      const inQuietHours =
+        notificationType === 'daily_brief'
+          ? false
+          : await this.preferencesService.isInQuietHours(userId);
 
       // If brief mode or in quiet hours, queue for batch delivery (for 11.4 brief digest)
       if (prefs.mode === 'brief' || (inQuietHours && prefs.mode === 'instant')) {

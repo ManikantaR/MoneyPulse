@@ -72,6 +72,7 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'market_event',
   'advisor_insight',
   'system_alert',
+  'daily_brief',
 ]);
 export const notificationModeEnum = pgEnum('notification_mode', [
   'instant',
@@ -154,6 +155,8 @@ export const userSettings = pgTable('user_settings', {
     .default(14),
   quietHoursStart: varchar('quiet_hours_start', { length: 5 }).default('22:00'),
   quietHoursEnd: varchar('quiet_hours_end', { length: 5 }).default('08:00'),
+  dailyBriefEnabled: boolean('daily_brief_enabled').notNull().default(false),
+  dailyBriefHour: integer('daily_brief_hour').notNull().default(7),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -451,6 +454,8 @@ export const notifications = pgTable(
     source: notificationSourceEnum('source').notNull().default('system'),
     data: jsonb('data').notNull().default('{}'),
     dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+    /** Set once this notification has been folded into a daily brief batch (11.4) — prevents re-sending. */
+    briefedAt: timestamp('briefed_at', { withTimezone: true }),
     metadata: jsonb('metadata'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

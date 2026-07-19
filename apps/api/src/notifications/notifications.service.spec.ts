@@ -220,6 +220,71 @@ describe('NotificationsService', () => {
       expect(mockPreferences.getPreference).toHaveBeenCalledWith(TEST_USER, 'system_alert');
       expect(mockPreferences.isInQuietHours).toHaveBeenCalled();
     });
+
+    it('never defers a daily_brief notification into quiet-hours brief batching (would loop forever)', async () => {
+      mockPreferences.isInQuietHours.mockResolvedValue(true);
+      mockPreferences.getPreference.mockResolvedValue({
+        id: 'pref-brief',
+        userId: TEST_USER,
+        notificationType: 'daily_brief',
+        mode: 'instant',
+        enabledChannels: ['inApp', 'telegram', 'webPush'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockTelegramPush.enabled = true;
+      mockDb.select = vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{ enabled: true }]),
+          }),
+        }),
+      });
+
+      await service.createAndDispatch({
+        userId: TEST_USER,
+        type: 'daily_brief',
+        title: 'Your Morning Brief',
+        message: 'Safe to spend today: $100.00.',
+        notificationType: 'daily_brief',
+      });
+
+      // Give dispatch async a tick to settle
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Even though it's quiet hours, the brief must still route to Telegram — it's
+      // already the once-a-day batched delivery, not a candidate for further batching.
+      expect(mockTelegramPush.sendToUser).toHaveBeenCalled();
+    });
+  });
+
+  describe('getUnbriefedInsights / markBriefed', () => {
+    it('queries undismissed, unbriefed insights scoped to watchdog/freshness/market sources', async () => {
+      const limitMock = vi.fn().mockResolvedValue([{ id: 'n1', title: 'Stale account' }]);
+      const orderByMock = vi.fn().mockReturnValue({ limit: limitMock });
+      const whereMock = vi.fn().mockReturnValue({ orderBy: orderByMock });
+      const fromMock = vi.fn().mockReturnValue({ where: whereMock });
+      mockDb.select = vi.fn().mockReturnValue({ from: fromMock });
+
+      const result = await service.getUnbriefedInsights(TEST_USER, 5);
+
+      expect(result).toEqual([{ id: 'n1', title: 'Stale account' }]);
+      expect(limitMock).toHaveBeenCalledWith(5);
+    });
+
+    it('markBriefed is a no-op for an empty id list (no DB call)', async () => {
+      await service.markBriefed([]);
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('markBriefed updates briefedAt for the given ids', async () => {
+      await service.markBriefed(['n1', 'n2']);
+
+      expect(mockDb.update).toHaveBeenCalledTimes(1);
+      expect(mockDb.update().set).toHaveBeenCalledWith(
+        expect.objectContaining({ briefedAt: expect.any(Date) }),
+      );
+    });
   });
 });
 
