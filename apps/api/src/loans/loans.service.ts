@@ -26,6 +26,27 @@ export function expectedCycleDate(startDate: string, now: Date, graceDays: numbe
   return cycle < start ? null : cycle;
 }
 
+/**
+ * Next monthly due date on/after `now`, day-of-month clamped to the month length
+ * (mirrors {@link expectedCycleDate}'s clamping but looks forward instead of back).
+ * Used by the daily brief's "bills due this week" section. UTC throughout to match
+ * how loan start dates are stored.
+ */
+export function nextLoanDueDate(startDate: string, now: Date): Date {
+  const start = new Date(startDate + 'T00:00:00Z');
+  const dom = start.getUTCDate();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const clamp = (y: number, m: number): Date => {
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return new Date(Date.UTC(y, m, Math.min(dom, lastDay)));
+  };
+  let due = clamp(today.getUTCFullYear(), today.getUTCMonth());
+  if (due < today) {
+    due = clamp(today.getUTCFullYear(), today.getUTCMonth() + 1);
+  }
+  return due < start ? start : due;
+}
+
 /** CRUD for tracked loans. Payoff math lives in the advisor's MCP tool (get_loan_status). */
 @Injectable()
 export class LoansService {
@@ -182,5 +203,41 @@ export class LoansService {
     }
 
     return { checked: loans.length, missed, notified };
+  }
+
+  /** Active loans whose next scheduled payment falls within `days` of now — for the daily brief. */
+  async findDueWithin(
+    userId: string,
+    days = 7,
+  ): Promise<Array<{ id: string; name: string; dueDate: string; amountCents: number }>> {
+    const loans = await this.db
+      .select()
+      .from(schema.loans)
+      .where(
+        and(
+          eq(schema.loans.userId, userId),
+          eq(schema.loans.isActive, true),
+          isNull(schema.loans.deletedAt),
+        ),
+      );
+
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + days * 86_400_000);
+
+    const results = (loans as any[])
+      .map((loan) => {
+        const due = nextLoanDueDate(loan.startDate, now);
+        return { id: loan.id, name: loan.name, due, amountCents: loan.scheduledPaymentCents };
+      })
+      .filter((l) => l.due <= cutoff)
+      .sort((a, b) => a.due.getTime() - b.due.getTime())
+      .map((l) => ({
+        id: l.id,
+        name: l.name,
+        dueDate: l.due.toISOString().slice(0, 10),
+        amountCents: l.amountCents,
+      }));
+
+    return results;
   }
 }

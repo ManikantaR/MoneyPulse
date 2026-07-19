@@ -33,6 +33,9 @@ const DEFAULT_PREFERENCES: Record<NotificationType, {
   market_event: { mode: 'off', enabledChannels: ['inApp'] },
   advisor_insight: { mode: 'brief', enabledChannels: ['inApp', 'email'] },
   system_alert: { mode: 'instant', enabledChannels: ['inApp'] },
+  // The brief message itself always dispatches "instant" (at the user's configured hour) —
+  // it IS the batched delivery, so it must never be re-deferred into another brief.
+  daily_brief: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'webPush'] },
 };
 
 @Injectable()

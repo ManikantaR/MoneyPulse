@@ -57,6 +57,15 @@ export class JobsModule implements OnModuleInit {
       { name: 'digest-monthly' },
     );
 
+    // Daily morning brief — runs hourly; BriefService only delivers to users whose
+    // local wall-clock hour matches their configured daily_brief_hour (default 7 AM),
+    // and dedupes per user-local calendar date, so this is safe to fire every hour.
+    await this.alertsQueue.upsertJobScheduler(
+      'daily-brief-hourly-sweep',
+      { pattern: '0 * * * *' },
+      { name: 'daily-brief-sweep' },
+    );
+
     // Proactive weekly advisor recap — Monday 13:00 UTC (~8–9 AM ET), after the
     // basic weekly digest. ISO-week dedupe handles timezone spread.
     await this.alertsQueue.upsertJobScheduler(

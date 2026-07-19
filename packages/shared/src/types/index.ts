@@ -58,6 +58,8 @@ export interface UserSettings {
   telegramNotificationsEnabled: boolean;
   notificationEmail: string | null;
   firebaseUid: string | null;
+  dailyBriefEnabled: boolean;
+  dailyBriefHour: number;
 }
 
 export interface Account {

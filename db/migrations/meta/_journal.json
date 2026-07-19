@@ -120,6 +120,13 @@
       "when": 1784253200000,
       "tag": "0016_push_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784253300000,
+      "tag": "0017_daily_brief",
+      "breakpoints": true
     }
   ]
 }
