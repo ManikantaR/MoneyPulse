@@ -32,5 +32,5 @@ CREATE INDEX IF NOT EXISTS "idx_notification_prefs_user" ON "notification_prefer
 
 -- Add quiet hours to user_settings
 ALTER TABLE "user_settings"
-ADD COLUMN IF NOT EXISTS "quiet_hours_start" time DEFAULT '22:00',
-ADD COLUMN IF NOT EXISTS "quiet_hours_end" time DEFAULT '08:00';
+ADD COLUMN IF NOT EXISTS "quiet_hours_start" varchar(5) DEFAULT '22:00',
+ADD COLUMN IF NOT EXISTS "quiet_hours_end" varchar(5) DEFAULT '08:00';

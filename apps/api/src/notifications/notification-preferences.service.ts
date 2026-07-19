@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 export interface NotificationPreference {
   id: string;
@@ -94,8 +94,10 @@ export class NotificationPreferencesService {
       .select()
       .from(schema.notificationPreferences)
       .where(
-        eq(schema.notificationPreferences.userId, userId),
-        eq(schema.notificationPreferences.notificationType, notificationType),
+        and(
+          eq(schema.notificationPreferences.userId, userId),
+          eq(schema.notificationPreferences.notificationType, notificationType),
+        ),
       )
       .limit(1);
 

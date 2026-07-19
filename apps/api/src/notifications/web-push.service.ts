@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as webpush from 'web-push';
 import * as schema from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 /**
  * WebPushService manages self-hosted Web Push (PWA) notifications.
@@ -76,8 +76,10 @@ export class WebPushService {
     const result = await this.db
       .delete(schema.pushSubscriptions)
       .where(
-        eq(schema.pushSubscriptions.userId, userId),
-        eq(schema.pushSubscriptions.endpoint, endpoint),
+        and(
+          eq(schema.pushSubscriptions.userId, userId),
+          eq(schema.pushSubscriptions.endpoint, endpoint),
+        ),
       );
     return true;
   }

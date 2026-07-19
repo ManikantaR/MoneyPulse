@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, desc, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { WebhookService } from './webhook.service';
 import { TelegramPushService } from './telegram-push.service';
 import { WebPushService } from './web-push.service';
@@ -67,38 +67,43 @@ export class NotificationsService {
       includeDismissed = false,
     } = options;
 
-    let query = this.db
-      .select()
-      .from(schema.notifications)
-      .where(eq(schema.notifications.userId, userId));
+    const conditions = [eq(schema.notifications.userId, userId)];
 
     if (!includeDismissed) {
-      query = query.where(isNull(schema.notifications.dismissedAt));
+      conditions.push(isNull(schema.notifications.dismissedAt));
     }
 
     if (severityFilter && severityFilter.length > 0) {
-      query = query.where(
-        sql`${schema.notifications.severity} = ANY(${JSON.stringify(severityFilter)})`,
+      conditions.push(
+        inArray(
+          schema.notifications.severity,
+          severityFilter as Array<'info' | 'insight' | 'warning' | 'critical'>,
+        ),
       );
     }
 
     if (sourceFilter && sourceFilter.length > 0) {
-      query = query.where(
-        sql`${schema.notifications.source} = ANY(${JSON.stringify(sourceFilter)})`,
+      conditions.push(
+        inArray(
+          schema.notifications.source,
+          sourceFilter as Array<
+            'watchdog' | 'freshness' | 'market' | 'advisor' | 'budget' | 'system'
+          >,
+        ),
       );
     }
+
+    const whereClause = and(...conditions);
 
     const total = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.notifications)
-      .where(
-        and(
-          eq(schema.notifications.userId, userId),
-          !includeDismissed ? isNull(schema.notifications.dismissedAt) : undefined,
-        ),
-      );
+      .where(whereClause);
 
-    const data = await query
+    const data = await this.db
+      .select()
+      .from(schema.notifications)
+      .where(whereClause)
       .orderBy(desc(schema.notifications.createdAt))
       .limit(limit)
       .offset(offset);
