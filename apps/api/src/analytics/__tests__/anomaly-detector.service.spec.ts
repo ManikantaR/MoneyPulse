@@ -39,27 +39,22 @@ function buildMockDb(txn: any) {
 }
 
 /**
- * Convenience for the per-transaction execute() sequence:
- *   1. merchant baseline stats
- *   2. duplicate lookup
- * Pass `stats: null` to simulate no merchant history (empty stats row).
+ * Convenience for the per-transaction execute() call: merchant baseline stats
+ * used by the large-debit fallback. Pass `stats: null` to simulate no
+ * merchant history (empty stats row).
  */
 function mockExecuteSequence(
   db: any,
   {
     stats,
-    duplicateRows = [],
   }: {
     stats: { avgCents: number; stddevCents: number; count: number } | null;
-    duplicateRows?: any[];
   },
 ) {
   const statsRows = stats
     ? [{ avg_cents: String(stats.avgCents), stddev_cents: String(stats.stddevCents), txn_count: stats.count }]
     : [];
-  db.execute
-    .mockResolvedValueOnce({ rows: statsRows })
-    .mockResolvedValueOnce({ rows: duplicateRows });
+  db.execute.mockResolvedValueOnce({ rows: statsRows });
 }
 
 function buildMockNotifications(existingDedupeKeys: string[] = []) {
@@ -139,111 +134,9 @@ describe('AnomalyDetectorService', () => {
     });
   });
 
-  describe('amount anomaly (z-score)', () => {
-    it('flags a statistical outlier: amount many σ above the merchant mean', async () => {
-      // avg $30, σ≈0 → effective σ floored to 10% ($3); $120 is ~30σ above
-      const txn = makeTxn({ amountCents: 12_000, normalizedMerchantName: 'Acme Corp' });
-      const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 3000, stddevCents: 0, count: 6 } });
-      const notif = buildMockNotifications();
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      const calls = callsForRule(notif, 'amount_anomaly');
-      expect(calls).toHaveLength(1);
-      expect(calls[0][0].title).toBe('Unusual spend detected');
-      expect(calls[0][0].message).toContain('Acme Corp');
-      expect(calls[0][0].message).toContain('$120.00');
-      expect(calls[0][0].metadata.zScore).toBeGreaterThanOrEqual(3);
-    });
-
-    it('does NOT flag when within the normal band (low z-score)', async () => {
-      // avg $300, σ $50 → $360 is only ~1.2σ above; not an outlier
-      const txn = makeTxn({ amountCents: 36_000, normalizedMerchantName: 'Acme Corp' });
-      const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 30_000, stddevCents: 5_000, count: 8 } });
-      const notif = buildMockNotifications();
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
-    });
-
-    it('does NOT flag a high-z but low-value merchant (absolute-delta floor)', async () => {
-      // avg $2, σ≈0 → $8 is a huge z-score but only $6 over → below $25 floor
-      const txn = makeTxn({ amountCents: 800, normalizedMerchantName: 'Coffee Cart' });
-      const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 200, stddevCents: 0, count: 10 } });
-      const notif = buildMockNotifications();
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
-    });
-
-    it('does NOT flag when history has fewer than MIN_HISTORY transactions', async () => {
-      const txn = makeTxn({ amountCents: 40_000, normalizedMerchantName: 'Acme Corp' });
-      const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 5_000, stddevCents: 0, count: 3 } });
-      const notif = buildMockNotifications();
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
-    });
-
-    it('skips amount anomaly when merchant name is null', async () => {
-      const txn = makeTxn({ amountCents: 40_000, merchantName: null, normalizedMerchantName: null });
-      const db = buildMockDb(txn);
-      const notif = buildMockNotifications();
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
-      // No merchant → no stats/duplicate queries issued
-      expect(db.execute).not.toHaveBeenCalled();
-    });
-
-    it('does not re-notify when the amount dedupeKey already exists', async () => {
-      const txn = makeTxn({ amountCents: 12_000 });
-      const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 3000, stddevCents: 0, count: 6 } });
-      const notif = buildMockNotifications([`anomaly_amount_${txn.id}`]);
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
-    });
-  });
-
-  describe('duplicate detection', () => {
-    it('flags when a similar transaction exists within 24 hours', async () => {
-      const txn = makeTxn({ amountCents: 5_000, normalizedMerchantName: 'Starbucks' });
-      const db = buildMockDb(txn);
-      mockExecuteSequence(db, {
-        stats: { avgCents: 5_000, stddevCents: 0, count: 2 }, // too little history to flag amount
-        duplicateRows: [{ id: 'other-txn' }],
-      });
-      const notif = buildMockNotifications();
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      const dup = callsForRule(notif, 'duplicate');
-      expect(dup).toHaveLength(1);
-      expect(dup[0][0].title).toBe('Possible duplicate transaction');
-    });
-
-    it('does NOT flag when no similar transaction exists', async () => {
-      const txn = makeTxn({ amountCents: 5_000, normalizedMerchantName: 'Starbucks' });
-      const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 5_000, stddevCents: 0, count: 2 }, duplicateRows: [] });
-      const notif = buildMockNotifications();
-
-      await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
-
-      expect(callsForRule(notif, 'duplicate')).toHaveLength(0);
-    });
-  });
+  // Amount-anomaly (z-score) and duplicate-charge detection have moved to
+  // WatchdogDetectorService (`stat_anomaly` / `duplicate_charge`, 11.5) — see
+  // watchdog-detector.service.spec.ts for their coverage.
 
   describe('large-debit fallback', () => {
     it('flags a large debit when there is no merchant history to judge normality', async () => {
@@ -315,26 +208,26 @@ describe('AnomalyDetectorService', () => {
       // $3,000 mortgage where the merchant averages ~$3,000 with tiny variance
       const txn = makeTxn({ amountCents: 300_000, normalizedMerchantName: 'Langley Federal' });
       const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 300_000, stddevCents: 500, count: 12 } });
+      mockExecuteSequence(db, { stats: { avgCents: 300_000, stddevCents: 500, count: 25 } });
       const notif = buildMockNotifications();
 
       await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(0);
       expect(callsForRule(notif, 'large_debit')).toHaveLength(0);
       expect(notif.createAndDispatch).not.toHaveBeenCalled();
     });
 
-    it('an unusual large charge fires amount_anomaly ONLY (large_debit is suppressed to avoid double-alert)', async () => {
-      // $600 at a merchant that usually charges ~$100, with plenty of history
+    it('does NOT flag large_debit once enough history exists to defer to stat_anomaly', async () => {
+      // Plenty of history (>= MIN_HISTORY) → large-debit fallback steps aside
+      // even though the merchant's usual charge is much smaller; stat_anomaly
+      // (WatchdogDetectorService) is the sole judge once history is sufficient.
       const txn = makeTxn({ amountCents: 60_000, normalizedMerchantName: 'Acme Corp' });
       const db = buildMockDb(txn);
-      mockExecuteSequence(db, { stats: { avgCents: 10_000, stddevCents: 1_000, count: 8 } });
+      mockExecuteSequence(db, { stats: { avgCents: 10_000, stddevCents: 1_000, count: 25 } });
       const notif = buildMockNotifications();
 
       await makeService(db, notif).detectAnomalies('user-1', ['txn-1']);
 
-      expect(callsForRule(notif, 'amount_anomaly')).toHaveLength(1);
       expect(callsForRule(notif, 'large_debit')).toHaveLength(0);
     });
   });

@@ -3,6 +3,7 @@ import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WATCHDOG_THRESHOLDS } from '@moneypulse/shared';
 
 /** Absolute floor for the flat large-debit fallback (used when we lack merchant history). */
 const LARGE_DEBIT_THRESHOLD_CENTS = 50_000; // $500.00
@@ -10,17 +11,13 @@ const LARGE_DEBIT_THRESHOLD_CENTS = 50_000; // $500.00
 /** Trailing window used to build a merchant's spending baseline. */
 const BASELINE_WINDOW_MONTHS = 6;
 
-/** Minimum number of prior transactions before a statistical baseline is trusted. */
-const MIN_HISTORY = 5;
-
-/** How many standard deviations above the mean counts as an outlier. */
-const Z_THRESHOLD = 3;
-
 /**
- * Minimum absolute amount above the mean before we bother flagging, so low-value
- * merchants (a $2 coffee that becomes $8) don't generate noise despite a high z-score.
+ * Minimum number of prior transactions before WatchdogDetectorService's
+ * `stat_anomaly` z-score rule is trusted — kept in sync with that detector's
+ * own threshold so this flat fallback defers to it at exactly the point it
+ * takes over, with no coverage gap in between.
  */
-const MIN_ABS_DELTA_CENTS = 2_500; // $25.00
+const MIN_HISTORY = WATCHDOG_THRESHOLDS.STAT_ANOMALY_MIN_SAMPLES;
 
 interface MerchantStats {
   avgCents: number;
@@ -30,21 +27,6 @@ interface MerchantStats {
 
 function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
-}
-
-/**
- * Effective standard deviation used for the z-score. Floored to 10% of the mean
- * (and at least 1 cent) so perfectly-recurring charges (σ ≈ 0) still require a
- * meaningful jump — ~30% above normal at Z_THRESHOLD=3 — rather than flagging on
- * a single cent of drift.
- */
-function effectiveStddev(stats: MerchantStats): number {
-  return Math.max(stats.stddevCents, stats.avgCents * 0.1, 1);
-}
-
-/** z-score of an amount against a merchant baseline. */
-function zScore(amountCents: number, stats: MerchantStats): number {
-  return (amountCents - stats.avgCents) / effectiveStddev(stats);
 }
 
 @Injectable()
@@ -92,12 +74,13 @@ export class AnomalyDetectorService {
 
     const merchantKey = txn.normalizedMerchantName ?? txn.merchantName;
 
-    // Build the merchant baseline once and share it across the amount/large checks.
+    // Build the merchant baseline once and share it across the large-debit check.
+    // NOTE: the amount-anomaly (z-score) and duplicate-charge rules that used to
+    // live here have been absorbed into WatchdogDetectorService's `stat_anomaly`
+    // and `duplicate_charge` detectors (11.5) — do not re-add them here, or the
+    // same condition will fire two insights instead of one.
     const stats = merchantKey ? await this.merchantStats(userId, txn, merchantKey) : null;
 
-    // Run checks sequentially to avoid dedupe race conditions on shared keys
-    await this.checkAmountAnomaly(userId, txn, merchantKey, stats);
-    await this.checkDuplicate(userId, txn, merchantKey);
     await this.checkLargeDebit(userId, txn, merchantKey, stats);
   }
 
@@ -140,92 +123,11 @@ export class AnomalyDetectorService {
   }
 
   /**
-   * Rule 1: Flag when this debit is a statistical outlier for the merchant —
-   * at least Z_THRESHOLD standard deviations above the trailing mean, with a
-   * minimum absolute delta so low-value merchants don't generate noise.
-   * Requires MIN_HISTORY prior transactions.
-   */
-  private async checkAmountAnomaly(
-    userId: string,
-    txn: any,
-    merchantKey: string | null,
-    stats: MerchantStats | null,
-  ): Promise<void> {
-    if (!merchantKey || !stats) return;
-    if (stats.count < MIN_HISTORY) return;
-
-    const delta = txn.amountCents - stats.avgCents;
-    if (delta <= MIN_ABS_DELTA_CENTS) return;
-    if (zScore(txn.amountCents, stats) < Z_THRESHOLD) return;
-
-    const dedupeKey = `anomaly_amount_${txn.id}`;
-    if (await this.notificationsService.findByMetadata(userId, dedupeKey)) return;
-
-    await this.notificationsService.createAndDispatch({
-      userId,
-      type: 'spending_anomaly',
-      title: 'Unusual spend detected',
-      message: `Unusual spend at ${merchantKey}: ${formatCents(txn.amountCents)} — well above your usual ${formatCents(Math.round(stats.avgCents))}.`,
-      dedupeKey,
-      metadata: {
-        dedupeKey,
-        transactionId: txn.id,
-        rule: 'amount_anomaly',
-        amountCents: txn.amountCents,
-        avgCents: Math.round(stats.avgCents),
-        zScore: Number(zScore(txn.amountCents, stats).toFixed(2)),
-      },
-    });
-  }
-
-  /**
-   * Rule 2: Flag if another transaction exists with the same account + similar
-   * amount (within 5%) + same merchant + within 24 hours.
-   */
-  private async checkDuplicate(
-    userId: string,
-    txn: any,
-    merchantKey: string | null,
-  ): Promise<void> {
-    if (!merchantKey) return;
-
-    const dedupeKey = `anomaly_dup_${txn.id}`;
-    if (await this.notificationsService.findByMetadata(userId, dedupeKey)) return;
-
-    const tolerance = Math.round(txn.amountCents * 0.05);
-    const dateStr = txn.date instanceof Date ? txn.date.toISOString() : txn.date;
-
-    const rows = await this.db.execute(sql`
-      SELECT id FROM ${schema.transactions}
-      WHERE account_id = ${txn.accountId}
-        AND ABS(amount_cents - ${txn.amountCents}) <= ${tolerance}
-        AND COALESCE(normalized_merchant_name, merchant_name) = ${merchantKey}
-        AND date BETWEEN ${dateStr}::timestamptz - INTERVAL '1 day'
-                     AND ${dateStr}::timestamptz + INTERVAL '1 day'
-        AND id        != ${txn.id}
-        AND is_credit  = false
-        AND deleted_at IS NULL
-      LIMIT 1
-    `);
-
-    if ((rows.rows ?? rows).length === 0) return;
-
-    const dateLabel = new Date(txn.date).toLocaleDateString();
-    await this.notificationsService.createAndDispatch({
-      userId,
-      type: 'spending_anomaly',
-      title: 'Possible duplicate transaction',
-      message: `Possible duplicate: ${formatCents(txn.amountCents)} at ${merchantKey} on ${dateLabel}.`,
-      dedupeKey,
-      metadata: { dedupeKey, transactionId: txn.id, rule: 'duplicate', amountCents: txn.amountCents },
-    });
-  }
-
-  /**
-   * Rule 3: Large-debit fallback. Only fires when we lack the history to judge
-   * whether a big charge is normal for the merchant — when we DO have history,
-   * the z-score rule above is the sole judge, so normal recurring large charges
-   * (rent, mortgage, utilities) no longer generate "large purchase" noise.
+   * Large-debit fallback. Only fires when we lack the history to judge
+   * whether a big charge is normal for the merchant — when we DO have enough
+   * history, WatchdogDetectorService's `stat_anomaly` z-score rule is the sole
+   * judge, so normal recurring large charges (rent, mortgage, utilities) don't
+   * also generate "large purchase" noise here.
    */
   private async checkLargeDebit(
     userId: string,
