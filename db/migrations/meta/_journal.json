@@ -148,6 +148,13 @@
       "when": 1784552700000,
       "tag": "0020_proactive_advisor",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784559800000,
+      "tag": "0021_semantic_search",
+      "breakpoints": true
     }
   ]
 }
