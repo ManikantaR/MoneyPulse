@@ -1,0 +1,83 @@
+# MoneyPulse — Staging override (on-demand, same NAS as prod)
+#
+# Deploy: docker compose -p moneypulse-staging \
+#           -f docker-compose.moneypulse.yml -f docker-compose.staging.override.yml \
+#           --env-file /volume1/docker/.env.moneypulse-staging up -d
+# Tear down: docker compose -p moneypulse-staging \
+#           -f docker-compose.moneypulse.yml -f docker-compose.staging.override.yml down -v
+#
+# Purpose: on-demand rehearsal environment for mid/complex changes (DB engine/extension
+# swaps, migrations, multi-service integration) before they touch the real NAS deployment.
+# NOT a persistent 24/7 stack — bring it up, verify, tear it down.
+#
+# This file overrides ONLY what must differ to coexist with prod on the same host:
+# container names, volume paths, and the Traefik hostname. Everything else (image
+# choices, healthchecks, dependency graph) is inherited from docker-compose.moneypulse.yml —
+# that stays the single source of truth so staging never silently drifts from what
+# actually gets promoted.
+
+services:
+  postgres:
+    # THE thing being rehearsed: the base NAS compose file is still plain postgres:16-alpine
+    # (deploy-to-nas.sh never touches the Postgres service definition) — override it here
+    # to prove the pgvector engine swap before it ever touches the real NAS Postgres.
+    image: pgvector/pgvector:pg16
+    container_name: moneypulse-staging-db
+    volumes:
+      - /volume1/docker/moneypulse-staging/pg:/var/lib/postgresql/data
+
+  redis:
+    container_name: moneypulse-staging-redis
+    volumes:
+      - /volume1/docker/moneypulse-staging/redis:/data
+
+  api:
+    build:
+      context: /volume1/docker/moneypulse-staging/repo
+    container_name: moneypulse-staging-api
+    environment:
+      CORS_ORIGIN: https://moneypulse-staging.home.manikantar.com
+      COOKIE_SECURE: 'true'
+      HA_WEBHOOK_ALLOWED_HOSTS: ''
+      # Never let staging deliver real notifications/messages while rehearsing:
+      TELEGRAM_BOT_TOKEN: ''
+      TELEGRAM_CHAT_MAP: ''
+      FIREBASE_SYNC_ENDPOINT: ''
+    volumes:
+      - /volume1/docker/moneypulse-staging/uploads:/data/uploads
+      - /volume1/docker/moneypulse-staging/watch-folder:/config/watch-folder
+    labels:
+      # Neutralize the base file's inherited prod router key with an unambiguous
+      # non-matching host, NOT an empty rule string — Compose merges `labels:` as a
+      # key=value map (later file wins per key), but relying on an empty Traefik rule
+      # parsing safely is not something to bet real prod routing on.
+      - 'traefik.http.routers.moneypulse-api.rule=Host(`disabled-in-staging.invalid`)'
+      - 'traefik.http.routers.moneypulse-staging-api.rule=Host(`moneypulse-staging.home.manikantar.com`) && PathPrefix(`/api`)'
+      - 'traefik.http.routers.moneypulse-staging-api.entrypoints=websecure'
+      - 'traefik.http.routers.moneypulse-staging-api.tls=true'
+      - 'traefik.http.services.moneypulse-staging-api.loadbalancer.server.port=4000'
+
+  web:
+    build:
+      context: /volume1/docker/moneypulse-staging/repo
+      args:
+        NEXT_PUBLIC_API_URL: https://moneypulse-staging.home.manikantar.com/api
+    container_name: moneypulse-staging-web
+    environment:
+      NEXT_PUBLIC_API_URL: https://moneypulse-staging.home.manikantar.com/api
+    labels:
+      - 'traefik.http.routers.moneypulse-web.rule=Host(`disabled-in-staging.invalid`)'
+      - 'traefik.http.routers.moneypulse-staging-web.rule=Host(`moneypulse-staging.home.manikantar.com`)'
+      - 'traefik.http.routers.moneypulse-staging-web.entrypoints=websecure'
+      - 'traefik.http.routers.moneypulse-staging-web.tls=true'
+      - 'traefik.http.services.moneypulse-staging-web.loadbalancer.server.port=3000'
+      - 'traefik.http.routers.moneypulse-staging-web.priority=1'
+
+  pdf-parser:
+    build:
+      context: /volume1/docker/moneypulse-staging/repo
+    container_name: moneypulse-staging-pdf
+
+  backup:
+    # No scheduled backup job for a throwaway rehearsal environment.
+    profiles: ['never-start']

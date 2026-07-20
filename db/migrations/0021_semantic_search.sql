@@ -1,25 +1,35 @@
 -- 11.10 local semantic transaction search: pgvector + Ollama nomic-embed-text (768-dim).
 --
--- NAS DATA-VOLUME MIGRATION PATH:
+-- NAS DATA-VOLUME MIGRATION PATH (corrected after a staging rehearsal — see below):
 -- This migration requires the `vector` extension, which ships in the
--- `pgvector/pgvector:pg16` image but NOT in the stock `postgres:16` image used
--- previously. Two supported paths, pick one before this migration runs:
+-- `pgvector/pgvector:pg16` image but NOT in the stock `postgres:16-alpine` image
+-- used previously.
 --
---   1. (Recommended) Swap the compose `image:` for the `postgres` service to
---      `pgvector/pgvector:pg16` (already done in docker-compose.yml /
---      docker-compose.dev.yml as part of this change). pgvector/pgvector is
---      built FROM the same postgres:16 base image, so the existing data
---      volume is fully compatible — no dump/restore needed, just
---      `docker compose pull && docker compose up -d postgres` and the new
---      image boots against the existing PGDATA directory unchanged.
---   2. If you cannot change the image (e.g. a pinned base image policy),
---      install the pgvector extension files into the running container's
---      Postgres `$libdir` manually (build from source or copy from a
---      pgvector image) so `CREATE EXTENSION vector` below succeeds against
---      the stock image.
+-- CORRECTION: an earlier version of this comment claimed pgvector/pgvector:pg16
+-- is "built FROM the same postgres:16 base image" as the prior image, so the
+-- existing volume could just be reused in place. That's false: the live NAS
+-- Postgres image is `postgres:16-alpine` (musl libc), while `pgvector/pgvector:pg16`
+-- is Debian-based (glibc) — confirmed directly from a staging container's boot log
+-- ("PostgreSQL 16.14 (Debian 16.14-1.pgdg12+1)"). Swapping the image in place on
+-- an Alpine-created data directory risks silent collation-order corruption on any
+-- text/varchar index (musl and glibc don't sort text identically) — not a crash,
+-- a QUIET wrong-order bug. Do NOT just `docker compose pull && up -d postgres`.
 --
--- Either way this file is idempotent (`IF NOT EXISTS` throughout) and safe
--- to re-run.
+-- PROVEN-SAFE PATH (rehearsed on an on-demand staging stack before this landed):
+--   1. pg_dump -Fc the current (Alpine) database.
+--   2. Bring up pgvector/pgvector:pg16 against a FRESH, empty volume (not the old one).
+--   3. pg_restore the dump into the fresh cluster — this rebuilds every index from
+--      scratch under the new image's real collation, sidestepping the risk entirely
+--      rather than gambling on in-place compatibility.
+--   4. Run this migration (CREATE EXTENSION vector + the table below) against the
+--      restored cluster.
+--   5. Point the app at the new container; verify. Keep the OLD container + volume
+--      stopped but untouched for a rollback window — nothing destructive happened
+--      to it, so rollback is "point the app back," not "restore from backup."
+-- Verified end-to-end on a copy of real prod data: identical row counts across all
+-- tables and a matching content checksum on `transactions` pre/post restore.
+--
+-- This file itself is idempotent (`IF NOT EXISTS` throughout) and safe to re-run.
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS "transaction_embeddings" (
