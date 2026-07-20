@@ -11,6 +11,13 @@ import { WatchdogDetectorService } from '../analytics/watchdog-detector.service'
 import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
 import { BillsService } from '../bills/bills.service';
 import { LoansService } from '../loans/loans.service';
+import { MarketDataService } from '../market-data/market-data.service';
+
+const MARKET_DATA_JITTER_MAX_MS = 15 * 60_000; // spread load on the free EIA/FRED tiers
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 @Processor('alerts')
 export class AlertCronProcessor extends WorkerHost {
@@ -27,6 +34,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly advisorDigestService: AdvisorDigestService,
     private readonly billsService: BillsService,
     private readonly loansService: LoansService,
+    private readonly marketDataService: MarketDataService,
   ) {
     super();
   }
@@ -92,6 +100,21 @@ export class AlertCronProcessor extends WorkerHost {
           await this.loansService.checkMissedLoanPayments();
         this.logger.log(
           `Loan missed-check: ${checked} loans, ${missed} missed, ${notified} notified`,
+        );
+        break;
+      }
+
+      case 'market-data-refresh': {
+        // Jitter so this repeatable job doesn't hit EIA/FRED's free-tier rate limits
+        // at the exact same second every day. Skipped in tests — a unit test that calls
+        // process() directly must never wait on a real timer (up to 15 real minutes).
+        if (process.env.NODE_ENV !== 'test') {
+          await sleep(Math.floor(Math.random() * MARKET_DATA_JITTER_MAX_MS));
+        }
+        const result = await this.marketDataService.refreshAll();
+        this.logger.log(
+          `Market data refresh: ${result.refreshed.length} refreshed, ` +
+            `${result.skipped.length} skipped, ${result.failed.length} failed`,
         );
         break;
       }

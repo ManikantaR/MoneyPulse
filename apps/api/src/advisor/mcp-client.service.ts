@@ -29,6 +29,7 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_recent_anomalies',
   'get_loan_status',
   'compare_periods',
+  'get_market_context', // public EIA/FRED data, no user PII — safe for the cloud advisor
 ]);
 
 /** Anthropic tool definition shape (name + description + JSON schema). */

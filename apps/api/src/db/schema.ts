@@ -5,6 +5,7 @@ import {
   text,
   integer,
   real,
+  numeric,
   boolean,
   timestamp,
   jsonb,
@@ -887,4 +888,34 @@ export const pushSubscriptionsRelations = relations(
       references: [users.id],
     }),
   }),
+);
+
+// ── Market Data (11.6) ──────────────────────────────────────
+// Append-only time series from public sources (EIA, FRED). Global, not user-scoped —
+// no userId. `source` records provenance; `fetchedAt` lets consumers show data-age and
+// callers detect stale-but-served values during an upstream outage (never break on a
+// failed fetch — serve the last stored value instead).
+
+export const marketMetrics = pgTable(
+  'market_metrics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    metricKey: varchar('metric_key', { length: 64 }).notNull(),
+    region: varchar('region', { length: 16 }),
+    periodDate: date('period_date').notNull(),
+    value: numeric('value', { precision: 14, scale: 4 }).notNull(),
+    unit: varchar('unit', { length: 32 }).notNull(),
+    source: varchar('source', { length: 16 }).notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('uq_market_metrics_key_region_period').on(
+      table.metricKey,
+      table.region,
+      table.periodDate,
+    ),
+    index('idx_market_metrics_key_period').on(table.metricKey, table.periodDate),
+  ],
 );

@@ -10,6 +10,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { AdvisorModule } from '../advisor/advisor.module';
 import { BillsModule } from '../bills/bills.module';
 import { LoansModule } from '../loans/loans.module';
+import { MarketDataModule } from '../market-data/market-data.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { LoansModule } from '../loans/loans.module';
     AdvisorModule,
     BillsModule,
     LoansModule,
+    MarketDataModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -132,6 +134,15 @@ export class JobsModule implements OnModuleInit {
         'daily-loan-missed-check',
         { pattern: '30 5 * * *' },
         { name: 'loan-missed-check' },
+      ),
+
+      // Market data refresh (11.6) — daily 9 AM UTC; the processor adds random jitter
+      // (up to 15min) before calling out, and MarketDataService itself skips any series
+      // whose cadence means it isn't due yet (a weekly EIA series isn't refetched daily).
+      this.alertsQueue.upsertJobScheduler(
+        'daily-market-data-refresh',
+        { pattern: '0 9 * * *' },
+        { name: 'market-data-refresh' },
       ),
 
       // Frequent sync delivery sweep for outbox events.
