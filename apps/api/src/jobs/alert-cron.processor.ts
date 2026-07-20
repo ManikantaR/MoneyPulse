@@ -10,6 +10,7 @@ import { FreshnessDetectorService } from '../analytics/freshness-detector.servic
 import { WatchdogDetectorService } from '../analytics/watchdog-detector.service';
 import { MarketInsightDetectorService } from '../analytics/market-insight-detector.service';
 import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
+import { AdvisorReviewService } from '../advisor/review/advisor-review.service';
 import { BillsService } from '../bills/bills.service';
 import { LoansService } from '../loans/loans.service';
 import { MarketDataService } from '../market-data/market-data.service';
@@ -34,6 +35,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly watchdogDetectorService: WatchdogDetectorService,
     private readonly marketInsightDetectorService: MarketInsightDetectorService,
     private readonly advisorDigestService: AdvisorDigestService,
+    private readonly advisorReviewService: AdvisorReviewService,
     private readonly billsService: BillsService,
     private readonly loansService: LoansService,
     private readonly marketDataService: MarketDataService,
@@ -81,6 +83,14 @@ export class AlertCronProcessor extends WorkerHost {
 
       case 'advisor-digest-weekly':
         await this.advisorDigestService.deliverAllEnabled();
+        break;
+
+      case 'proactive-advisor-review-weekly':
+        await this.advisorReviewService.deliverAllEnabled('weekly');
+        break;
+
+      case 'proactive-advisor-review-monthly':
+        await this.advisorReviewService.deliverAllEnabled('monthly');
         break;
 
       case 'snapshot-all':

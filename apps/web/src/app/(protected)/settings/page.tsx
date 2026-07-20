@@ -24,6 +24,9 @@ export default function SettingsPage() {
   const [advisorDigest, setAdvisorDigest] = useState(
     settings?.advisorDigestEnabled ?? false,
   );
+  const [proactiveAdvisor, setProactiveAdvisor] = useState(
+    settings?.proactiveAdvisorEnabled ?? false,
+  );
   const [telegramNotifications, setTelegramNotifications] = useState(
     settings?.telegramNotificationsEnabled ?? false,
   );
@@ -51,6 +54,7 @@ export default function SettingsPage() {
         dailyDigestEnabled: dailyDigest,
         monthlyDigestEnabled: monthlyDigest,
         advisorDigestEnabled: advisorDigest,
+        proactiveAdvisorEnabled: proactiveAdvisor,
         telegramNotificationsEnabled: telegramNotifications,
         haWebhookUrl: haWebhookUrl || null,
         firebaseUid: firebaseUid || null,
@@ -186,6 +190,24 @@ export default function SettingsPage() {
               <span className="block text-xs font-normal text-[var(--on-surface-variant)]">
                 A ranked, dollar-quantified &ldquo;what changed this week&rdquo; narrated by
                 your configured AI advisor. Requires an advisor provider set up above.
+              </span>
+            </label>
+          </div>
+          <div className="flex items-start gap-3">
+            <input
+              id="proactiveAdvisor"
+              type="checkbox"
+              checked={proactiveAdvisor}
+              onChange={(e) => setProactiveAdvisor(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-[var(--border)]"
+            />
+            <label htmlFor="proactiveAdvisor" className="text-sm font-medium">
+              Enable proactive advisor reviews
+              <span className="block text-xs font-normal text-[var(--on-surface-variant)]">
+                Lets the AI advisor scan your aggregates weekly and monthly and post
+                noteworthy findings (unusual movement, budget/goal drift, waste) to your
+                insights feed and Telegram. Quiet periods post nothing. Requires an advisor
+                provider set up above.
               </span>
             </label>
           </div>

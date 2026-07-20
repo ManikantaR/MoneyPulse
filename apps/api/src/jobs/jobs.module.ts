@@ -84,6 +84,22 @@ export class JobsModule implements OnModuleInit {
         { name: 'advisor-digest-weekly' },
       ),
 
+      // Proactive advisor reviews (11.9) — a standing, scheduled counterpart to the
+      // interactive advisor chat; delivers to the insights feed + Telegram, gated per-user
+      // on proactive_advisor_enabled (default OFF). Weekly: Sunday 23:00 UTC (~6–7 PM ET,
+      // Sunday evening). Monthly: 1st at 11:00 UTC, after the market-joined 2nd-of-month
+      // sweeps so its net-worth/loan figures reflect a settled month.
+      this.alertsQueue.upsertJobScheduler(
+        'weekly-proactive-advisor-review',
+        { pattern: '0 23 * * 0' },
+        { name: 'proactive-advisor-review-weekly' },
+      ),
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-proactive-advisor-review',
+        { pattern: '0 11 1 * *' },
+        { name: 'proactive-advisor-review-monthly' },
+      ),
+
       // Weekly bank balance reminder (Monday 9 AM)
       this.remindersQueue.upsertJobScheduler(
         'weekly-bank',

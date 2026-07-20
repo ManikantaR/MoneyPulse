@@ -216,6 +216,7 @@ export const updateUserSettingsSchema = z.object({
   firebaseUid: z.string().max(128).nullable().optional(),
   dailyBriefEnabled: z.boolean().optional(),
   dailyBriefHour: z.number().int().min(0).max(23).optional(),
+  proactiveAdvisorEnabled: z.boolean().optional(),
 });
 
 export const sendDigestSchema = z.object({

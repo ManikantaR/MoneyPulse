@@ -60,6 +60,7 @@ export interface UserSettings {
   firebaseUid: string | null;
   dailyBriefEnabled: boolean;
   dailyBriefHour: number;
+  proactiveAdvisorEnabled: boolean;
 }
 
 export interface Account {
