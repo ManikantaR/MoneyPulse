@@ -8,7 +8,7 @@ import { LearningService } from './learning.service';
 import { TransactionProjectionService } from '../sync/transaction-projection.service';
 import { EmbeddingCategorizerService } from '../embeddings/embedding-categorizer.service';
 
-interface CategorizationStats {
+export interface CategorizationStats {
   total: number;
   categorizedByRule: number;
   categorizedByNn: number;
