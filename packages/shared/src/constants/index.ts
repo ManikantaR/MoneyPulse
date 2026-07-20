@@ -314,3 +314,61 @@ export const EXPECTED_FEE_CATEGORY_NAMES: string[] = [
   'Mortgage',
   'Loan Interest',
 ];
+
+// ── Market Data (11.6) ──────────────────────────────────────
+
+/** A single market_metrics series this app tracks, keyed by metric_key. */
+export type MarketSeriesDef = {
+  metricKey: string;
+  source: 'eia' | 'fred';
+  unit: string;
+  /** How often the underlying series actually updates — used to skip a daily
+   *  refresh call for a weekly/monthly series that hasn't rolled over yet. */
+  cadence: 'daily' | 'weekly' | 'monthly';
+  description: string;
+};
+
+export const MARKET_SERIES: MarketSeriesDef[] = [
+  {
+    metricKey: 'gas_retail_regular',
+    source: 'eia',
+    unit: 'usd_per_gallon',
+    cadence: 'weekly',
+    description: 'Regular gasoline retail price ($/gal), state from MARKET_GAS_STATE',
+  },
+  {
+    metricKey: 'electricity_residential',
+    source: 'eia',
+    unit: 'cents_per_kwh',
+    cadence: 'monthly',
+    description: 'Residential electricity price (¢/kWh), state from MARKET_GAS_STATE',
+  },
+  {
+    metricKey: 'mortgage_30y',
+    source: 'fred',
+    unit: 'percent',
+    cadence: 'weekly',
+    description: '30-year fixed mortgage rate (FRED MORTGAGE30US)',
+  },
+  {
+    metricKey: 'cpi_all_urban',
+    source: 'fred',
+    unit: 'index',
+    cadence: 'monthly',
+    description: 'Consumer Price Index, all urban consumers (FRED CPIAUCSL)',
+  },
+  {
+    metricKey: 'fed_funds_rate',
+    source: 'fred',
+    unit: 'percent',
+    cadence: 'monthly',
+    description: 'Effective federal funds rate (FRED FEDFUNDS)',
+  },
+];
+
+/** FRED series ID used as the HYSA-comparable benchmark — env-overridable per the
+ *  spec (`MARKET_HYSA_FRED_SERIES`). No FRED series *is* an actual HYSA APY; FEDFUNDS
+ *  (effective federal funds rate) is the standard public proxy online-savings yields
+ *  track closely, so it's the default. Verify against https://fred.stlouisfed.org
+ *  once you have a key if you want a closer benchmark (e.g. a short T-bill series). */
+export const DEFAULT_HYSA_FRED_SERIES = 'FEDFUNDS';

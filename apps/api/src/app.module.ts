@@ -24,6 +24,7 @@ import { BillsModule } from './bills/bills.module';
 import { LoansModule } from './loans/loans.module';
 import { InvestmentsModule } from './investments/investments.module';
 import { AdvisorModule } from './advisor/advisor.module';
+import { MarketDataModule } from './market-data/market-data.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { AdvisorModule } from './advisor/advisor.module';
     LoansModule,
     InvestmentsModule,
     AdvisorModule,
+    MarketDataModule,
     HealthModule,
   ],
   providers: [

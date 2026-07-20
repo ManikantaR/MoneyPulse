@@ -20,6 +20,7 @@ import { registerGetCategoryTrend } from './tools/get-category-trend.js';
 import { registerGetBudgetHistory } from './tools/get-budget-history.js';
 import { registerGetRecentAnomalies } from './tools/get-recent-anomalies.js';
 import { registerGetLoanStatus } from './tools/get-loan-status.js';
+import { registerGetMarketContext } from './tools/get-market-context.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -47,6 +48,7 @@ registerGetCategoryTrend(server);
 registerGetBudgetHistory(server);
 registerGetRecentAnomalies(server);
 registerGetLoanStatus(server);
+registerGetMarketContext(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 
