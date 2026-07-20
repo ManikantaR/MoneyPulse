@@ -50,16 +50,35 @@ describe('EiaClient', () => {
     expect(url).toContain('api_key=test-key');
   });
 
-  it('electricity route uses stateid/sectorid facets, not duoarea', async () => {
-    fetchSpy.mockResolvedValueOnce({ ok: true, json: async () => EIA_FIXTURE });
+  it('electricity route uses stateid/sectorid facets and the "price" data field', async () => {
+    // Live-verified 2026-07-20: electricity/retail-sales rejects data[0]=value with a 400
+    // ("The only valid data are 'revenue', 'sales', 'price', and 'customers'") — unlike
+    // petroleum/pri/gnd, which does accept 'value'. Response rows are keyed by whatever
+    // field was requested, so a fixture with a `price` key (not `value`) must parse.
+    const ELECTRICITY_FIXTURE = {
+      response: { data: [{ period: '2026-06', price: '24.31' }] },
+    };
+    fetchSpy.mockResolvedValueOnce({ ok: true, json: async () => ELECTRICITY_FIXTURE });
     const client = new EiaClient(makeConfig('test-key'));
 
-    await client.fetchElectricityPrice('CA');
+    const points = await client.fetchElectricityPrice('CA');
 
     const url = fetchSpy.mock.calls[0][0] as string;
     expect(url).toContain('electricity/retail-sales/data');
     expect(url).toContain('facets%5Bstateid%5D%5B%5D=CA');
     expect(url).toContain('facets%5Bsectorid%5D%5B%5D=RES');
+    expect(url).toContain('data%5B0%5D=price');
+    expect(points).toEqual([{ period: '2026-06', value: 24.31 }]);
+  });
+
+  it('the gas-price route still requests data[0]=value (unaffected by the fix)', async () => {
+    fetchSpy.mockResolvedValueOnce({ ok: true, json: async () => EIA_FIXTURE });
+    const client = new EiaClient(makeConfig('test-key'));
+
+    await client.fetchGasPrice('SCA');
+
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain('data%5B0%5D=value');
   });
 
   it('no-fire: an HTTP error never throws — returns empty and logs', async () => {

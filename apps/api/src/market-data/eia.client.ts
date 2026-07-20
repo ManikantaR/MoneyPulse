@@ -45,11 +45,14 @@ export class EiaClient {
 
   /** Monthly residential electricity price (¢/kWh) for a state (2-letter postal code). */
   async fetchElectricityPrice(stateId: string): Promise<EiaPoint[]> {
-    return this.fetchSeries('electricity/retail-sales', {
-      'facets[stateid][]': stateId,
-      'facets[sectorid][]': 'RES',
-      frequency: 'monthly',
-    });
+    // electricity/retail-sales does NOT accept 'value' as a data field (unlike
+    // petroleum/pri/gnd) — confirmed live: EIA 400s with "The only valid data are
+    // 'revenue', 'sales', 'price', and 'customers'." 'price' is the ¢/kWh series.
+    return this.fetchSeries(
+      'electricity/retail-sales',
+      { 'facets[stateid][]': stateId, 'facets[sectorid][]': 'RES', frequency: 'monthly' },
+      'price',
+    );
   }
 
   /**
@@ -59,6 +62,7 @@ export class EiaClient {
   private async fetchSeries(
     route: string,
     facets: Record<string, string>,
+    dataField: string = 'value',
   ): Promise<EiaPoint[]> {
     if (!this.apiKey) {
       this.logger.warn(`EIA_API_KEY not set — skipping ${route}`);
@@ -66,7 +70,7 @@ export class EiaClient {
     }
     const url = new URL(`${EIA_BASE_URL}/${route}/data/`);
     url.searchParams.set('api_key', this.apiKey);
-    url.searchParams.set('data[0]', 'value');
+    url.searchParams.set('data[0]', dataField);
     url.searchParams.set('sort[0][column]', 'period');
     url.searchParams.set('sort[0][direction]', 'desc');
     url.searchParams.set('length', '52'); // ~1yr weekly / ~4yr monthly, plenty for deltas
@@ -81,11 +85,11 @@ export class EiaClient {
         return [];
       }
       const body = (await res.json()) as {
-        response?: { data?: Array<{ period: string; value: number | string }> };
+        response?: { data?: Array<Record<string, unknown>> };
       };
       const rows = body.response?.data ?? [];
       return rows
-        .map((r) => ({ period: r.period, value: Number(r.value) }))
+        .map((r) => ({ period: r.period as string, value: Number(r[dataField]) }))
         .filter((p) => Number.isFinite(p.value));
     } catch (err: any) {
       this.logger.error(`EIA ${route} fetch failed: ${err.message}`);
