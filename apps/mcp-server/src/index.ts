@@ -21,6 +21,10 @@ import { registerGetBudgetHistory } from './tools/get-budget-history.js';
 import { registerGetRecentAnomalies } from './tools/get-recent-anomalies.js';
 import { registerGetLoanStatus } from './tools/get-loan-status.js';
 import { registerGetMarketContext } from './tools/get-market-context.js';
+import { registerGetSavingsRate } from './tools/get-savings-rate.js';
+import { registerGetCashRunway } from './tools/get-cash-runway.js';
+import { registerGetSubscriptionTotal } from './tools/get-subscription-total.js';
+import { registerGetYoyComparison } from './tools/get-yoy-comparison.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -49,6 +53,10 @@ registerGetBudgetHistory(server);
 registerGetRecentAnomalies(server);
 registerGetLoanStatus(server);
 registerGetMarketContext(server);
+registerGetSavingsRate(server);
+registerGetCashRunway(server);
+registerGetSubscriptionTotal(server);
+registerGetYoyComparison(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 

@@ -392,4 +392,162 @@ describe('AnalyticsService', () => {
       expect(mockDb.execute).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('savingsRate', () => {
+    it('computes rate = (income - expenses) / income per month, hand-computed', async () => {
+      // Fixture: Jan income $5000, expenses $3200 -> rate 36%; Feb income $5000, expenses $4000 -> rate 20%.
+      mockDb.execute.mockResolvedValue({
+        rows: [
+          { month: '2026-01', income_cents: '500000', expense_cents: '320000' },
+          { month: '2026-02', income_cents: '500000', expense_cents: '400000' },
+        ],
+      });
+
+      const result = await service.savingsRate(TEST_USER_ID, {});
+
+      expect(result.series).toEqual([
+        { month: '2026-01', incomeCents: 500000, expenseCents: 320000, rate: 0.36 },
+        { month: '2026-02', incomeCents: 500000, expenseCents: 400000, rate: 0.2 },
+      ]);
+      expect(result.current).toEqual(result.series[1]);
+    });
+
+    it('returns a null rate for a month with zero income (no divide-by-zero)', async () => {
+      mockDb.execute.mockResolvedValue({
+        rows: [{ month: '2026-03', income_cents: '0', expense_cents: '10000' }],
+      });
+
+      const result = await service.savingsRate(TEST_USER_ID, {});
+      expect(result.series[0].rate).toBeNull();
+    });
+
+    it('returns null current when there is no history at all', async () => {
+      mockDb.execute.mockResolvedValue({ rows: [] });
+      const result = await service.savingsRate(TEST_USER_ID, {});
+      expect(result.current).toBeNull();
+      expect(result.series).toEqual([]);
+    });
+  });
+
+  describe('cashRunway', () => {
+    it('computes liquid / trailing-3mo-avg-expenses, hand-computed', async () => {
+      // Liquid = $12,000; trailing 3-month expenses total = $9,000 -> avg $3,000/mo -> 4.0 months.
+      mockDb.execute
+        .mockResolvedValueOnce({ rows: [{ liquid_cents: '1200000' }] })
+        .mockResolvedValueOnce({ rows: [{ total_cents: '900000' }] });
+
+      const result = await service.cashRunway(TEST_USER_ID, {});
+
+      expect(result.liquidCents).toBe(1200000);
+      expect(result.avgMonthlyExpenseCents).toBe(300000);
+      expect(result.months).toBe(4);
+    });
+
+    it('returns null months when there is no expense history (no divide-by-zero)', async () => {
+      mockDb.execute
+        .mockResolvedValueOnce({ rows: [{ liquid_cents: '500000' }] })
+        .mockResolvedValueOnce({ rows: [{ total_cents: '0' }] });
+
+      const result = await service.cashRunway(TEST_USER_ID, {});
+      expect(result.months).toBeNull();
+    });
+  });
+
+  describe('netWorthDeltas', () => {
+    it('returns nulls for all windows when there are no snapshots', async () => {
+      mockDb.execute.mockResolvedValue({ rows: [] });
+      const result = await service.netWorthDeltas(TEST_USER_ID);
+      expect(result).toEqual({ current: null, delta30: null, delta90: null, delta365: null });
+    });
+
+    it('computes deltas against the closest snapshot on/before each cutoff', async () => {
+      const today = new Date();
+      const daysAgo = (n: number) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - n);
+        return d.toISOString().slice(0, 10);
+      };
+      mockDb.execute.mockResolvedValue({
+        rows: [
+          { snapshot_date: daysAgo(400), total_cents: '1000000' },
+          { snapshot_date: daysAgo(95), total_cents: '1200000' },
+          { snapshot_date: daysAgo(5), total_cents: '1500000' },
+        ],
+      });
+
+      const result = await service.netWorthDeltas(TEST_USER_ID);
+      expect(result.current).toBe(1500000);
+      expect(result.delta30).toBe(1500000 - 1200000); // no point within 30d, falls back to 95d-ago point
+      expect(result.delta90).toBe(1500000 - 1200000);
+      expect(result.delta365).toBe(1500000 - 1000000);
+    });
+  });
+
+  describe('yoyComparison', () => {
+    it('reports insufficientHistory when less than 12 months of transactions exist', async () => {
+      const twoMonthsAgo = new Date();
+      twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+      mockDb.execute.mockResolvedValueOnce({
+        rows: [{ min_date: twoMonthsAgo.toISOString().slice(0, 10) }],
+      });
+
+      const result = await service.yoyComparison(TEST_USER_ID, {});
+      expect(result.insufficientHistory).toBe(true);
+      expect(result.categories).toEqual([]);
+      expect(result.message).toContain('history');
+    });
+
+    it('returns per-category deltas when 12+ months of history exist', async () => {
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      mockDb.execute
+        .mockResolvedValueOnce({ rows: [{ min_date: twoYearsAgo.toISOString().slice(0, 10) }] })
+        .mockResolvedValueOnce({
+          rows: [
+            { category_id: 'cat-1', category_name: 'Groceries', this_month_cents: '60000', last_year_cents: '50000' },
+          ],
+        });
+
+      const result = await service.yoyComparison(TEST_USER_ID, {});
+      expect(result.insufficientHistory).toBe(false);
+      expect(result.categories).toEqual([
+        {
+          categoryId: 'cat-1',
+          categoryName: 'Groceries',
+          thisMonthCents: 60000,
+          lastYearCents: 50000,
+          deltaCents: 10000,
+          deltaPercent: 20,
+        },
+      ]);
+    });
+  });
+
+  describe('subscriptionTotal', () => {
+    it('sums active bills normalized to monthly-equivalent, hand-computed', async () => {
+      // $10 weekly (~4.345x) + $30 monthly + $60 quarterly (1/3x) = $43.45 + $30 + $20 = $93.45 -> 9345 cents
+      mockDb.execute
+        .mockResolvedValueOnce({
+          rows: [
+            { normalized_name: 'gym', expected_amount_cents: '1000', frequency: 'weekly' },
+            { normalized_name: 'netflix', expected_amount_cents: '3000', frequency: 'monthly' },
+            { normalized_name: 'insurance', expected_amount_cents: '6000', frequency: 'quarterly' },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const result = await service.subscriptionTotal(TEST_USER_ID);
+
+      expect(result.activeCount).toBe(3);
+      expect(result.monthlyTotalCents).toBe(9345);
+    });
+
+    it('returns zero total and skips the trend query when there are no active bills', async () => {
+      mockDb.execute.mockResolvedValueOnce({ rows: [] });
+
+      const result = await service.subscriptionTotal(TEST_USER_ID);
+      expect(result).toEqual({ monthlyTotalCents: 0, activeCount: 0, trend: [] });
+      expect(mockDb.execute).toHaveBeenCalledTimes(1);
+    });
+  });
 });

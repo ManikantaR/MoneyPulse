@@ -227,3 +227,71 @@ export function useBalanceHistory(params: AnalyticsParams = {}) {
       api.get<{ data: BalanceHistoryPoint[] }>('/analytics/balance-history', { params }),
   });
 }
+
+/** Single point in the trailing savings-rate series. */
+export interface SavingsRatePoint {
+  month: string;
+  incomeCents: number;
+  expenseCents: number;
+  rate: number | null;
+}
+
+/** Savings-rate headline + trailing series. */
+export interface SavingsRateData {
+  current: SavingsRatePoint | null;
+  series: SavingsRatePoint[];
+}
+
+/** Fetch the trailing monthly savings-rate series (default 12 months). */
+export function useSavingsRate(params: AnalyticsParams & { months?: number } = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'savings-rate', params],
+    queryFn: () => api.get<{ data: SavingsRateData }>('/analytics/savings-rate', { params }),
+  });
+}
+
+/** Cash runway: liquid balances / trailing-3-month avg expenses. */
+export interface CashRunwayData {
+  liquidCents: number;
+  avgMonthlyExpenseCents: number;
+  months: number | null;
+}
+
+/** Fetch the cash runway estimate. */
+export function useCashRunway(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'cash-runway', params],
+    queryFn: () => api.get<{ data: CashRunwayData }>('/analytics/cash-runway', { params }),
+  });
+}
+
+/** 30/90/365-day net-worth deltas from stored balance snapshots. */
+export interface NetWorthDeltas {
+  current: number | null;
+  delta30: number | null;
+  delta90: number | null;
+  delta365: number | null;
+}
+
+/** Fetch net-worth deltas. */
+export function useNetWorthDeltas() {
+  return useQuery({
+    queryKey: ['analytics', 'net-worth-deltas'],
+    queryFn: () => api.get<{ data: NetWorthDeltas }>('/analytics/net-worth-deltas'),
+  });
+}
+
+/** Monthly recurring subscription total + 12-month trend. */
+export interface SubscriptionTotalData {
+  monthlyTotalCents: number;
+  activeCount: number;
+  trend: Array<{ month: string; totalCents: number }>;
+}
+
+/** Fetch the subscription-total headline stat. */
+export function useSubscriptionTotal() {
+  return useQuery({
+    queryKey: ['analytics', 'subscription-total'],
+    queryFn: () => api.get<{ data: SubscriptionTotalData }>('/analytics/subscription-total'),
+  });
+}
