@@ -126,3 +126,21 @@ export function projectPayoff(
     amortizes: true,
   };
 }
+
+/**
+ * Standard fixed-rate amortized monthly payment (P+I) to pay off `balanceCents` over
+ * `termMonths` at `aprBps`. Used by the refi watcher (11.7) to compare "what would this
+ * balance cost per month at today's market rate, over the same remaining term" against
+ * what the loan is actually paying. Falls back to straight-line if the rate is zero.
+ */
+export function standardMonthlyPaymentCents(
+  balanceCents: number,
+  aprBps: number,
+  termMonths: number,
+): number {
+  if (termMonths <= 0 || balanceCents <= 0) return 0;
+  const rate = aprBps / 10000 / 12;
+  if (rate === 0) return Math.round(balanceCents / termMonths);
+  const factor = Math.pow(1 + rate, termMonths);
+  return Math.round((balanceCents * rate * factor) / (factor - 1));
+}

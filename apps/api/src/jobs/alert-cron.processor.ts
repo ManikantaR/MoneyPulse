@@ -8,6 +8,7 @@ import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
 import { FreshnessDetectorService } from '../analytics/freshness-detector.service';
 import { WatchdogDetectorService } from '../analytics/watchdog-detector.service';
+import { MarketInsightDetectorService } from '../analytics/market-insight-detector.service';
 import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
 import { BillsService } from '../bills/bills.service';
 import { LoansService } from '../loans/loans.service';
@@ -31,6 +32,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly forecastService: ForecastService,
     private readonly freshnessDetectorService: FreshnessDetectorService,
     private readonly watchdogDetectorService: WatchdogDetectorService,
+    private readonly marketInsightDetectorService: MarketInsightDetectorService,
     private readonly advisorDigestService: AdvisorDigestService,
     private readonly billsService: BillsService,
     private readonly loansService: LoansService,
@@ -126,6 +128,26 @@ export class AlertCronProcessor extends WorkerHost {
         );
         break;
       }
+
+      case 'refi-watch':
+        await this.marketInsightDetectorService.checkRefiOpportunitiesAllUsers();
+        break;
+
+      case 'idle-cash-check':
+        await this.marketInsightDetectorService.checkIdleCashAllUsers();
+        break;
+
+      case 'fuel-vs-market-check':
+        await this.marketInsightDetectorService.checkFuelVsMarketAllUsers();
+        break;
+
+      case 'power-vs-market-check':
+        await this.marketInsightDetectorService.checkPowerVsMarketAllUsers();
+        break;
+
+      case 'gas-dip-check':
+        await this.marketInsightDetectorService.checkGasDipAllUsers();
+        break;
 
       default:
         this.logger.warn(`Unknown alert job: ${job.name}`);

@@ -145,6 +145,35 @@ export class JobsModule implements OnModuleInit {
         { name: 'market-data-refresh' },
       ),
 
+      // Market-joined insights (11.7) — monthly detectors run on the 2nd (after the
+      // 1st-of-month market-data-adjacent digests) at staggered hours so they don't all
+      // hammer the DB/notification pipeline at once; the weekly gas-dip note runs Mondays.
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-refi-watch',
+        { pattern: '0 10 2 * *' },
+        { name: 'refi-watch' },
+      ),
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-idle-cash-check',
+        { pattern: '15 10 2 * *' },
+        { name: 'idle-cash-check' },
+      ),
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-fuel-vs-market-check',
+        { pattern: '30 10 2 * *' },
+        { name: 'fuel-vs-market-check' },
+      ),
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-power-vs-market-check',
+        { pattern: '45 10 2 * *' },
+        { name: 'power-vs-market-check' },
+      ),
+      this.alertsQueue.upsertJobScheduler(
+        'weekly-gas-dip-check',
+        { pattern: '0 11 * * 1' },
+        { name: 'gas-dip-check' },
+      ),
+
       // Frequent sync delivery sweep for outbox events.
       this.syncQueue.upsertJobScheduler(
         'sync-delivery-sweep',
