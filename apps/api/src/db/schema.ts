@@ -161,6 +161,11 @@ export const userSettings = pgTable('user_settings', {
   /** Idle-cash buffer override (11.7), in months of trailing-3-month avg expenses.
    *  Null falls back to MARKET_INSIGHT_THRESHOLDS.IDLE_CASH_BUFFER_MONTHS (1). */
   idleCashBufferMonths: integer('idle_cash_buffer_months'),
+  /** 11.9 proactive advisor — scheduled weekly/monthly AI review into the insights feed.
+   *  Default OFF: no cloud LLM run happens for a user until they opt in. */
+  proactiveAdvisorEnabled: boolean('proactive_advisor_enabled')
+    .notNull()
+    .default(false),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

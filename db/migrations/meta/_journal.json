@@ -141,6 +141,13 @@
       "when": 1784546600000,
       "tag": "0019_idle_cash_buffer",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784552700000,
+      "tag": "0020_proactive_advisor",
+      "breakpoints": true
     }
   ]
 }

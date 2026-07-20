@@ -9,6 +9,7 @@ import { LlmProviderFactory } from './llm/provider-factory';
 import { TelegramService } from './telegram.service';
 import { DigestSignalsService } from './digest/digest-signals.service';
 import { AdvisorDigestService } from './digest/advisor-digest.service';
+import { AdvisorReviewService } from './review/advisor-review.service';
 
 @Module({
   imports: [AiLogsModule, NotificationsModule],
@@ -20,8 +21,9 @@ import { AdvisorDigestService } from './digest/advisor-digest.service';
     TelegramService,
     DigestSignalsService,
     AdvisorDigestService,
+    AdvisorReviewService,
   ],
   controllers: [AdvisorController],
-  exports: [AdvisorService, AdvisorDigestService],
+  exports: [AdvisorService, AdvisorDigestService, AdvisorReviewService],
 })
 export class AdvisorModule {}
