@@ -22,6 +22,7 @@ import { AliasMapperService } from '../sync/alias-mapper.service';
 import { AnomalyDetectorService } from '../analytics/anomaly-detector.service';
 import { WatchdogDetectorService } from '../analytics/watchdog-detector.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
+import { EmbeddingService } from '../embeddings/embedding.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
 import { encryptField } from '../common/crypto';
 
@@ -52,6 +53,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly watchdogDetector: WatchdogDetectorService,
     private readonly ollamaHealth: OllamaHealthService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
+    private readonly embeddingService: EmbeddingService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
     @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {
@@ -75,6 +77,12 @@ export class IngestionProcessor extends WorkerHost {
     }
     if (job.name === 'merchant-normalize') {
       return this.processMerchantNormalize(job);
+    }
+    if (job.name === 'embed-transactions') {
+      return this.processEmbedTransactions(job);
+    }
+    if (job.name === 'embed-reconcile') {
+      return this.processEmbedReconcileSweep();
     }
 
     const { uploadId, userId, accountId, filePath, fileType } = job.data as IngestionJobData;
@@ -177,6 +185,19 @@ export class IngestionProcessor extends WorkerHost {
             await this.watchdogDetector.runTransactionScoped(userId, insertedIds);
           } catch (err: any) {
             this.logger.warn(`Anomaly detection failed: ${err.message}`);
+          }
+
+          // Enqueue embedding generation (best-effort, never blocks import;
+          // retried with backoff and picked up by the reconcile sweep if
+          // Ollama is down).
+          try {
+            await this.ingestionQueue.add(
+              'embed-transactions',
+              { transactionIds: insertedIds, userId },
+              { delay: 2000, attempts: 8, backoff: { type: 'exponential', delay: 60_000 } },
+            );
+          } catch (err: any) {
+            this.logger.warn(`Failed to enqueue embedding job: ${err.message}`);
           }
         }
 
@@ -319,6 +340,19 @@ export class IngestionProcessor extends WorkerHost {
             await this.watchdogDetector.runTransactionScoped(userId, insertedIds);
         } catch (err: any) {
           this.logger.warn(`Anomaly detection failed: ${err.message}`);
+        }
+
+        // Enqueue embedding generation (best-effort, never blocks import;
+        // retried with backoff and picked up by the reconcile sweep if
+        // Ollama is down).
+        try {
+          await this.ingestionQueue.add(
+            'embed-transactions',
+            { transactionIds: insertedIds, userId },
+            { delay: 2000, attempts: 8, backoff: { type: 'exponential', delay: 60_000 } },
+          );
+        } catch (err: any) {
+          this.logger.warn(`Failed to enqueue embedding job: ${err.message}`);
         }
       }
 
@@ -731,5 +765,80 @@ export class IngestionProcessor extends WorkerHost {
     }
 
     this.logger.log(`AI merchant normalization complete: ${cleanMap.size} descriptors improved`);
+  }
+
+  /**
+   * Background embedding generation (11.10 local semantic search).
+   * Health-gated — throws if Ollama unavailable so BullMQ retries with
+   * exponential backoff; ingestion itself never waits on this job.
+   */
+  private async processEmbedTransactions(
+    job: Job<{ transactionIds: string[]; userId: string }>,
+  ): Promise<void> {
+    const { transactionIds } = job.data;
+
+    if (!(await this.ollamaHealth.isAvailable())) {
+      throw new Error(
+        'ollama-unavailable: Ollama is not reachable; embed-transactions will be retried',
+      );
+    }
+
+    const { embedded, failed } = await this.embeddingService.embedTransactions(transactionIds);
+    this.logger.log(`Embedding generation: ${embedded} embedded, ${failed} failed`);
+  }
+
+  /**
+   * Safety-net sweep — runs every 15 min via upsertJobScheduler.
+   *
+   * Finds transactions with no row in `transaction_embeddings` yet (Ollama was
+   * down at import time, or retries exhausted during a long outage, or the
+   * transaction predates this feature) and re-enqueues embed-transactions.
+   * Skips entirely when Ollama is unavailable to avoid queue churn.
+   */
+  private async processEmbedReconcileSweep(): Promise<void> {
+    if (!(await this.ollamaHealth.isAvailable())) {
+      this.logger.debug('Embed reconcile sweep: Ollama unavailable — skipping to avoid churn');
+      return;
+    }
+
+    const result = await this.db.execute(sql`
+      SELECT t.id, t.user_id AS "userId"
+      FROM transactions t
+      LEFT JOIN transaction_embeddings te ON te.transaction_id = t.id
+      WHERE te.transaction_id IS NULL
+        AND t.deleted_at IS NULL
+        AND t.is_split_parent = false
+      ORDER BY t.id
+      LIMIT 500
+    `);
+    const rows = (result.rows ?? result) as Array<{ id: string; userId: string }>;
+
+    if (rows.length === 0) {
+      this.logger.debug('Embed reconcile sweep: no un-embedded transactions found');
+      return;
+    }
+
+    const byUser = new Map<string, string[]>();
+    for (const row of rows) {
+      const ids = byUser.get(row.userId) ?? [];
+      ids.push(row.id);
+      byUser.set(row.userId, ids);
+    }
+
+    for (const [userId, transactionIds] of byUser.entries()) {
+      await this.ingestionQueue.add(
+        'embed-transactions',
+        { transactionIds, userId },
+        {
+          jobId: `embed-reconcile-${userId}`,
+          attempts: 8,
+          backoff: { type: 'exponential', delay: 60_000 },
+        },
+      );
+    }
+
+    this.logger.log(
+      `Embed reconcile sweep: enqueued ${rows.length} txns across ${byUser.size} user(s)`,
+    );
   }
 }

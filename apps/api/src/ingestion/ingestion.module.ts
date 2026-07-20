@@ -13,6 +13,7 @@ import { AuditModule } from '../audit/audit.module';
 import { CategorizationModule } from '../categorization/categorization.module';
 import { SyncModule } from '../sync/sync.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { EmbeddingsModule } from '../embeddings/embeddings.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     CategorizationModule,
     SyncModule,
     AnalyticsModule,
+    EmbeddingsModule,
   ],
   controllers: [IngestionController],
   providers: [
@@ -47,6 +49,15 @@ export class IngestionModule implements OnModuleInit {
       'ai-reconcile-sweep',
       { every: 15 * 60 * 1000 }, // every 15 minutes
       { name: 'ai-reconcile' },
+    );
+
+    // 11.10 backfill sweep: catches transactions that never got an embedding
+    // (Ollama was down, retries exhausted, or imported before this feature
+    // shipped). Runs only when Ollama is up (see processor health gate).
+    await this.ingestionQueue.upsertJobScheduler(
+      'embed-reconcile-sweep',
+      { every: 15 * 60 * 1000 }, // every 15 minutes
+      { name: 'embed-reconcile' },
     );
   }
 }

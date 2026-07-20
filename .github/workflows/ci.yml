@@ -89,7 +89,10 @@ jobs:
       contents: read
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector/pgvector:pg16 (not stock postgres:16-alpine) — 11.10 semantic search's
+        # 0021_semantic_search migration needs `CREATE EXTENSION vector`, which the stock
+        # image doesn't ship. Same image the app's docker-compose.yml/dev.yml now use.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: moneypulse
           POSTGRES_PASSWORD: testpassword

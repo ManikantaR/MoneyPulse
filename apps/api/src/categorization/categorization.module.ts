@@ -9,9 +9,10 @@ import { MerchantAliasService } from './merchant-alias.service';
 import { OllamaHealthService } from './ollama-health.service';
 import { AiLogsModule } from '../ai-logs/ai-logs.module';
 import { SyncModule } from '../sync/sync.module';
+import { EmbeddingsModule } from '../embeddings/embeddings.module';
 
 @Module({
-  imports: [AiLogsModule, SyncModule],
+  imports: [AiLogsModule, SyncModule, EmbeddingsModule],
   controllers: [MerchantAliasController],
   providers: [
     RuleEngineService,
