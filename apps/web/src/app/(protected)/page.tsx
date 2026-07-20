@@ -28,6 +28,9 @@ import {
   useNetWorth,
   useTopMerchants,
   useCreditCardPayments,
+  useSavingsRate,
+  useCashRunway,
+  useSubscriptionTotal,
   useBudgetProgress,
   useBalanceHistory,
   useForecast,
@@ -79,6 +82,9 @@ export default function DashboardPage() {
   const balHistoryFrom = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
   const { data: balanceHistory } = useBalanceHistory({ from: balHistoryFrom, to: trendTo });
   const { data: forecastData } = useForecast(90);
+  const { data: savingsRateData } = useSavingsRate();
+  const { data: cashRunwayData } = useCashRunway();
+  const { data: subscriptionTotalData } = useSubscriptionTotal();
   const { data: topTxData, isLoading: topTxLoading } = useTransactions({
     from,
     to,
@@ -164,6 +170,47 @@ export default function DashboardPage() {
           icon={ArrowDownUp}
           accentColor="primary"
           onClick={() => drillTo({ excludeTransfers: 'true', drill: 'Net Cash Flow' })}
+        />
+      </div>
+
+      {/* Core stats — savings rate, cash runway, subscription total */}
+      <div className="grid gap-5 sm:grid-cols-3">
+        <StatCard
+          title="Savings Rate"
+          value={
+            savingsRateData?.data.current?.rate != null
+              ? `${(savingsRateData.data.current.rate * 100).toFixed(1)}%`
+              : '—'
+          }
+          subtitle={savingsRateData?.data.current?.month}
+          icon={TrendingUp}
+          accentColor="secondary"
+        />
+        <StatCard
+          title="Cash Runway"
+          value={
+            cashRunwayData?.data.months != null
+              ? `${cashRunwayData.data.months.toFixed(1)} mo`
+              : '—'
+          }
+          subtitle="liquid ÷ avg monthly expenses"
+          icon={ArrowDownUp}
+          accentColor="primary"
+        />
+        <StatCard
+          title="Subscriptions"
+          value={
+            subscriptionTotalData
+              ? formatCents(subscriptionTotalData.data.monthlyTotalCents)
+              : '—'
+          }
+          subtitle={
+            subscriptionTotalData
+              ? `${subscriptionTotalData.data.activeCount} active`
+              : undefined
+          }
+          icon={TrendingDown}
+          accentColor="danger"
         />
       </div>
 

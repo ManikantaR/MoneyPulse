@@ -246,6 +246,10 @@ export const topMerchantsQuerySchema = analyticsQuerySchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
+export const savingsRateQuerySchema = analyticsQuerySchema.extend({
+  months: z.coerce.number().int().min(1).max(60).optional(),
+});
+
 export const forecastQuerySchema = z.object({
   days: z.coerce.number().int().refine((v) => [30, 60, 90].includes(v), {
     message: 'days must be 30, 60, or 90',
@@ -279,6 +283,7 @@ export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type SpendingTrendQuery = z.infer<typeof spendingTrendQuerySchema>;
 export type TopMerchantsQuery = z.infer<typeof topMerchantsQuerySchema>;
 export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
+export type SavingsRateQuery = z.infer<typeof savingsRateQuerySchema>;
 
 // ── Recurring Bills ──────────────────────────────────────────
 

@@ -111,10 +111,42 @@ export function registerGetNetWorth(server: McpServer) {
           ? `  Assets: ${dollars(assets)} (cash ${dollars(cashAssets)} + investments ${dollars(investments)})`
           : `  Assets: ${dollars(assets)}`;
 
+      // 30/90/365-day deltas from stored daily/month-end balance snapshots.
+      const snapshotRows = await query(
+        `SELECT abs.snapshot_date::text AS snapshot_date, SUM(abs.balance_cents) AS total_cents
+         FROM account_balance_snapshots abs
+         JOIN accounts a ON abs.account_id = a.id
+         WHERE a.user_id = $1 AND a.deleted_at IS NULL
+         GROUP BY abs.snapshot_date
+         ORDER BY abs.snapshot_date ASC`,
+        [userId],
+      );
+      const points = snapshotRows.map((r) => ({
+        date: r.snapshot_date as string,
+        cents: Number(r.total_cents),
+      }));
+      const deltaLines: string[] = [];
+      if (points.length > 0) {
+        const currentSnapshot = points[points.length - 1].cents;
+        for (const [label, days] of [['30d', 30], ['90d', 90], ['365d', 365]] as const) {
+          const cutoff = new Date();
+          cutoff.setDate(cutoff.getDate() - days);
+          const cutoffStr = cutoff.toISOString().slice(0, 10);
+          const candidates = points.filter((p) => p.date <= cutoffStr);
+          if (candidates.length > 0) {
+            const past = candidates[candidates.length - 1].cents;
+            const delta = currentSnapshot - past;
+            const arrow = delta > 0 ? '↑' : delta < 0 ? '↓' : '→';
+            deltaLines.push(`  ${label}: ${arrow} ${signed(delta)}`);
+          }
+        }
+      }
+
       const text = [
         `Net worth: ${signed(netWorth)}`,
         assetLine,
         `  Liabilities: ${signed(liabilities)}`,
+        ...(deltaLines.length ? ['', 'Change:', ...deltaLines] : []),
         '',
         `Month-end net worth (last ${recent.length} month${recent.length === 1 ? '' : 's'}, incl. investments):`,
         trendLines.length ? trendLines.join('\n') : '(not enough history)',

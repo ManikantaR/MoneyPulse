@@ -24,6 +24,10 @@ const ALL_TOOLS = [
   { name: 'get_loan_status', description: 'q', inputSchema: { type: 'object' } },
   { name: 'compare_periods', description: 'f', inputSchema: { type: 'object' } },
   { name: 'get_market_context', description: 'r', inputSchema: { type: 'object' } },
+  { name: 'get_savings_rate', description: 's', inputSchema: { type: 'object' } },
+  { name: 'get_cash_runway', description: 't', inputSchema: { type: 'object' } },
+  { name: 'get_subscription_total', description: 'u', inputSchema: { type: 'object' } },
+  { name: 'get_yoy_comparison', description: 'v', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
 ];

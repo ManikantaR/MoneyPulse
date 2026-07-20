@@ -30,6 +30,10 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_loan_status',
   'compare_periods',
   'get_market_context', // public EIA/FRED data, no user PII — safe for the cloud advisor
+  'get_savings_rate',
+  'get_cash_runway',
+  'get_subscription_total',
+  'get_yoy_comparison',
 ]);
 
 /** Anthropic tool definition shape (name + description + JSON schema). */
@@ -201,6 +205,10 @@ export class McpClientService implements OnModuleDestroy {
       'get_budget_status',
       'get_cashflow_summary',
       'compare_periods',
+      'get_savings_rate',
+      'get_cash_runway',
+      'get_subscription_total',
+      'get_yoy_comparison',
     ]);
 
     if (!toolsNeedingFreshnessCheck.has(toolName)) {

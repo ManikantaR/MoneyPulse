@@ -12,12 +12,14 @@ import {
   spendingTrendQuerySchema,
   topMerchantsQuerySchema,
   forecastQuerySchema,
+  savingsRateQuerySchema,
 } from '@moneypulse/shared';
 import type {
   AnalyticsQuery,
   SpendingTrendQuery,
   TopMerchantsQuery,
   ForecastQuery,
+  SavingsRateQuery,
   AuthTokenPayload,
 } from '@moneypulse/shared';
 
@@ -168,6 +170,96 @@ export class AnalyticsController {
       { household: query.household },
       user.householdId,
     );
+    return { data };
+  }
+
+  /**
+   * GET /analytics/net-worth-deltas — 30/90/365-day net-worth deltas from stored snapshots.
+   *
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: { current, delta30, delta90, delta365 } }`
+   */
+  @Get('net-worth-deltas')
+  @ApiOperation({ summary: 'Net worth deltas (30/90/365 day)' })
+  async netWorthDeltas(@CurrentUser() user: AuthTokenPayload) {
+    const data = await this.analyticsService.netWorthDeltas(user.sub);
+    return { data };
+  }
+
+  /**
+   * GET /analytics/savings-rate — Trailing monthly savings rate series `(income - expenses) / income`.
+   *
+   * @param query - Validated household filter + optional `months` window.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: { current, series } }`
+   */
+  @Get('savings-rate')
+  @ApiOperation({ summary: 'Savings rate (trailing monthly series)' })
+  async savingsRate(
+    @Query(new ZodValidationPipe(savingsRateQuerySchema)) query: SavingsRateQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.analyticsService.savingsRate(
+      user.sub,
+      { months: query.months, household: query.household },
+      user.householdId,
+    );
+    return { data };
+  }
+
+  /**
+   * GET /analytics/cash-runway — Liquid balances / trailing-3-month avg expenses, in months.
+   *
+   * @param query - Validated household filter parameter.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: { liquidCents, avgMonthlyExpenseCents, months } }`
+   */
+  @Get('cash-runway')
+  @ApiOperation({ summary: 'Cash runway in months' })
+  async cashRunway(
+    @Query(new ZodValidationPipe(analyticsQuerySchema)) query: AnalyticsQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.analyticsService.cashRunway(
+      user.sub,
+      { household: query.household },
+      user.householdId,
+    );
+    return { data };
+  }
+
+  /**
+   * GET /analytics/yoy-comparison — This-month vs same-month-last-year by category.
+   * Returns `insufficientHistory: true` gracefully when <12 months of data exist.
+   *
+   * @param query - Validated household filter parameter.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: { insufficientHistory, monthsAvailable, categories } }`
+   */
+  @Get('yoy-comparison')
+  @ApiOperation({ summary: 'Year-over-year comparison by category' })
+  async yoyComparison(
+    @Query(new ZodValidationPipe(analyticsQuerySchema)) query: AnalyticsQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.analyticsService.yoyComparison(
+      user.sub,
+      { household: query.household },
+      user.householdId,
+    );
+    return { data };
+  }
+
+  /**
+   * GET /analytics/subscription-total — Monthly recurring subscription total + 12-month trend.
+   *
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: { monthlyTotalCents, activeCount, trend } }`
+   */
+  @Get('subscription-total')
+  @ApiOperation({ summary: 'Monthly subscription total + trend' })
+  async subscriptionTotal(@CurrentUser() user: AuthTokenPayload) {
+    const data = await this.analyticsService.subscriptionTotal(user.sub);
     return { data };
   }
 

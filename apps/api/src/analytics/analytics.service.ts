@@ -550,4 +550,313 @@ export class AnalyticsService {
       };
     });
   }
+
+  /**
+   * Returns monthly savings rate `(income - expenses) / income` for a trailing window,
+   * plus the latest month's rate as the headline figure. Excludes transfers throughout.
+   * A month with zero income yields a `null` rate (avoids divide-by-zero / misleading 0%).
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {{ months?: number; household?: boolean }} query - Trailing window size (default 12) and household flag.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<{ current: { month: string; rate: number | null } | null; series: Array<{ month: string; incomeCents: number; expenseCents: number; rate: number | null }> }>}
+   */
+  async savingsRate(
+    userId: string,
+    query: { months?: number; household?: boolean },
+    householdId?: string | null,
+  ) {
+    const months = Math.min(Math.max(query.months ?? 12, 1), 60);
+    const userScope = householdId && query.household
+      ? sql`t.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`t.user_id = ${userId}`;
+
+    const result = await this.db.execute(sql`
+      SELECT
+        to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
+        SUM(CASE WHEN t.is_credit = true THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
+      FROM ${schema.transactions} t
+      LEFT JOIN ${schema.categories} c ON t.category_id = c.id
+      WHERE t.is_split_parent = false
+        AND t.deleted_at IS NULL
+        AND COALESCE(c.is_transfer, false) = false
+        AND ${userScope}
+        AND t.date >= date_trunc('month', CURRENT_DATE) - (${months - 1} || ' months')::interval
+      GROUP BY date_trunc('month', t.date)
+      ORDER BY month ASC
+    `);
+
+    const series = this.extractRows(result).map((r: any) => {
+      const incomeCents = Number(r.income_cents);
+      const expenseCents = Number(r.expense_cents);
+      const rate = incomeCents > 0
+        ? Math.round(((incomeCents - expenseCents) / incomeCents) * 1000) / 1000
+        : null;
+      return { month: r.month, incomeCents, expenseCents, rate };
+    });
+
+    return {
+      current: series.length > 0 ? series[series.length - 1] : null,
+      series,
+    };
+  }
+
+  /**
+   * Returns cash runway: liquid (checking + savings) balances divided by the trailing
+   * 3-month average monthly expenses. Returns `months: null` when there is no expense
+   * history to divide by (avoids divide-by-zero / infinite runway).
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {{ household?: boolean }} query - Household flag for scoping.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<{ liquidCents: number; avgMonthlyExpenseCents: number; months: number | null }>}
+   */
+  async cashRunway(
+    userId: string,
+    query: { household?: boolean },
+    householdId?: string | null,
+  ) {
+    const acctScope = householdId && query.household
+      ? sql`a.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`a.user_id = ${userId}`;
+    const txnScope = householdId && query.household
+      ? sql`t.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`t.user_id = ${userId}`;
+
+    const liquidRows = await this.db.execute(sql`
+      SELECT COALESCE(SUM(
+        a.starting_balance_cents + COALESCE(sub.net, 0)
+      ), 0) AS liquid_cents
+      FROM ${schema.accounts} a
+      LEFT JOIN LATERAL (
+        SELECT SUM(CASE WHEN t.is_credit THEN t.amount_cents ELSE -t.amount_cents END) AS net
+        FROM ${schema.transactions} t
+        WHERE t.account_id = a.id AND t.is_split_parent = false AND t.deleted_at IS NULL
+      ) sub ON true
+      WHERE a.deleted_at IS NULL
+        AND a.account_type IN ('checking', 'savings')
+        AND ${acctScope}
+    `);
+    const liquidCents = Number(this.extractRows(liquidRows)[0]?.liquid_cents ?? 0);
+
+    // Trailing 3 full calendar months (excludes the current, in-progress month).
+    const expenseRows = await this.db.execute(sql`
+      SELECT COALESCE(SUM(t.amount_cents), 0) AS total_cents
+      FROM ${schema.transactions} t
+      LEFT JOIN ${schema.categories} c ON t.category_id = c.id
+      WHERE t.is_split_parent = false
+        AND t.deleted_at IS NULL
+        AND t.is_credit = false
+        AND COALESCE(c.is_transfer, false) = false
+        AND ${txnScope}
+        AND t.date >= date_trunc('month', CURRENT_DATE) - INTERVAL '3 months'
+        AND t.date < date_trunc('month', CURRENT_DATE)
+    `);
+    const trailingExpenseCents = Number(this.extractRows(expenseRows)[0]?.total_cents ?? 0);
+    const avgMonthlyExpenseCents = Math.round(trailingExpenseCents / 3);
+
+    return {
+      liquidCents,
+      avgMonthlyExpenseCents,
+      months: avgMonthlyExpenseCents > 0
+        ? Math.round((liquidCents / avgMonthlyExpenseCents) * 10) / 10
+        : null,
+    };
+  }
+
+  /**
+   * Returns net-worth deltas over 30/90/365-day lookback windows, computed from stored
+   * balance snapshots (see `BalanceSnapshotService`). A window is `null` when there is
+   * no snapshot old enough to compare against yet.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @returns {Promise<{ current: number | null; delta30: number | null; delta90: number | null; delta365: number | null }>}
+   */
+  async netWorthDeltas(userId: string) {
+    const rows = await this.db.execute(sql`
+      SELECT abs.snapshot_date::text AS snapshot_date, SUM(abs.balance_cents) AS total_cents
+      FROM ${schema.accountBalanceSnapshots} abs
+      JOIN ${schema.accounts} a ON abs.account_id = a.id
+      WHERE a.user_id = ${userId} AND a.deleted_at IS NULL
+      GROUP BY abs.snapshot_date
+      ORDER BY abs.snapshot_date ASC
+    `);
+    const points = this.extractRows(rows).map((r: any) => ({
+      date: r.snapshot_date as string,
+      cents: Number(r.total_cents),
+    }));
+    if (points.length === 0) {
+      return { current: null, delta30: null, delta90: null, delta365: null };
+    }
+    const current = points[points.length - 1].cents;
+    const findAsOf = (daysAgo: number): number | null => {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - daysAgo);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      // Latest point on or before the cutoff date.
+      const candidates = points.filter((p) => p.date <= cutoffStr);
+      return candidates.length > 0 ? candidates[candidates.length - 1].cents : null;
+    };
+    const delta = (daysAgo: number): number | null => {
+      const past = findAsOf(daysAgo);
+      return past === null ? null : current - past;
+    };
+    return {
+      current,
+      delta30: delta(30),
+      delta90: delta(90),
+      delta365: delta(365),
+    };
+  }
+
+  /**
+   * Compares this calendar month to the same calendar month one year ago, per category.
+   * If fewer than 12 months of transaction history exist, returns `insufficientHistory`
+   * with the number of months actually available instead of erroring.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {{ household?: boolean }} query - Household flag for scoping.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   */
+  async yoyComparison(
+    userId: string,
+    query: { household?: boolean },
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`t.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`t.user_id = ${userId}`;
+
+    const historyRows = await this.db.execute(sql`
+      SELECT MIN(t.date)::text AS min_date
+      FROM ${schema.transactions} t
+      WHERE t.is_split_parent = false AND t.deleted_at IS NULL AND ${userScope}
+    `);
+    const minDate = this.extractRows(historyRows)[0]?.min_date as string | null;
+    const monthsOfHistory = minDate
+      ? Math.floor(
+          (Date.now() - new Date(minDate).getTime()) / (1000 * 60 * 60 * 24 * 30.44),
+        )
+      : 0;
+
+    if (!minDate || monthsOfHistory < 12) {
+      return {
+        insufficientHistory: true,
+        monthsAvailable: monthsOfHistory,
+        message: `Only ${monthsOfHistory} month${monthsOfHistory === 1 ? '' : 's'} of history available; year-over-year comparison needs 12.`,
+        categories: [],
+      };
+    }
+
+    const result = await this.db.execute(sql`
+      SELECT
+        COALESCE(c.id::text, 'uncategorized') AS category_id,
+        c.name AS category_name,
+        SUM(CASE
+          WHEN date_trunc('month', t.date) = date_trunc('month', CURRENT_DATE) THEN t.amount_cents
+          ELSE 0
+        END) AS this_month_cents,
+        SUM(CASE
+          WHEN date_trunc('month', t.date) = date_trunc('month', CURRENT_DATE) - INTERVAL '1 year' THEN t.amount_cents
+          ELSE 0
+        END) AS last_year_cents
+      FROM ${schema.transactions} t
+      LEFT JOIN ${schema.categories} c ON t.category_id = c.id
+      WHERE t.is_split_parent = false
+        AND t.deleted_at IS NULL
+        AND t.is_credit = false
+        AND COALESCE(c.is_transfer, false) = false
+        AND ${userScope}
+        AND (
+          date_trunc('month', t.date) = date_trunc('month', CURRENT_DATE)
+          OR date_trunc('month', t.date) = date_trunc('month', CURRENT_DATE) - INTERVAL '1 year'
+        )
+      GROUP BY c.id, c.name
+      HAVING SUM(t.amount_cents) > 0
+      ORDER BY this_month_cents DESC
+    `);
+
+    const categories = this.extractRows(result).map((r: any) => {
+      const thisMonth = Number(r.this_month_cents);
+      const lastYear = Number(r.last_year_cents);
+      return {
+        categoryId: r.category_id,
+        categoryName: r.category_name ?? 'Uncategorized',
+        thisMonthCents: thisMonth,
+        lastYearCents: lastYear,
+        deltaCents: thisMonth - lastYear,
+        deltaPercent: lastYear > 0
+          ? Math.round(((thisMonth - lastYear) / lastYear) * 1000) / 10
+          : null,
+      };
+    });
+
+    return {
+      insufficientHistory: false,
+      monthsAvailable: monthsOfHistory,
+      categories,
+    };
+  }
+
+  /**
+   * Returns the current monthly recurring subscription total (from active recurring
+   * bills, normalized to a monthly-equivalent cadence) plus a 12-month spend trend for
+   * transactions matched to those recurring bills' normalized merchant names.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @returns {Promise<{ monthlyTotalCents: number; activeCount: number; trend: Array<{ month: string; totalCents: number }> }>}
+   */
+  async subscriptionTotal(userId: string) {
+    const MONTHLY_MULTIPLIER: Record<string, number> = {
+      weekly: 4.345,
+      biweekly: 2.173,
+      monthly: 1,
+      quarterly: 1 / 3,
+      yearly: 1 / 12,
+      annual: 1 / 12,
+    };
+
+    const billRows = await this.db.execute(sql`
+      SELECT normalized_name, expected_amount_cents, frequency
+      FROM ${schema.recurringBills}
+      WHERE user_id = ${userId} AND is_active = true
+    `);
+    const bills = this.extractRows(billRows);
+    const monthlyTotalCents = Math.round(
+      bills.reduce((sum: number, b: any) => {
+        const multiplier = MONTHLY_MULTIPLIER[String(b.frequency ?? 'monthly')] ?? 1;
+        return sum + Number(b.expected_amount_cents) * multiplier;
+      }, 0),
+    );
+
+    const normalizedNames = bills.map((b: any) => b.normalized_name as string);
+    let trend: Array<{ month: string; totalCents: number }> = [];
+    if (normalizedNames.length > 0) {
+      const trendRows = await this.db.execute(sql`
+        SELECT
+          to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
+          SUM(t.amount_cents) AS total_cents
+        FROM ${schema.transactions} t
+        WHERE t.user_id = ${userId}
+          AND t.is_split_parent = false
+          AND t.deleted_at IS NULL
+          AND t.is_credit = false
+          AND t.normalized_merchant_name = ANY(${normalizedNames})
+          AND t.date >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
+        GROUP BY date_trunc('month', t.date)
+        ORDER BY month ASC
+      `);
+      trend = this.extractRows(trendRows).map((r: any) => ({
+        month: r.month,
+        totalCents: Number(r.total_cents),
+      }));
+    }
+
+    return {
+      monthlyTotalCents,
+      activeCount: bills.length,
+      trend,
+    };
+  }
 }
