@@ -254,3 +254,63 @@ export const APP_VERSION = '1.0.0';
 
 export { SEED_RULES } from './seed-rules.js';
 export type { SeedRule } from './seed-rules.js';
+
+/**
+ * Watchdog detector thresholds (11.5). Every magic number a detector rule
+ * uses lives here so a future settings UI can expose it without touching
+ * detector logic.
+ */
+export const WATCHDOG_THRESHOLDS = {
+  /** Duplicate charge: max gap between two matching charges. */
+  DUPLICATE_WINDOW_HOURS: 48,
+  /** Subscription price creep: min deviation from trailing modal amount. */
+  PRICE_CREEP_MIN_PERCENT: 0.02, // 2%
+  PRICE_CREEP_MIN_ABS_CENTS: 100, // $1.00
+  /** New recurring merchant: minimum occurrences before it's "recurring". */
+  RECURRING_MIN_OCCURRENCES: 3,
+  /** Recurring interval tolerance (days) when comparing successive gaps. */
+  RECURRING_INTERVAL_TOLERANCE_DAYS: 5,
+  /** Budget pace: earliest day-of-period the projection is trusted. */
+  BUDGET_PACE_MIN_DAY: 7,
+  /** Budget pace: projected-spend / budget ratio that triggers the alert. */
+  BUDGET_PACE_PROJECTION_RATIO: 1.1, // 110%
+  /** Statistical anomaly: z-score threshold. */
+  STAT_ANOMALY_Z_THRESHOLD: 3,
+  /** Statistical anomaly: minimum sample size before a baseline is trusted. */
+  STAT_ANOMALY_MIN_SAMPLES: 20,
+  /** Statistical anomaly: minimum absolute amount before bothering to flag. */
+  STAT_ANOMALY_MIN_AMOUNT_CENTS: 2_500, // $25.00
+  /** Statistical anomaly: trailing window used to build the baseline. */
+  STAT_ANOMALY_WINDOW_MONTHS: 6,
+} as const;
+
+/**
+ * Description substrings indicating a fee, interest charge, or penalty.
+ * Matched case-insensitively against the transaction description.
+ */
+export const FEE_DESCRIPTION_PATTERNS: string[] = [
+  'overdraft fee',
+  'nsf fee',
+  'late fee',
+  'annual fee',
+  'maintenance fee',
+  'service fee',
+  'atm fee',
+  'foreign transaction fee',
+  'interest charge',
+  'finance charge',
+  'penalty',
+  'insufficient funds',
+  'returned item fee',
+  'wire transfer fee',
+];
+
+/**
+ * Category names where a "fee" description is expected/legitimate and should
+ * NOT be flagged (e.g. a categorized loan-interest line item the user already
+ * tracks deliberately).
+ */
+export const EXPECTED_FEE_CATEGORY_NAMES: string[] = [
+  'Mortgage',
+  'Loan Interest',
+];

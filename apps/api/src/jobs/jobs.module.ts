@@ -118,6 +118,14 @@ export class JobsModule implements OnModuleInit {
         { name: 'bills-roll-forward' },
       ),
 
+      // Watchdog budget-pace sweep (11.5) — daily 7 AM UTC, distinct from the
+      // 80%/100% actual-spend alerts in alert-engine.service.ts.
+      this.alertsQueue.upsertJobScheduler(
+        'daily-budget-pace-sweep',
+        { pattern: '0 7 * * *' },
+        { name: 'budget-pace-sweep' },
+      ),
+
       // Detect missed loan payments (daily 5:30 AM UTC) — flags a loan whose lender
       // debit didn't show up this cycle.
       this.alertsQueue.upsertJobScheduler(

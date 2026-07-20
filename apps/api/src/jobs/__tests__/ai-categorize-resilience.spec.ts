@@ -35,9 +35,10 @@ function makeJob(name: string, data: Record<string, unknown>) {
  *  8  outbox
  *  9  aliasMapper
  *  10 anomalyDetector
- *  11 ollamaHealth          ← NEW
- *  12 alertsQueue
- *  13 ingestionQueue
+ *  11 watchdogDetector
+ *  12 ollamaHealth          ← NEW
+ *  13 alertsQueue
+ *  14 ingestionQueue
  */
 function makeProcessor(opts: {
   ollamaAvailable?: boolean;
@@ -96,10 +97,11 @@ function makeProcessor(opts: {
     { enqueue: vi.fn() } as any,                  // 8  outbox
     { toAliasId: vi.fn().mockReturnValue('a') } as any, // 9  aliasMapper
     { detectAnomalies: vi.fn() } as any,          // 10 anomalyDetector
-    mockOllamaHealth as any,                      // 11 ollamaHealth
-    { snapshotForUser: vi.fn().mockResolvedValue(undefined) } as any, // 12 balanceSnapshotService
-    { add: vi.fn() } as any,                      // 13 alertsQueue
-    { add: ingestionQueueAddSpy } as any,         // 14 ingestionQueue
+    { runTransactionScoped: vi.fn() } as any,     // 11 watchdogDetector
+    mockOllamaHealth as any,                      // 12 ollamaHealth
+    { snapshotForUser: vi.fn().mockResolvedValue(undefined) } as any, // 13 balanceSnapshotService
+    { add: vi.fn() } as any,                      // 14 alertsQueue
+    { add: ingestionQueueAddSpy } as any,         // 15 ingestionQueue
   );
 
   return { processor, mockOllamaHealth, categorizeSpy, ingestionQueueAddSpy, mockDb };

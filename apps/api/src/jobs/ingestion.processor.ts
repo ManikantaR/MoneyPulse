@@ -20,6 +20,7 @@ import { OllamaHealthService } from '../categorization/ollama-health.service';
 import { OutboxService } from '../sync/outbox.service';
 import { AliasMapperService } from '../sync/alias-mapper.service';
 import { AnomalyDetectorService } from '../analytics/anomaly-detector.service';
+import { WatchdogDetectorService } from '../analytics/watchdog-detector.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
 import { encryptField } from '../common/crypto';
@@ -48,6 +49,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly outbox: OutboxService,
     private readonly aliasMapper: AliasMapperService,
     private readonly anomalyDetector: AnomalyDetectorService,
+    private readonly watchdogDetector: WatchdogDetectorService,
     private readonly ollamaHealth: OllamaHealthService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
@@ -172,6 +174,7 @@ export class IngestionProcessor extends WorkerHost {
           // Run anomaly detection (best-effort, never blocks import)
           try {
             await this.anomalyDetector.detectAnomalies(userId, insertedIds);
+            await this.watchdogDetector.runTransactionScoped(userId, insertedIds);
           } catch (err: any) {
             this.logger.warn(`Anomaly detection failed: ${err.message}`);
           }
@@ -313,6 +316,7 @@ export class IngestionProcessor extends WorkerHost {
         // Run anomaly detection (best-effort, never blocks import)
         try {
           await this.anomalyDetector.detectAnomalies(userId, insertedIds);
+            await this.watchdogDetector.runTransactionScoped(userId, insertedIds);
         } catch (err: any) {
           this.logger.warn(`Anomaly detection failed: ${err.message}`);
         }

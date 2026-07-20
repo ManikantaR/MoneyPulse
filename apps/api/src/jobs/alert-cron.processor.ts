@@ -7,6 +7,7 @@ import { BriefService } from '../analytics/brief.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
 import { FreshnessDetectorService } from '../analytics/freshness-detector.service';
+import { WatchdogDetectorService } from '../analytics/watchdog-detector.service';
 import { AdvisorDigestService } from '../advisor/digest/advisor-digest.service';
 import { BillsService } from '../bills/bills.service';
 import { LoansService } from '../loans/loans.service';
@@ -22,6 +23,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
     private readonly freshnessDetectorService: FreshnessDetectorService,
+    private readonly watchdogDetectorService: WatchdogDetectorService,
     private readonly advisorDigestService: AdvisorDigestService,
     private readonly billsService: BillsService,
     private readonly loansService: LoansService,
@@ -40,6 +42,10 @@ export class AlertCronProcessor extends WorkerHost {
         );
         break;
       }
+
+      case 'budget-pace-sweep':
+        await this.watchdogDetectorService.checkBudgetPaceAllUsers();
+        break;
 
       case 'post-import-check': {
         const userIds = job.data.userIds as string[];
