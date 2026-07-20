@@ -3,6 +3,7 @@ import { RuleEngineService } from '../rule-engine.service';
 import { AiCategorizerService } from '../ai-categorizer.service';
 import { LearningService } from '../learning.service';
 import { TransactionProjectionService } from '../../sync/transaction-projection.service';
+import { EmbeddingCategorizerService } from '../../embeddings/embedding-categorizer.service';
 
 describe('CategorizationService', () => {
   let service: CategorizationService;
@@ -87,12 +88,17 @@ describe('CategorizationService', () => {
       reprojectByIds: vi.fn().mockResolvedValue(undefined),
     } as unknown as TransactionProjectionService;
 
+    const mockEmbeddingCategorizer = {
+      suggestCategory: vi.fn().mockResolvedValue(null),
+    } as unknown as EmbeddingCategorizerService;
+
     service = new CategorizationService(
       mockDb,
       mockRuleEngine as RuleEngineService,
       mockAiCategorizer as AiCategorizerService,
       mockLearningService as LearningService,
       mockProjection,
+      mockEmbeddingCategorizer,
     );
   });
 

@@ -30,15 +30,25 @@ const ALL_TOOLS = [
   { name: 'get_yoy_comparison', description: 'v', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
+  {
+    name: 'search_transactions_semantic',
+    description: 'ROW-LEVEL/LOCAL-ONLY',
+    inputSchema: { type: 'object' },
+  },
 ];
 
 describe('MCP advisor tool boundary (aggregates-only)', () => {
-  it('exposes exactly the aggregate tools and excludes the 2 row-level tools', () => {
+  it('exposes exactly the aggregate tools and excludes the 3 row-level tools', () => {
     const out = toAdvisorTools(ALL_TOOLS);
     const names = out.map((t) => t.name).sort();
     expect(names).toEqual([...AGGREGATE_TOOL_ALLOWLIST].sort());
     expect(names).not.toContain('get_transactions');
     expect(names).not.toContain('search_transactions');
+    expect(names).not.toContain('search_transactions_semantic');
+  });
+
+  it('11.10: the semantic search tool (local pgvector + Ollama, raw rows) never reaches the cloud advisor', () => {
+    expect(AGGREGATE_TOOL_ALLOWLIST.has('search_transactions_semantic')).toBe(false);
   });
 
   it('maps inputSchema → input_schema for Anthropic', () => {

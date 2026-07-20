@@ -6,10 +6,12 @@ import { RuleEngineService } from './rule-engine.service';
 import { AiCategorizerService } from './ai-categorizer.service';
 import { LearningService } from './learning.service';
 import { TransactionProjectionService } from '../sync/transaction-projection.service';
+import { EmbeddingCategorizerService } from '../embeddings/embedding-categorizer.service';
 
 interface CategorizationStats {
   total: number;
   categorizedByRule: number;
+  categorizedByNn: number;
   categorizedByAi: number;
   suggested: number;
   uncategorized: number;
@@ -31,6 +33,7 @@ export class CategorizationService {
     private readonly aiCategorizer: AiCategorizerService,
     private readonly learningService: LearningService,
     private readonly projection: TransactionProjectionService,
+    private readonly embeddingCategorizer: EmbeddingCategorizerService,
   ) {}
 
   /**
@@ -54,6 +57,7 @@ export class CategorizationService {
     const stats: CategorizationStats = {
       total: transactionIds.length,
       categorizedByRule: 0,
+      categorizedByNn: 0,
       categorizedByAi: 0,
       suggested: 0,
       uncategorized: 0,
@@ -122,6 +126,43 @@ export class CategorizationService {
     }
 
     if (stillUncategorized.length === 0) return stats;
+
+    // ── Step 1.5: Nearest-neighbor vote (11.10 local semantic search) ──
+    // Cheapest, most personal suggester — runs before the Ollama chat-model
+    // classifier. Best-effort: any failure (no embeddings yet, DB error) is
+    // logged and the pipeline falls through unchanged to Ollama.
+    const afterNn: any[] = [];
+    const nnCategorizedByCategoryId = new Map<string, string[]>();
+    for (const txn of stillUncategorized) {
+      let suggestion = null;
+      try {
+        suggestion = await this.embeddingCategorizer.suggestCategory(userId, txn.id);
+      } catch (err: any) {
+        this.logger.warn(`NN categorization suggestion failed for ${txn.id}: ${err.message}`);
+      }
+      if (suggestion) {
+        const ids = nnCategorizedByCategoryId.get(suggestion.categoryId) ?? [];
+        ids.push(txn.id as string);
+        nnCategorizedByCategoryId.set(suggestion.categoryId, ids);
+        stats.categorizedByNn++;
+      } else {
+        afterNn.push(txn);
+      }
+    }
+
+    if (nnCategorizedByCategoryId.size > 0) {
+      for (const [categoryId, ids] of nnCategorizedByCategoryId.entries()) {
+        await this.db
+          .update(schema.transactions)
+          .set({ categoryId, updatedAt: new Date() })
+          .where(inArray(schema.transactions.id, ids));
+      }
+      await this.projection.reprojectByIds(
+        [...nnCategorizedByCategoryId.values()].flat(),
+      );
+    }
+
+    if (afterNn.length === 0) return stats;
 
     // ── Step 2: Ollama (Local AI) ──
     try {

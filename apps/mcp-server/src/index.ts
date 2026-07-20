@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { registerGetTransactions } from './tools/get-transactions.js';
 import { registerSearchTransactions } from './tools/search-transactions.js';
+import { registerSearchTransactionsSemantic } from './tools/search-transactions-semantic.js';
 import { registerGetSpendingSummary } from './tools/get-spending-summary.js';
 import { registerGetBudgetStatus } from './tools/get-budget-status.js';
 import { registerGetAccountBalances } from './tools/get-account-balances.js';
@@ -35,6 +36,7 @@ const server = new McpServer({
 
 registerGetTransactions(server);
 registerSearchTransactions(server);
+registerSearchTransactionsSemantic(server);
 registerGetSpendingSummary(server);
 registerGetBudgetStatus(server);
 registerGetAccountBalances(server);

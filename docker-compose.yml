@@ -3,9 +3,14 @@
 # With Ollama: docker compose --profile ai up -d
 
 services:
-  # ── PostgreSQL 16 ────────────────────────────────────────
+  # ── PostgreSQL 16 (+ pgvector for 11.10 local semantic search) ──────────
+  # pgvector/pgvector:pg16 is built FROM postgres:16 (Debian, not alpine) and
+  # is data-directory-compatible with the previous postgres:16-alpine image —
+  # `docker compose pull && docker compose up -d postgres` reuses the existing
+  # volume unchanged, then `0021_semantic_search.sql` creates the extension.
+  # See db/migrations/0021_semantic_search.sql for the full migration path.
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-moneypulse}
