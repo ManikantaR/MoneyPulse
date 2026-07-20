@@ -73,6 +73,11 @@ export class MarketDataService {
     return { refreshed, skipped, failed };
   }
 
+  /** Configured EIA gas-price state code — used by the 11.7 gas-dip weekly note. */
+  getGasState(): string {
+    return this.gasState;
+  }
+
   private regionFor(series: MarketSeriesDef): string {
     if (series.metricKey === 'gas_retail_regular') return this.gasState;
     if (series.metricKey === 'electricity_residential') return this.electricityState;

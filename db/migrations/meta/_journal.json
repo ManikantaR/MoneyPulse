@@ -134,6 +134,13 @@
       "when": 1784510000000,
       "tag": "0018_market_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784546600000,
+      "tag": "0019_idle_cash_buffer",
+      "breakpoints": true
     }
   ]
 }

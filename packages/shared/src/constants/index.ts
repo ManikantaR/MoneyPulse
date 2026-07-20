@@ -372,3 +372,21 @@ export const MARKET_SERIES: MarketSeriesDef[] = [
  *  track closely, so it's the default. Verify against https://fred.stlouisfed.org
  *  once you have a key if you want a closer benchmark (e.g. a short T-bill series). */
 export const DEFAULT_HYSA_FRED_SERIES = 'FEDFUNDS';
+
+// ── Market-joined insights (11.7) ────────────────────────────
+// Every rule/threshold these market-vs-personal detectors use lives here so a
+// future settings UI can expose overrides without touching detector logic.
+export const MARKET_INSIGHT_THRESHOLDS = {
+  /** Refi watcher: min (loan APR − market rate) spread, in percentage points, to fire. */
+  REFI_SPREAD_THRESHOLD_PP: 0.75,
+  /** Idle cash: default buffer is 1x trailing-3-month avg monthly expenses. */
+  IDLE_CASH_BUFFER_MONTHS: 1,
+  /** Idle cash: min foregone $/yr (in cents) before bothering to flag. */
+  IDLE_CASH_MIN_FOREGONE_CENTS_PER_YEAR: 10_000, // $100/yr
+  /** Fuel/power vs market: min divergence (percentage points) between personal MoM% and market MoM%. */
+  FUEL_POWER_DIVERGENCE_PP: 10,
+  /** Fuel vs market: minimum fuel transactions this month before trusting the MoM%. */
+  FUEL_MIN_TXNS: 3,
+  /** Gas dip note: min week-over-week % move in state gas price to fire a brief update. */
+  GAS_WOW_PERCENT: 3,
+} as const;

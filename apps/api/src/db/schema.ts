@@ -158,6 +158,9 @@ export const userSettings = pgTable('user_settings', {
   quietHoursEnd: varchar('quiet_hours_end', { length: 5 }).default('08:00'),
   dailyBriefEnabled: boolean('daily_brief_enabled').notNull().default(false),
   dailyBriefHour: integer('daily_brief_hour').notNull().default(7),
+  /** Idle-cash buffer override (11.7), in months of trailing-3-month avg expenses.
+   *  Null falls back to MARKET_INSIGHT_THRESHOLDS.IDLE_CASH_BUFFER_MONTHS (1). */
+  idleCashBufferMonths: integer('idle_cash_buffer_months'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
