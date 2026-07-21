@@ -23,6 +23,7 @@ import { AnomalyDetectorService } from '../analytics/anomaly-detector.service';
 import { WatchdogDetectorService } from '../analytics/watchdog-detector.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { EmbeddingService } from '../embeddings/embedding.service';
+import { BillsService } from '../bills/bills.service';
 import type { ParsedTransaction } from '@moneypulse/shared';
 import { encryptField } from '../common/crypto';
 
@@ -54,6 +55,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly ollamaHealth: OllamaHealthService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly embeddingService: EmbeddingService,
+    private readonly billsService: BillsService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
     @InjectQueue(INGESTION_QUEUE) private readonly ingestionQueue: Queue,
   ) {
@@ -83,6 +85,9 @@ export class IngestionProcessor extends WorkerHost {
     }
     if (job.name === 'embed-reconcile') {
       return this.processEmbedReconcileSweep();
+    }
+    if (job.name === 'bills-redetect') {
+      return this.processBillsRedetectSweep();
     }
 
     const { uploadId, userId, accountId, filePath, fileType } = job.data as IngestionJobData;
@@ -247,6 +252,12 @@ export class IngestionProcessor extends WorkerHost {
           this.balanceSnapshotService.snapshotForUser(userId).catch((err) =>
             this.logger.warn(`Balance snapshot failed for user ${userId}: ${err.message}`),
           );
+          // Best-effort recurring-bill redetection so the Subscriptions stat
+          // stays populated — previously only ran when a user manually hit
+          // POST /bills/detect, so it silently stayed empty forever otherwise.
+          this.billsService.redetectAndDedupe(userId).catch((err) =>
+            this.logger.warn(`Recurring-bill redetect failed for user ${userId}: ${err.message}`),
+          );
         }
 
         return;
@@ -399,6 +410,12 @@ export class IngestionProcessor extends WorkerHost {
         // Best-effort balance snapshot so dashboard trend is current
         this.balanceSnapshotService.snapshotForUser(userId).catch((err) =>
           this.logger.warn(`Balance snapshot failed for user ${userId}: ${err.message}`),
+        );
+        // Best-effort recurring-bill redetection so the Subscriptions stat
+        // stays populated — previously only ran when a user manually hit
+        // POST /bills/detect, so it silently stayed empty forever otherwise.
+        this.billsService.redetectAndDedupe(userId).catch((err) =>
+          this.logger.warn(`Recurring-bill redetect failed for user ${userId}: ${err.message}`),
         );
       }
     } catch (err: any) {
@@ -840,5 +857,35 @@ export class IngestionProcessor extends WorkerHost {
     this.logger.log(
       `Embed reconcile sweep: enqueued ${rows.length} txns across ${byUser.size} user(s)`,
     );
+  }
+
+  /**
+   * Backfill sweep: catches users whose recurring bills were never detected
+   * (transactions imported before the per-import hook existed, or a prior
+   * detection attempt failed). Runs daily — bills detection is cheap and
+   * idempotent, so re-running it for every active user is fine.
+   */
+  private async processBillsRedetectSweep(): Promise<void> {
+    const result = await this.db.execute(sql`
+      SELECT DISTINCT user_id AS "userId"
+      FROM transactions
+      WHERE deleted_at IS NULL
+    `);
+    const rows = (result.rows ?? result) as Array<{ userId: string }>;
+
+    if (rows.length === 0) {
+      this.logger.debug('Bills redetect sweep: no users with transactions found');
+      return;
+    }
+
+    for (const { userId } of rows) {
+      try {
+        await this.billsService.redetectAndDedupe(userId);
+      } catch (err: any) {
+        this.logger.warn(`Bills redetect sweep failed for user ${userId}: ${err.message}`);
+      }
+    }
+
+    this.logger.log(`Bills redetect sweep: processed ${rows.length} user(s)`);
   }
 }

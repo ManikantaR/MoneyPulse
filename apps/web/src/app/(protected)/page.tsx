@@ -193,7 +193,7 @@ export default function DashboardPage() {
               ? `${cashRunwayData.data.months.toFixed(1)} mo`
               : '—'
           }
-          subtitle="liquid ÷ avg monthly expenses"
+          subtitle="liquid ÷ avg monthly expenses, as of today"
           icon={ArrowDownUp}
           accentColor="primary"
         />
