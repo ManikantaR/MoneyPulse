@@ -14,6 +14,7 @@ import { CategorizationModule } from '../categorization/categorization.module';
 import { SyncModule } from '../sync/sync.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
+import { BillsModule } from '../bills/bills.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { EmbeddingsModule } from '../embeddings/embeddings.module';
     SyncModule,
     AnalyticsModule,
     EmbeddingsModule,
+    BillsModule,
   ],
   controllers: [IngestionController],
   providers: [
@@ -58,6 +60,16 @@ export class IngestionModule implements OnModuleInit {
       'embed-reconcile-sweep',
       { every: 15 * 60 * 1000 }, // every 15 minutes
       { name: 'embed-reconcile' },
+    );
+
+    // Backfill sweep: catches users whose recurring bills were never detected
+    // (imported before the per-import redetect hook existed). Daily is plenty —
+    // detection only needs to run once per user's data to populate the
+    // Subscriptions dashboard stat, and it's idempotent to re-run.
+    await this.ingestionQueue.upsertJobScheduler(
+      'bills-redetect-sweep',
+      { every: 24 * 60 * 60 * 1000 }, // every 24 hours
+      { name: 'bills-redetect' },
     );
   }
 }

@@ -101,8 +101,9 @@ function makeProcessor(opts: {
     mockOllamaHealth as any,                      // 12 ollamaHealth
     { snapshotForUser: vi.fn().mockResolvedValue(undefined) } as any, // 13 balanceSnapshotService
     { embedTransactions: vi.fn().mockResolvedValue({ embedded: 0, failed: 0 }) } as any, // 14 embeddingService
-    { add: vi.fn() } as any,                      // 15 alertsQueue
-    { add: ingestionQueueAddSpy } as any,         // 16 ingestionQueue
+    { redetectAndDedupe: vi.fn().mockResolvedValue(undefined) } as any, // 15 billsService
+    { add: vi.fn() } as any,                      // 16 alertsQueue
+    { add: ingestionQueueAddSpy } as any,         // 17 ingestionQueue
   );
 
   return { processor, mockOllamaHealth, categorizeSpy, ingestionQueueAddSpy, mockDb };
