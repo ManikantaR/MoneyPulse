@@ -20,6 +20,8 @@ export class AnalyticsService {
   /**
    * Returns monthly income vs expense totals within the given date range.
    * Groups transactions by calendar month, summing credits (income) and debits (expenses) separately.
+   * Credits on credit_card-type accounts (e.g. statement credits/refunds) are excluded from income:
+   * they reduce prior spend rather than representing new money in, unlike a checking/savings deposit.
    * Scoped to the authenticated user or their household members.
    *
    * @param {string} userId - The authenticated user's ID.
@@ -42,10 +44,11 @@ export class AnalyticsService {
     const result = await this.db.execute(sql`
       SELECT
         to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
-        SUM(CASE WHEN t.is_credit = true THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = true AND COALESCE(a.account_type, '') != 'credit_card' THEN t.amount_cents ELSE 0 END) AS income_cents,
         SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
       FROM ${schema.transactions} t
       LEFT JOIN ${schema.categories} c ON t.category_id = c.id
+      LEFT JOIN ${schema.accounts} a ON t.account_id = a.id
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND COALESCE(c.is_transfer, false) = false
@@ -157,10 +160,11 @@ export class AnalyticsService {
     const result = await this.db.execute(sql`
       SELECT
         to_char(${truncFn}, 'YYYY-MM-DD') AS period,
-        SUM(CASE WHEN t.is_credit = true THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = true AND COALESCE(a.account_type, '') != 'credit_card' THEN t.amount_cents ELSE 0 END) AS income_cents,
         SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
       FROM ${schema.transactions} t
       LEFT JOIN ${schema.categories} c ON t.category_id = c.id
+      LEFT JOIN ${schema.accounts} a ON t.account_id = a.id
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND COALESCE(c.is_transfer, false) = false
@@ -553,7 +557,8 @@ export class AnalyticsService {
 
   /**
    * Returns monthly savings rate `(income - expenses) / income` for a trailing window,
-   * plus the latest month's rate as the headline figure. Excludes transfers throughout.
+   * plus the latest month's rate as the headline figure. Excludes transfers throughout, and
+   * excludes credit-card statement credits/refunds from income (they are not new money in).
    * A month with zero income yields a `null` rate (avoids divide-by-zero / misleading 0%).
    *
    * @param {string} userId - The authenticated user's ID.
@@ -574,10 +579,11 @@ export class AnalyticsService {
     const result = await this.db.execute(sql`
       SELECT
         to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
-        SUM(CASE WHEN t.is_credit = true THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = true AND COALESCE(a.account_type, '') != 'credit_card' THEN t.amount_cents ELSE 0 END) AS income_cents,
         SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
       FROM ${schema.transactions} t
       LEFT JOIN ${schema.categories} c ON t.category_id = c.id
+      LEFT JOIN ${schema.accounts} a ON t.account_id = a.id
       WHERE t.is_split_parent = false
         AND t.deleted_at IS NULL
         AND COALESCE(c.is_transfer, false) = false
