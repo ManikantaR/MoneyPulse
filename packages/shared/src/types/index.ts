@@ -1,6 +1,12 @@
 export type UserRole = 'admin' | 'member';
 export type ThemePreference = 'light' | 'dark' | 'system';
-export type AccountType = 'checking' | 'savings' | 'credit_card';
+export type AccountType =
+  | 'checking'
+  | 'savings'
+  | 'credit_card'
+  | 'edu_529'
+  | 'brokerage'
+  | 'cash_sweep';
 export type InvestmentAccountType = 'brokerage' | 'retirement' | 'stock_plan';
 export type FileType = 'csv' | 'excel' | 'pdf';
 export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -184,6 +190,38 @@ export interface Category {
   parentId: string | null;
   sortOrder: number;
   isTransfer: boolean;
+  bucket: 'needs' | 'wants' | 'savings_debt' | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaycheckProfile {
+  id: string;
+  userId: string;
+  effectiveDate: string;
+  payFrequency: 'weekly' | 'biweekly' | 'semi_monthly' | 'monthly';
+  grossPayCents: number;
+  federalTaxCents: number;
+  stateTaxCents: number;
+  socialSecurityCents: number;
+  medicareCents: number;
+  pretax401kCents: number;
+  hsaCents: number;
+  medicalPremiumCents: number;
+  dentalPremiumCents: number;
+  visionPremiumCents: number;
+  commuterCents: number;
+  parkingCents: number;
+  otherPretaxCents: number;
+  supplementalLifeCents: number;
+  legalCents: number;
+  accidentInsuranceCents: number;
+  otherPosttaxCents: number;
+  esppContributionCents: number;
+  esppDiscountPercent: number | null;
+  employer401kMatchCents: number;
+  employerHealthContributionCents: number;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }

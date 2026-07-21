@@ -333,6 +333,20 @@ export default function SettingsPage() {
       {/* AI Advisor (self-contained: own save/test) */}
       <AdvisorSettingsSection />
 
+      {/* Paycheck Profiles — powers the 50/30/20 dashboard */}
+      <section className="space-y-4 rounded-2xl bg-[var(--surface-container-low)] p-6">
+        <h2 className="text-lg font-bold">Paycheck Profiles</h2>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Manage take-home pay figures used by the 50/30/20 dashboard.
+        </p>
+        <a
+          href="/settings/paycheck-profiles"
+          className="inline-block text-sm font-semibold text-[var(--primary)] hover:underline"
+        >
+          Manage paycheck profiles
+        </a>
+      </section>
+
       {/* Security */}
       <section className="space-y-4 rounded-2xl bg-[var(--surface-container-low)] p-6">
         <h2 className="text-lg font-bold">Security</h2>

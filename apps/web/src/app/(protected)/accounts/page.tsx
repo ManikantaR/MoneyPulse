@@ -110,6 +110,9 @@ export default function AccountsPage() {
                 <option value="checking">Checking</option>
                 <option value="savings">Savings</option>
                 <option value="credit_card">Credit Card</option>
+                <option value="edu_529">529 Education Savings</option>
+                <option value="brokerage">Brokerage / Index Fund</option>
+                <option value="cash_sweep">Cash Sweep (interest-bearing)</option>
               </select>
             </div>
             <div>

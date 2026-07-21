@@ -19,6 +19,7 @@ import { TopTransactionsCard } from '@/components/charts/TopTransactionsCard';
 import { CreditCardPaymentsTable } from '@/components/charts/CreditCardPaymentsTable';
 import { NetWorthDrilldown } from '@/components/NetWorthDrilldown';
 import { BudgetProgressCard } from '@/components/charts/BudgetProgressCard';
+import { Budget503020Card } from '@/components/charts/Budget503020Card';
 import {
   useIncomeVsExpenses,
   useCategoryBreakdown,
@@ -34,6 +35,7 @@ import {
   useBudgetProgress,
   useBalanceHistory,
   useForecast,
+  useBudgetPlan,
 } from '@/lib/hooks/useAnalytics';
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { UpcomingBillsCard } from '@/components/charts/UpcomingBillsCard';
@@ -78,6 +80,7 @@ export default function DashboardPage() {
   const { data: upcomingBills } = useUpcomingBills();
   const { data: subscriptionsData } = useSubscriptions();
   const { data: budgetProgressData } = useBudgetProgress(params);
+  const { data: budgetPlanData } = useBudgetPlan(format(new Date(), 'yyyy-MM'));
   // Balance history uses last 12 months to show a meaningful trend
   const balHistoryFrom = format(subMonths(new Date(), 12), 'yyyy-MM-dd');
   const { data: balanceHistory } = useBalanceHistory({ from: balHistoryFrom, to: trendTo });
@@ -361,6 +364,9 @@ export default function DashboardPage() {
           />
         );
       })()}
+
+      {/* 50/30/20 plan for the current month */}
+      {budgetPlanData?.data && <Budget503020Card data={budgetPlanData.data} />}
 
       {/* Budget Progress — top 5 by percentUsed, with link to /budgets */}
       {budgetProgressData?.data && budgetProgressData.data.length > 0 && (
