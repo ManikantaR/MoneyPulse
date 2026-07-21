@@ -92,6 +92,23 @@ sync_code() {
 
     rm -f "$TMP_ARCHIVE"
     ok "Code synced to NAS"
+
+    # The live NAS compose file lives OUTSIDE the synced repo tree (a separate path
+    # docker-compose reads from) and used to be hand-edited over SSH with zero git
+    # history — exactly how a Postgres image swap almost went untracked. The repo's
+    # deploy/docker-compose.moneypulse.yml is now the single source of truth; sync it
+    # here every time, and warn (don't silently clobber) if the live file drifted from
+    # what git last saw, so a future hand-edit gets noticed instead of quietly lost.
+    if [ -f "deploy/docker-compose.moneypulse.yml" ]; then
+        log "Syncing NAS compose file..."
+        if ssh "$NAS_HOST" "test -f $NAS_COMPOSE"; then
+            if ! ssh "$NAS_HOST" "cat $NAS_COMPOSE" | diff -q - "deploy/docker-compose.moneypulse.yml" >/dev/null 2>&1; then
+                warn "Live NAS compose differs from deploy/docker-compose.moneypulse.yml — it was likely hand-edited since the last sync. Overwriting with the repo's tracked version. If that hand-edit was intentional, pull it into git first next time."
+            fi
+        fi
+        scp -O "deploy/docker-compose.moneypulse.yml" "$NAS_HOST:$NAS_COMPOSE"
+        ok "NAS compose file synced from repo"
+    fi
 }
 
 # ── Step 2: Build & deploy ─────────────────────────────────
