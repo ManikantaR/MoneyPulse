@@ -1,0 +1,210 @@
+# MoneyPulse — NAS Deployment (with Traefik)
+# Deploy: docker compose -f docker-compose.moneypulse.yml up -d
+# With AI: docker compose -f docker-compose.moneypulse.yml --profile ai up -d
+#
+# Prerequisites:
+#   1. Traefik network exists: docker network create traefik-public
+#   2. Infrastructure stack running (docker-compose.infra.yml)
+#   3. Clone MoneyPulse repo on NAS or build images and transfer
+#
+# Volumes: All data at /volume1/docker/moneypulse/
+# Watch folder: drop bank statements into /volume1/docker/moneypulse/watch-folder/
+
+networks:
+  traefik-public:
+    external: true
+  moneypulse-internal:
+    # Internal network for postgres/redis — not exposed to Traefik
+
+services:
+  # ── PostgreSQL 16 ────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: moneypulse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moneypulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-moneypulse}
+    volumes:
+      - /volume1/docker/moneypulse/pg-pgvector:/var/lib/postgresql/data
+    networks:
+      - moneypulse-internal
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-moneypulse}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - 'traefik.enable=false'
+
+  # ── Redis 7 ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: moneypulse-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme_redis}
+    volumes:
+      - /volume1/docker/moneypulse/redis:/data
+    networks:
+      - moneypulse-internal
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-changeme_redis}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - 'traefik.enable=false'
+
+  # ── NestJS API ───────────────────────────────────────────
+  api:
+    build:
+      context: /volume1/docker/moneypulse/repo
+      dockerfile: apps/api/Dockerfile
+    container_name: moneypulse-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-moneypulse}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-moneypulse}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379
+      PORT: '4000'
+      NODE_ENV: production
+      TZ: America/New_York      # container clock = Eastern (correct local times; BullMQ crons fire in ET)
+      COOKIE_SECURE: 'true'     # Served over HTTPS now (moneypulse.home.manikantar.com)
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral:7b}
+      PDF_PARSER_URL: ${PDF_PARSER_URL:-http://pdf-parser:5000}
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGIN: https://moneypulse.home.manikantar.com
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ALIAS_SECRET: ${ALIAS_SECRET:-}
+      SYNC_SIGNING_SECRET: ${SYNC_SIGNING_SECRET:-}
+      FIREBASE_SYNC_ENDPOINT: ${FIREBASE_SYNC_ENDPOINT:-}
+      HA_WEBHOOK_ALLOWED_HOSTS: '10.140.2.145,ha.home.manikantar.com'
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_MAP: ${TELEGRAM_CHAT_MAP:-}
+      TELEGRAM_DEFAULT_USER_ID: ${TELEGRAM_DEFAULT_USER_ID:-}
+      EIA_API_KEY: ${EIA_API_KEY:-}
+      FRED_API_KEY: ${FRED_API_KEY:-}
+    volumes:
+      - /volume1/docker/moneypulse/uploads:/data/uploads
+      - /volume1/docker/moneypulse/watch-folder:/config/watch-folder
+    networks:
+      - traefik-public
+      - moneypulse-internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pdf-parser:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:4000/api/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.moneypulse-api.rule=Host(`moneypulse.home.manikantar.com`) && PathPrefix(`/api`)'
+      - 'traefik.http.routers.moneypulse-api.entrypoints=websecure'
+      - 'traefik.http.routers.moneypulse-api.tls=true'
+      - 'traefik.http.services.moneypulse-api.loadbalancer.server.port=4000'
+      - 'com.centurylinklabs.watchtower.enable=false'
+
+  # ── Next.js Frontend ─────────────────────────────────────
+  web:
+    build:
+      context: /volume1/docker/moneypulse/repo
+      dockerfile: apps/web/Dockerfile
+      args:
+        # CRITICAL: Next.js bakes NEXT_PUBLIC_* into JS at build time.
+        # This MUST be passed as a build arg — runtime env has no effect.
+        NEXT_PUBLIC_API_URL: https://moneypulse.home.manikantar.com/api
+    container_name: moneypulse-web
+    restart: unless-stopped
+    environment:
+      # Keep at runtime too for any SSR/middleware that reads process.env
+      NEXT_PUBLIC_API_URL: https://moneypulse.home.manikantar.com/api
+    networks:
+      - traefik-public
+    depends_on:
+      api:
+        condition: service_healthy
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.moneypulse-web.rule=Host(`moneypulse.home.manikantar.com`)'
+      - 'traefik.http.routers.moneypulse-web.entrypoints=websecure'
+      - 'traefik.http.routers.moneypulse-web.tls=true'
+      - 'traefik.http.services.moneypulse-web.loadbalancer.server.port=3000'
+      - 'traefik.http.routers.moneypulse-web.priority=1'
+      - 'com.centurylinklabs.watchtower.enable=false'
+
+  # ── PDF Parser (Python) ─────────────────────────────────
+  pdf-parser:
+    build:
+      context: /volume1/docker/moneypulse/repo
+      dockerfile: services/pdf-parser/Dockerfile
+    container_name: moneypulse-pdf
+    restart: unless-stopped
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral:7b}
+    networks:
+      - moneypulse-internal
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:5000/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - 'traefik.enable=false'
+      - 'com.centurylinklabs.watchtower.enable=false'
+
+  # ── Ollama (Optional — use --profile ai) ────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: moneypulse-ollama
+    profiles: ['ai']
+    restart: unless-stopped
+    volumes:
+      - /volume1/docker/moneypulse/ollama:/root/.ollama
+    networks:
+      - moneypulse-internal
+    labels:
+      - 'traefik.enable=false'
+
+  # ── DB Backup (daily at 2am) ────────────────────────────
+  backup:
+    image: pgvector/pgvector:pg16
+    container_name: moneypulse-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-moneypulse}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-moneypulse}
+    volumes:
+      - /volume1/docker/moneypulse/backup:/backup
+    networks:
+      - moneypulse-internal
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        echo '#!/bin/sh
+        TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
+        pg_dump -Fc > /backup/moneypulse_$$TIMESTAMP.dump
+        # Keep last 7 days
+        find /backup -name "*.dump" -mtime +7 -delete
+        echo "Backup completed: moneypulse_$$TIMESTAMP.dump"
+        ' > /usr/local/bin/backup.sh && chmod +x /usr/local/bin/backup.sh
+        echo "0 2 * * * /usr/local/bin/backup.sh" | crontab -
+        crond -f -l 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - 'traefik.enable=false'
