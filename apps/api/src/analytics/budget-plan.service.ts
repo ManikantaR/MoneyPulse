@@ -114,10 +114,15 @@ export class BudgetPlanService {
       bucketTotals[row.bucket] = Number(row.total_cents) || 0;
     }
 
-    const savingsFromProfileCents =
-      (profile.pretax401kCents ?? 0) +
-      (profile.hsaCents ?? 0) +
-      (profile.esppContributionCents ?? 0);
+    // Profile deductions are per-paycheck; scale by the same payPeriodsPerYear/12
+    // factor used for monthlyGrossCents so they're on the same monthly basis as the
+    // gross denominator and the (already-monthly) transaction totals below.
+    const savingsFromProfileCents = Math.round(
+      ((profile.pretax401kCents ?? 0) +
+        (profile.hsaCents ?? 0) +
+        (profile.esppContributionCents ?? 0)) *
+        (payPeriodsPerYear / 12),
+    );
 
     const needsCents = bucketTotals.needs;
     const wantsCents = bucketTotals.wants;
