@@ -252,7 +252,7 @@ export class DigestService {
     // spend, not new income, so they're excluded from total_income the same way as elsewhere.
     const spendResult = await this.db.execute(sql`
       SELECT COALESCE(SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END), 0) AS total_expense,
-             COALESCE(SUM(CASE WHEN t.is_credit = true AND COALESCE(a.account_type, '') != 'credit_card' THEN t.amount_cents ELSE 0 END), 0) AS total_income
+             COALESCE(SUM(CASE WHEN t.is_credit = true AND (a.account_type IS NULL OR a.account_type != 'credit_card') THEN t.amount_cents ELSE 0 END), 0) AS total_income
       FROM ${schema.transactions} t
       LEFT JOIN ${schema.accounts} a ON t.account_id = a.id
       WHERE t.user_id = ${userId}

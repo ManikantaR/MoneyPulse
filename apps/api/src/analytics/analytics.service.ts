@@ -44,7 +44,7 @@ export class AnalyticsService {
     const result = await this.db.execute(sql`
       SELECT
         to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
-        SUM(CASE WHEN t.is_credit = true AND COALESCE(a.account_type, '') != 'credit_card' THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = true AND (a.account_type IS NULL OR a.account_type != 'credit_card') THEN t.amount_cents ELSE 0 END) AS income_cents,
         SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
       FROM ${schema.transactions} t
       LEFT JOIN ${schema.categories} c ON t.category_id = c.id
@@ -160,7 +160,7 @@ export class AnalyticsService {
     const result = await this.db.execute(sql`
       SELECT
         to_char(${truncFn}, 'YYYY-MM-DD') AS period,
-        SUM(CASE WHEN t.is_credit = true AND COALESCE(a.account_type, '') != 'credit_card' THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = true AND (a.account_type IS NULL OR a.account_type != 'credit_card') THEN t.amount_cents ELSE 0 END) AS income_cents,
         SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
       FROM ${schema.transactions} t
       LEFT JOIN ${schema.categories} c ON t.category_id = c.id
@@ -579,7 +579,7 @@ export class AnalyticsService {
     const result = await this.db.execute(sql`
       SELECT
         to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
-        SUM(CASE WHEN t.is_credit = true AND COALESCE(a.account_type, '') != 'credit_card' THEN t.amount_cents ELSE 0 END) AS income_cents,
+        SUM(CASE WHEN t.is_credit = true AND (a.account_type IS NULL OR a.account_type != 'credit_card') THEN t.amount_cents ELSE 0 END) AS income_cents,
         SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END) AS expense_cents
       FROM ${schema.transactions} t
       LEFT JOIN ${schema.categories} c ON t.category_id = c.id
