@@ -4,6 +4,7 @@ import { AnalyticsService } from './analytics.service';
 import { BalanceSnapshotService } from './balance-snapshot.service';
 import { ForecastService } from './forecast.service';
 import { AccountFreshnessService } from './account-freshness.service';
+import { BudgetPlanService } from './budget-plan.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -13,6 +14,7 @@ import {
   topMerchantsQuerySchema,
   forecastQuerySchema,
   savingsRateQuerySchema,
+  budgetPlanQuerySchema,
 } from '@moneypulse/shared';
 import type {
   AnalyticsQuery,
@@ -20,6 +22,7 @@ import type {
   TopMerchantsQuery,
   ForecastQuery,
   SavingsRateQuery,
+  BudgetPlanQuery,
   AuthTokenPayload,
 } from '@moneypulse/shared';
 
@@ -32,6 +35,7 @@ export class AnalyticsController {
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
     private readonly accountFreshnessService: AccountFreshnessService,
+    private readonly budgetPlanService: BudgetPlanService,
   ) {}
 
   /**
@@ -363,6 +367,25 @@ export class AnalyticsController {
     const data = await this.accountFreshnessService.getAccountFreshness(
       user.sub,
     );
+    return { data };
+  }
+
+  /**
+   * GET /analytics/budget-plan?month=YYYY-MM — 50/30/20 (Needs/Wants/Savings) budget
+   * plan for the given month against the paycheck profile in effect that month.
+   *
+   * @param query - Validated `month` (YYYY-MM) query parameter.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: BudgetPlanResult }` — `hasProfile: false` when no paycheck
+   *   profile exists yet as of that month.
+   */
+  @Get('budget-plan')
+  @ApiOperation({ summary: '50/30/20 budget plan for a given month' })
+  async budgetPlan(
+    @Query(new ZodValidationPipe(budgetPlanQuerySchema)) query: BudgetPlanQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.budgetPlanService.budgetPlan(user.sub, query.month);
     return { data };
   }
 }

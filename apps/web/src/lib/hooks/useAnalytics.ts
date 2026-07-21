@@ -295,3 +295,42 @@ export function useSubscriptionTotal() {
     queryFn: () => api.get<{ data: SubscriptionTotalData }>('/analytics/subscription-total'),
   });
 }
+
+/** A single 50/30/20 bucket's actual vs. target figures. */
+export interface BudgetPlanBucket {
+  actualCents: number;
+  actualPercent: number | null;
+  target: { min: number; max: number | null };
+}
+
+/** 50/30/20 budget plan for a given month. */
+export interface BudgetPlanData {
+  month: string;
+  hasProfile: boolean;
+  profile: {
+    id: string;
+    effectiveDate: string;
+    payFrequency: string;
+    monthlyGrossCents: number;
+  } | null;
+  needs: BudgetPlanBucket | null;
+  wants: BudgetPlanBucket | null;
+  savings: BudgetPlanBucket | null;
+  targets: {
+    needs: { min: number; max: number | null };
+    wants: { min: number; max: number | null };
+    savings: { min: number; max: number | null };
+  };
+}
+
+/** Fetch the 50/30/20 budget plan for a given `YYYY-MM` month. */
+export function useBudgetPlan(month: string) {
+  return useQuery({
+    queryKey: ['analytics', 'budget-plan', month],
+    queryFn: () =>
+      api.get<{ data: BudgetPlanData }>('/analytics/budget-plan', {
+        params: { month },
+      }),
+    enabled: !!month,
+  });
+}

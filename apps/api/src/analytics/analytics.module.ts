@@ -11,6 +11,7 @@ import { AccountFreshnessService } from './account-freshness.service';
 import { FreshnessDetectorService } from './freshness-detector.service';
 import { WatchdogDetectorService } from './watchdog-detector.service';
 import { MarketInsightDetectorService } from './market-insight-detector.service';
+import { BudgetPlanService } from './budget-plan.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CategorizationModule } from '../categorization/categorization.module';
 import { BillsModule } from '../bills/bills.module';
@@ -19,8 +20,8 @@ import { MarketDataModule } from '../market-data/market-data.module';
 
 @Module({
   imports: [NotificationsModule, CategorizationModule, BillsModule, LoansModule, MarketDataModule],
-  providers: [AnalyticsService, AnomalyDetectorService, DigestService, BriefService, BalanceSnapshotService, ForecastService, AccountFreshnessService, FreshnessDetectorService, WatchdogDetectorService, MarketInsightDetectorService],
+  providers: [AnalyticsService, AnomalyDetectorService, DigestService, BriefService, BalanceSnapshotService, ForecastService, AccountFreshnessService, FreshnessDetectorService, WatchdogDetectorService, MarketInsightDetectorService, BudgetPlanService],
   controllers: [AnalyticsController, DigestController],
-  exports: [AnalyticsService, AnomalyDetectorService, DigestService, BriefService, BalanceSnapshotService, ForecastService, AccountFreshnessService, FreshnessDetectorService, WatchdogDetectorService, MarketInsightDetectorService],
+  exports: [AnalyticsService, AnomalyDetectorService, DigestService, BriefService, BalanceSnapshotService, ForecastService, AccountFreshnessService, FreshnessDetectorService, WatchdogDetectorService, MarketInsightDetectorService, BudgetPlanService],
 })
 export class AnalyticsModule {}

@@ -8,7 +8,7 @@ import {
   ChevronRight,
   Search,
 } from 'lucide-react';
-import { useCategoryTree, useCreateCategory } from '@/lib/hooks/useCategories';
+import { useCategoryTree, useCreateCategory, useUpdateCategory } from '@/lib/hooks/useCategories';
 import {
   useCategoryBreakdown,
   type CategoryBreakdownItem,
@@ -42,6 +42,46 @@ const PRESET_ICONS = [
   '👤', '🎁', '🎀', '💝', '📈',
   '🔄', '💳', '📝',
 ];
+
+/** Labels for the 50/30/20 bucket classification. */
+const BUCKET_LABELS: Record<string, string> = {
+  needs: 'Needs',
+  wants: 'Wants',
+  savings_debt: 'Savings/Debt',
+};
+
+/** Small select for assigning a category's 50/30/20 bucket. Stops propagation so it
+ *  doesn't trigger the parent row's collapse toggle. */
+function BucketSelect({
+  categoryId,
+  bucket,
+}: {
+  categoryId: string;
+  bucket: string | null | undefined;
+}) {
+  const updateCategory = useUpdateCategory();
+  return (
+    <select
+      value={bucket ?? ''}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        e.stopPropagation();
+        const value = e.target.value;
+        updateCategory.mutate({
+          id: categoryId,
+          bucket: value === '' ? null : (value as 'needs' | 'wants' | 'savings_debt'),
+        });
+      }}
+      className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--surface-container-low)] px-2 py-1 text-[11px] font-semibold focus:border-[var(--primary)] focus:outline-none"
+      aria-label="Assign 50/30/20 bucket"
+    >
+      <option value="">Unset</option>
+      <option value="needs">{BUCKET_LABELS.needs}</option>
+      <option value="wants">{BUCKET_LABELS.wants}</option>
+      <option value="savings_debt">{BUCKET_LABELS.savings_debt}</option>
+    </select>
+  );
+}
 
 /** Categories page — view and manage category tree. */
 export default function CategoriesPage() {
@@ -161,6 +201,7 @@ export default function CategoriesPage() {
               </p>
             )}
           </div>
+          <BucketSelect categoryId={node.id} bucket={node.bucket} />
           <div className="shrink-0 text-right">
             {parentTotal > 0 ? (
               <>
@@ -221,6 +262,7 @@ export default function CategoriesPage() {
                       Transfer
                     </span>
                   )}
+                  <BucketSelect categoryId={child.id} bucket={child.bucket} />
                   {childAmount > 0 ? (
                     <div className="flex items-center gap-2.5 shrink-0">
                       <div className="w-20 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
