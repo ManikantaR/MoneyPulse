@@ -101,6 +101,23 @@ export const categoryBucketEnum = pgEnum('category_bucket', [
   'wants',
   'savings_debt',
 ]);
+// 12.1: Recommendation layer — extends the notifications row with an evidence
+// contract + decision memory (fail-closed render/dispatch; see notifications.service.ts).
+export const notificationKindEnum = pgEnum('notification_kind', [
+  'insight',
+  'recommendation',
+]);
+export const recommendationConfidenceBandEnum = pgEnum(
+  'recommendation_confidence_band',
+  ['high', 'medium', 'low'],
+);
+export const recommendationDecisionEnum = pgEnum('recommendation_decision', [
+  'accepted',
+  'rejected',
+  'dismissed',
+  'snoozed',
+  'not_applicable',
+]);
 export const payFrequencyEnum = pgEnum('pay_frequency', [
   'weekly',
   'biweekly',
@@ -491,6 +508,28 @@ export const notifications = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
+
+    // ── 12.1 recommendation layer (evidence contract + decision memory) ──
+    /** 'insight' (observation) vs 'recommendation' (actionable, requires evidence). */
+    kind: notificationKindEnum('kind').notNull().default('insight'),
+    actionSummary: varchar('action_summary', { length: 500 }),
+    /** {minCentsPerYear, maxCentsPerYear, basis} — a range, never false precision. */
+    expectedImpact: jsonb('expected_impact'),
+    /** Array of {source, ref, value, unit, observedAt}. Required (non-empty) for recommendations. */
+    evidence: jsonb('evidence'),
+    /** Array of assumption strings. Required (non-empty) for recommendations. */
+    assumptions: jsonb('assumptions'),
+    confidenceBand: recommendationConfidenceBandEnum('confidence_band'),
+    calculationVersion: varchar('calculation_version', { length: 50 }),
+    /** {id, version} of the producing agent. */
+    producer: jsonb('producer'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    decision: recommendationDecisionEnum('decision'),
+    decisionReason: text('decision_reason'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
+    /** Persisted reason a generation pass suppressed re-raising this topic. */
+    suppressedReason: text('suppressed_reason'),
   },
   (table) => [
     index('idx_notifications_user_severity_created').on(
@@ -499,6 +538,11 @@ export const notifications = pgTable(
       table.createdAt.desc(),
     ),
     index('idx_notifications_user_dismissed').on(table.userId, table.dismissedAt),
+    index('idx_notifications_user_type_decision').on(
+      table.userId,
+      table.type,
+      table.decidedAt.desc(),
+    ),
   ],
 );
 

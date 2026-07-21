@@ -8,6 +8,13 @@ import { WebPushService } from './web-push.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { OutboxService } from '../sync/outbox.service';
 import { AliasMapperService } from '../sync/alias-mapper.service';
+import {
+  EvidenceItem,
+  ExpectedImpact,
+  ConfidenceBand,
+  hasCompleteEvidence,
+  describeMissingEvidence,
+} from '../recommendations/recommendation-evidence';
 
 export interface CreateNotificationInput {
   userId: string;
@@ -21,6 +28,18 @@ export interface CreateNotificationInput {
   dedupeKey?: string;
   metadata?: Record<string, any>;
   notificationType?: string; // Maps to notification_preferences.notification_type
+
+  // ── 12.1 recommendation layer ──
+  /** Defaults to 'insight'. 'recommendation' rows are held to the evidence contract below. */
+  kind?: 'insight' | 'recommendation';
+  actionSummary?: string;
+  expectedImpact?: ExpectedImpact;
+  evidence?: EvidenceItem[];
+  assumptions?: string[];
+  confidenceBand?: ConfidenceBand;
+  calculationVersion?: string;
+  producer?: { id: string; version: string };
+  expiresAt?: Date;
 }
 
 @Injectable()
@@ -100,13 +119,26 @@ export class NotificationsService {
       .from(schema.notifications)
       .where(whereClause);
 
-    const data = await this.db
+    const rawData = await this.db
       .select()
       .from(schema.notifications)
       .where(whereClause)
       .orderBy(desc(schema.notifications.createdAt))
       .limit(limit)
       .offset(offset);
+
+    // Fail-closed render contract (12.1): a `recommendation` row missing evidence,
+    // assumptions, or a confidence band must never render in the feed, no matter how
+    // it ended up in the table. `insight` rows are unaffected.
+    const data = rawData.filter((row: any) => {
+      const renderable = hasCompleteEvidence(row);
+      if (!renderable) {
+        this.logger.warn(
+          `Feed: withheld recommendation ${row.id} (${describeMissingEvidence(row)})`,
+        );
+      }
+      return renderable;
+    });
 
     return {
       data,
@@ -177,6 +209,35 @@ export class NotificationsService {
   }
 
   /**
+   * Record a decision (accept/reject/dismiss/snooze/not_applicable) on a
+   * recommendation row — the decision memory that powers 12.1's decision-aware
+   * suppression. Scoped to the owning user; no-ops (silently) if the row isn't theirs.
+   */
+  async recordDecision(
+    id: string,
+    userId: string,
+    decision: 'accepted' | 'rejected' | 'dismissed' | 'snoozed' | 'not_applicable',
+    options: { reason?: string; snoozedUntil?: Date } = {},
+  ) {
+    const [updated] = await this.db
+      .update(schema.notifications)
+      .set({
+        decision,
+        decisionReason: options.reason,
+        decidedAt: new Date(),
+        snoozedUntil: decision === 'snoozed' ? options.snoozedUntil : null,
+      })
+      .where(
+        and(
+          eq(schema.notifications.id, id),
+          eq(schema.notifications.userId, userId),
+        ),
+      )
+      .returning();
+    return updated;
+  }
+
+  /**
    * Fetch insights that were routed to "brief" batching (11.3 dispatch) and haven't
    * yet been folded into a delivered daily brief. Undismissed only.
    */
@@ -216,6 +277,19 @@ export class NotificationsService {
   }
 
   async createAndDispatch(input: CreateNotificationInput) {
+    const kind = input.kind ?? 'insight';
+
+    // Fail-closed evidence contract (12.1): a `recommendation` row missing evidence,
+    // assumptions, or a confidence band is recorded (for audit — the producing agent
+    // run itself succeeded) but MUST NEVER be delivered through any channel. It's also
+    // excluded from the feed by `getInsightsFeed`'s render-contract filter.
+    const renderable = hasCompleteEvidence({
+      kind,
+      evidence: input.evidence,
+      assumptions: input.assumptions,
+      confidenceBand: input.confidenceBand,
+    });
+
     // Domain write — must always succeed
     const [notification] = await this.db
       .insert(schema.notifications)
@@ -227,6 +301,15 @@ export class NotificationsService {
         severity: input.severity ?? 'insight',
         source: input.source ?? 'system',
         data: input.data ?? {},
+        kind,
+        actionSummary: input.actionSummary,
+        expectedImpact: input.expectedImpact,
+        evidence: input.evidence,
+        assumptions: input.assumptions,
+        confidenceBand: input.confidenceBand,
+        calculationVersion: input.calculationVersion,
+        producer: input.producer,
+        expiresAt: input.expiresAt,
         metadata: {
           ...(input.metadata ?? {}),
           ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}),
@@ -234,6 +317,14 @@ export class NotificationsService {
         },
       })
       .returning();
+
+    if (!renderable) {
+      this.logger.error(
+        `Dispatch withheld: recommendation ${notification.id} (type=${input.type}) ` +
+          `is missing evidence/assumptions/confidence — fail-closed, not delivered.`,
+      );
+      return notification;
+    }
 
     // Dispatch through preference-aware channels (best-effort, never blocks domain write)
     void this.dispatch(notification.id, input.userId, input.notificationType ?? 'system_alert', {

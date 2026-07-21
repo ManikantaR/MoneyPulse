@@ -17,6 +17,7 @@ import { CategorizationModule } from './categorization/categorization.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 import { JobsModule } from './jobs/jobs.module';
 import { AiLogsModule } from './ai-logs/ai-logs.module';
 import { SyncModule } from './sync/sync.module';
@@ -64,6 +65,7 @@ import { MarketDataModule } from './market-data/market-data.module';
     AnalyticsModule,
     BudgetsModule,
     NotificationsModule,
+    RecommendationsModule,
     SyncModule,
     JobsModule,
     AiLogsModule,

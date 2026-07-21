@@ -115,6 +115,87 @@ describe('NotificationsService', () => {
       expect(mockDb.insert).toHaveBeenCalledTimes(1);
     });
 
+    describe('12.1 fail-closed recommendation evidence contract', () => {
+      it('never dispatches a recommendation missing evidence/assumptions/confidence', async () => {
+        const result = await service.createAndDispatch({
+          userId: TEST_USER,
+          type: 'cash_placement',
+          title: 'Move idle cash',
+          message: 'Move $20,000 to a higher-yield account.',
+          kind: 'recommendation',
+          // evidence/assumptions/confidenceBand all omitted — must fail closed.
+        });
+
+        // Domain write still happens (audit trail of the agent run)...
+        expect(result).toEqual(INSERTED_ROW);
+        // ...but nothing was dispatched through any channel.
+        expect(mockWebhookService.sendWebhook).not.toHaveBeenCalled();
+        expect(mockTelegramPush.sendToUser).not.toHaveBeenCalled();
+        expect(mockWebPush.sendToUser).not.toHaveBeenCalled();
+        // Nor projected to the web-sync outbox.
+        expect(mockOutbox.enqueue).not.toHaveBeenCalled();
+      });
+
+      it('never dispatches when evidence is present but assumptions/confidence are missing', async () => {
+        await service.createAndDispatch({
+          userId: TEST_USER,
+          type: 'cash_placement',
+          title: 'Move idle cash',
+          message: 'Move $20,000 to a higher-yield account.',
+          kind: 'recommendation',
+          evidence: [
+            { source: 'FRED', ref: 'MORTGAGE30US', value: 5.9, observedAt: '2026-07-10' },
+          ],
+          // assumptions + confidenceBand still missing.
+        });
+
+        expect(mockOutbox.enqueue).not.toHaveBeenCalled();
+        expect(mockWebPush.sendToUser).not.toHaveBeenCalled();
+      });
+
+      it('dispatches a complete recommendation (full evidence contract) normally', async () => {
+        mockWebPush.enabled = true;
+        mockPreferences.getPreference.mockResolvedValue({
+          id: 'pref-123',
+          userId: TEST_USER,
+          notificationType: 'system_alert',
+          mode: 'instant',
+          enabledChannels: ['inApp', 'webPush'],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        await service.createAndDispatch({
+          userId: TEST_USER,
+          type: 'cash_placement',
+          title: 'Move idle cash',
+          message: 'Move $20,000 to a higher-yield account.',
+          kind: 'recommendation',
+          evidence: [
+            { source: 'FRED', ref: 'MORTGAGE30US', value: 5.9, observedAt: '2026-07-10' },
+          ],
+          assumptions: ['Balances fresh as of last sync.'],
+          confidenceBand: 'high',
+          calculationVersion: '1',
+          producer: { id: 'cash-manager', version: '1' },
+        });
+
+        expect(mockOutbox.enqueue).toHaveBeenCalledTimes(1);
+      });
+
+      it('an insight (non-recommendation) row is unaffected by the evidence contract', async () => {
+        await service.createAndDispatch({
+          userId: TEST_USER,
+          type: 'spending_anomaly',
+          title: 'Unusual spend',
+          message: 'You spent $600 at Merchant X',
+          kind: 'insight',
+        });
+
+        expect(mockOutbox.enqueue).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it('enqueues a notification.projected.v1 event with body (not message)', async () => {
       await service.createAndDispatch({
         userId: TEST_USER,
@@ -285,6 +366,84 @@ describe('NotificationsService', () => {
         expect.objectContaining({ briefedAt: expect.any(Date) }),
       );
     });
+  });
+});
+
+describe('NotificationsService.getInsightsFeed — 12.1 fail-closed render contract', () => {
+  const TEST_USER = 'user-abc';
+  const INCOMPLETE_RECOMMENDATION = {
+    id: 'notif-rec-incomplete',
+    userId: TEST_USER,
+    type: 'cash_placement',
+    kind: 'recommendation',
+    evidence: null,
+    assumptions: null,
+    confidenceBand: null,
+    createdAt: new Date().toISOString(),
+  };
+  const COMPLETE_RECOMMENDATION = {
+    id: 'notif-rec-complete',
+    userId: TEST_USER,
+    type: 'cash_placement',
+    kind: 'recommendation',
+    evidence: [{ source: 'FRED', ref: 'MORTGAGE30US', value: 5.9, observedAt: '2026-07-10' }],
+    assumptions: ['Balances fresh as of last sync.'],
+    confidenceBand: 'high',
+    createdAt: new Date().toISOString(),
+  };
+  const PLAIN_INSIGHT = {
+    id: 'notif-insight',
+    userId: TEST_USER,
+    type: 'spending_anomaly',
+    kind: 'insight',
+    evidence: null,
+    assumptions: null,
+    confidenceBand: null,
+    createdAt: new Date().toISOString(),
+  };
+
+  it('withholds a recommendation row missing evidence/assumptions/confidence from the feed', async () => {
+    const rows = [INCOMPLETE_RECOMMENDATION, COMPLETE_RECOMMENDATION, PLAIN_INSIGHT];
+
+    const selectChain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      offset: vi.fn().mockResolvedValue(rows),
+    };
+    // First .select() call (the count query) resolves via `where` directly (no offset chain).
+    let callCount = 0;
+    const mockDb = {
+      select: vi.fn().mockImplementation(() => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([{ count: rows.length }]),
+            }),
+          };
+        }
+        return selectChain;
+      }),
+    };
+
+    const service = new NotificationsService(
+      mockDb,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    const result = await service.getInsightsFeed(TEST_USER);
+
+    const ids = result.data.map((r: any) => r.id);
+    expect(ids).toContain(COMPLETE_RECOMMENDATION.id);
+    expect(ids).toContain(PLAIN_INSIGHT.id);
+    expect(ids).not.toContain(INCOMPLETE_RECOMMENDATION.id);
   });
 });
 

@@ -81,6 +81,26 @@ export class NotificationsController {
     return { data: { dismissed: true } };
   }
 
+  @Post(':id/decision')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Record a decision on a recommendation (accept/reject/dismiss/snooze)' })
+  async recordDecision(
+    @CurrentUser() user: AuthTokenPayload,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      decision: 'accepted' | 'rejected' | 'dismissed' | 'snoozed' | 'not_applicable';
+      reason?: string;
+      snoozedUntil?: string;
+    },
+  ) {
+    const updated = await this.notificationsService.recordDecision(id, user.sub, body.decision, {
+      reason: body.reason,
+      snoozedUntil: body.snoozedUntil ? new Date(body.snoozedUntil) : undefined,
+    });
+    return { data: updated };
+  }
+
   @Get('feed/insights')
   @ApiOperation({ summary: 'Get insights feed (filtered, paginated)' })
   async getInsightsFeed(
