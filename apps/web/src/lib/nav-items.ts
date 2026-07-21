@@ -15,6 +15,7 @@ import {
   Repeat,
   Sparkles,
   HandCoins,
+  LayoutGrid,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -31,6 +32,7 @@ export const navItems: NavItem[] = [
   { href: '/advisor', label: 'Advisor', icon: Sparkles, placement: 'tab' },
   { href: '/bills', label: 'Bills', icon: CalendarClock, placement: 'tab' },
   // Drawer items
+  { href: '/overview', label: 'Overview', icon: LayoutGrid, placement: 'drawer' },
   { href: '/accounts', label: 'Accounts', icon: Landmark, placement: 'drawer' },
   { href: '/loans', label: 'Loans', icon: HandCoins, placement: 'drawer' },
   { href: '/investments', label: 'Investments', icon: TrendingUp, placement: 'drawer' },
