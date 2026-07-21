@@ -246,15 +246,19 @@ export class DigestService {
     const d = new Date(localStr);
     const truncUnit = period === 'weekly' ? 'week' : 'month';
 
+    // Note: no `is_credit` filter in WHERE here — this query needs both credit and debit rows
+    // in order to compute total_expense and total_income (via the CASE branches below).
+    // Credits on credit_card-type accounts (statement/travel credits) are refunds of prior
+    // spend, not new income, so they're excluded from total_income the same way as elsewhere.
     const spendResult = await this.db.execute(sql`
-      SELECT COALESCE(SUM(amount_cents), 0) AS total_expense,
-             COALESCE(SUM(CASE WHEN is_credit = true THEN amount_cents ELSE 0 END), 0) AS total_income
-      FROM ${schema.transactions}
-      WHERE user_id = ${userId}
-        AND is_split_parent = false
-        AND deleted_at IS NULL
-        AND date_trunc(${truncUnit}, date) = date_trunc(${truncUnit}, ${d.toISOString()}::timestamptz AT TIME ZONE ${timezone})
-        AND is_credit = false
+      SELECT COALESCE(SUM(CASE WHEN t.is_credit = false THEN t.amount_cents ELSE 0 END), 0) AS total_expense,
+             COALESCE(SUM(CASE WHEN t.is_credit = true AND (a.account_type IS NULL OR a.account_type != 'credit_card') THEN t.amount_cents ELSE 0 END), 0) AS total_income
+      FROM ${schema.transactions} t
+      LEFT JOIN ${schema.accounts} a ON t.account_id = a.id
+      WHERE t.user_id = ${userId}
+        AND t.is_split_parent = false
+        AND t.deleted_at IS NULL
+        AND date_trunc(${truncUnit}, t.date) = date_trunc(${truncUnit}, ${d.toISOString()}::timestamptz AT TIME ZONE ${timezone})
     `);
     const spendRow = (spendResult.rows ?? spendResult)[0] as { total_expense: number; total_income: number } | undefined;
     const totalExpense = Number(spendRow?.total_expense ?? 0);
