@@ -155,6 +155,27 @@
       "when": 1784559800000,
       "tag": "0021_semantic_search",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784560000000,
+      "tag": "0022_paycheck_new_account_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784560100000,
+      "tag": "0023_category_bucket",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784560200000,
+      "tag": "0024_paycheck_profiles",
+      "breakpoints": true
     }
   ]
 }

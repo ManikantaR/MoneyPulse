@@ -22,6 +22,7 @@ import { AiLogsModule } from './ai-logs/ai-logs.module';
 import { SyncModule } from './sync/sync.module';
 import { BillsModule } from './bills/bills.module';
 import { LoansModule } from './loans/loans.module';
+import { PaycheckProfilesModule } from './paycheck-profiles/paycheck-profiles.module';
 import { InvestmentsModule } from './investments/investments.module';
 import { AdvisorModule } from './advisor/advisor.module';
 import { MarketDataModule } from './market-data/market-data.module';
@@ -68,6 +69,7 @@ import { MarketDataModule } from './market-data/market-data.module';
     AiLogsModule,
     BillsModule,
     LoansModule,
+    PaycheckProfilesModule,
     InvestmentsModule,
     AdvisorModule,
     MarketDataModule,
