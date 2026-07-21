@@ -1,5 +1,21 @@
 import { z } from 'zod';
 
+// Cross-repo consumption note (issue #99 / PHASE11-AWARENESS-SPEC §11.1):
+// moneypulse-web (the separate Firebase-hosted ingest project — see
+// docs/FIREBASE-SETUP-SECRETS-HANDOFF.md) lives in its own repo/deploy
+// pipeline, so it cannot `import` this package directly.
+//
+// STATUS as of 2026-07-21: no mirror of these schemas exists in
+// moneypulse-web yet (verified directly against that repo's working tree —
+// no `functions/src/sync-contracts.ts`, zero hits for ALIAS_ID_PATTERN /
+// sync-contract / POLICY_FAIL_SCHEMA). This sandbox's write access is
+// scoped to the MyMoney worktree only, so that mirror could not be created
+// from here. TODO (tracked follow-up, separate PR in the moneypulse-web
+// repo): add `functions/src/sync-contracts.ts` as a verbatim, version-pinned
+// copy of this file's exports (pin the source commit in a comment there),
+// add `zod` to functions/package.json, and wire it into the ingest handler
+// under functions/src/sync/. Until that lands, moneypulse-web's ingest does
+// NOT enforce this allowlist — only this repo's outbound sanitizer does.
 export const ALIAS_ID_PATTERN = /^a\d+_[0-9a-f]{40}$/;
 
 const aliasIdSchema = z.string().regex(ALIAS_ID_PATTERN);
