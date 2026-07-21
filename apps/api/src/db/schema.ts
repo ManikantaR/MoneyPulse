@@ -25,6 +25,12 @@ export const accountTypeEnum = pgEnum('account_type', [
   'checking',
   'savings',
   'credit_card',
+  // 11.11: 529 education savings, brokerage/index-fund (ties into #118 holdings &
+  // prices — this only stores the account type, not holdings), and cash-sweep /
+  // interest-bearing settlement funds (distinct from a plain savings account).
+  'edu_529',
+  'brokerage',
+  'cash_sweep',
 ]);
 export const institutionEnum = pgEnum('institution', [
   'boa',
@@ -86,6 +92,20 @@ export const notificationChannelEnum = pgEnum('notification_channel', [
   'webPush',
   'email',
   'haWebhook',
+]);
+// 11.11: Needs/Wants/Savings-Debt bucket for the (separate, follow-up) 50/30/20
+// dashboard. Nullable — existing categories aren't auto-classified beyond the
+// sensible defaults seeded in the migration.
+export const categoryBucketEnum = pgEnum('category_bucket', [
+  'needs',
+  'wants',
+  'savings_debt',
+]);
+export const payFrequencyEnum = pgEnum('pay_frequency', [
+  'weekly',
+  'biweekly',
+  'semi_monthly',
+  'monthly',
 ]);
 
 // ── Households ──────────────────────────────────────────────
@@ -212,6 +232,8 @@ export const categories: any = pgTable(
     parentId: uuid('parent_id').references((): any => categories.id),
     sortOrder: integer('sort_order').notNull().default(0),
     isTransfer: boolean('is_transfer').notNull().default(false),
+    /** Needs/Wants/Savings-Debt classification for the 50/30/20 dashboard (follow-up task). */
+    bucket: categoryBucketEnum('bucket'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -763,6 +785,70 @@ export const advisorSettings = pgTable('advisor_settings', {
     .defaultNow(),
 });
 
+// ── Paycheck Profiles (11.11 — take-home pay modeling) ──────
+// Manually-entered paystub figures, effective-dated: a paycheck changes occasionally
+// (raise, new deduction, benefits election) so each change is a new versioned row keyed
+// by (userId, effectiveDate) rather than a single mutable row. Consumers should pick the
+// row with the greatest effectiveDate <= the date of interest. Amounts are per-paycheck
+// (not annualized) cents, matching pay_frequency.
+export const paycheckProfiles = pgTable(
+  'paycheck_profiles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    effectiveDate: date('effective_date').notNull(),
+    payFrequency: payFrequencyEnum('pay_frequency').notNull(),
+    grossPayCents: integer('gross_pay_cents').notNull(),
+    // Taxes withheld
+    federalTaxCents: integer('federal_tax_cents').notNull().default(0),
+    stateTaxCents: integer('state_tax_cents').notNull().default(0),
+    socialSecurityCents: integer('social_security_cents').notNull().default(0),
+    medicareCents: integer('medicare_cents').notNull().default(0),
+    // Pre-tax deductions
+    pretax401kCents: integer('pretax_401k_cents').notNull().default(0),
+    hsaCents: integer('hsa_cents').notNull().default(0),
+    medicalPremiumCents: integer('medical_premium_cents').notNull().default(0),
+    dentalPremiumCents: integer('dental_premium_cents').notNull().default(0),
+    visionPremiumCents: integer('vision_premium_cents').notNull().default(0),
+    commuterCents: integer('commuter_cents').notNull().default(0),
+    parkingCents: integer('parking_cents').notNull().default(0),
+    otherPretaxCents: integer('other_pretax_cents').notNull().default(0),
+    // Post-tax deductions
+    supplementalLifeCents: integer('supplemental_life_cents').notNull().default(0),
+    legalCents: integer('legal_cents').notNull().default(0),
+    accidentInsuranceCents: integer('accident_insurance_cents').notNull().default(0),
+    otherPosttaxCents: integer('other_posttax_cents').notNull().default(0),
+    // ESPP
+    esppContributionCents: integer('espp_contribution_cents').notNull().default(0),
+    esppDiscountPercent: integer('espp_discount_percent'),
+    // Employer-paid amounts — not part of take-home, but relevant to total comp
+    employer401kMatchCents: integer('employer_401k_match_cents').notNull().default(0),
+    employerHealthContributionCents: integer('employer_health_contribution_cents')
+      .notNull()
+      .default(0),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('uq_paycheck_profiles_user_effective_date').on(
+      table.userId,
+      table.effectiveDate,
+    ),
+    index('idx_paycheck_profiles_user_effective_date').on(
+      table.userId,
+      table.effectiveDate.desc(),
+    ),
+  ],
+);
+
 // ── Relations ───────────────────────────────────────────────
 
 export const householdRelations = relations(households, ({ many }) => ({
@@ -786,6 +872,14 @@ export const userRelations = relations(users, ({ one, many }) => ({
   notifications: many(notifications),
   notificationPreferences: many(notificationPreferences),
   pushSubscriptions: many(pushSubscriptions),
+  paycheckProfiles: many(paycheckProfiles),
+}));
+
+export const paycheckProfileRelations = relations(paycheckProfiles, ({ one }) => ({
+  user: one(users, {
+    fields: [paycheckProfiles.userId],
+    references: [users.id],
+  }),
 }));
 
 export const accountRelations = relations(accounts, ({ one, many }) => ({

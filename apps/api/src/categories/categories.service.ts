@@ -120,6 +120,7 @@ export class CategoriesService {
         parentId: input.parentId ?? null,
         sortOrder: input.sortOrder ?? 0,
         isTransfer: input.isTransfer ?? false,
+        bucket: input.bucket ?? null,
       })
       .returning();
     const category = rows[0];

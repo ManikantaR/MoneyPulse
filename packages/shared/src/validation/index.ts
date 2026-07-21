@@ -157,6 +157,7 @@ export const createCategorySchema = z.object({
   parentId: z.uuid().nullable().optional(),
   sortOrder: z.int().min(0).optional(),
   isTransfer: z.boolean().optional(),
+  bucket: z.enum(['needs', 'wants', 'savings_debt']).nullable().optional(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
@@ -344,3 +345,40 @@ export const updateLoanSchema = createLoanSchema.partial();
 
 export type CreateLoanInput = z.infer<typeof createLoanSchema>;
 export type UpdateLoanInput = z.infer<typeof updateLoanSchema>;
+
+// ── Paycheck Profiles (11.11 — take-home pay modeling) ──────
+// Effective-dated: a new row is created whenever gross pay, withholdings, or
+// deductions change (raise, benefits election, etc). Rows are never mutated to
+// reflect a real-world pay change — `update` is only for correcting entry mistakes.
+
+export const createPaycheckProfileSchema = z.object({
+  effectiveDate: z.iso.date(),
+  payFrequency: z.enum(['weekly', 'biweekly', 'semi_monthly', 'monthly']),
+  grossPayCents: z.int().positive(),
+  federalTaxCents: z.int().min(0).default(0),
+  stateTaxCents: z.int().min(0).default(0),
+  socialSecurityCents: z.int().min(0).default(0),
+  medicareCents: z.int().min(0).default(0),
+  pretax401kCents: z.int().min(0).default(0),
+  hsaCents: z.int().min(0).default(0),
+  medicalPremiumCents: z.int().min(0).default(0),
+  dentalPremiumCents: z.int().min(0).default(0),
+  visionPremiumCents: z.int().min(0).default(0),
+  commuterCents: z.int().min(0).default(0),
+  parkingCents: z.int().min(0).default(0),
+  otherPretaxCents: z.int().min(0).default(0),
+  supplementalLifeCents: z.int().min(0).default(0),
+  legalCents: z.int().min(0).default(0),
+  accidentInsuranceCents: z.int().min(0).default(0),
+  otherPosttaxCents: z.int().min(0).default(0),
+  esppContributionCents: z.int().min(0).default(0),
+  esppDiscountPercent: z.int().min(0).max(100).nullable().optional(),
+  employer401kMatchCents: z.int().min(0).default(0),
+  employerHealthContributionCents: z.int().min(0).default(0),
+  notes: z.string().max(1000).nullable().optional(),
+});
+
+export const updatePaycheckProfileSchema = createPaycheckProfileSchema.partial();
+
+export type CreatePaycheckProfileInput = z.infer<typeof createPaycheckProfileSchema>;
+export type UpdatePaycheckProfileInput = z.infer<typeof updatePaycheckProfileSchema>;
