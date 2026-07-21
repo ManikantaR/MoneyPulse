@@ -70,7 +70,19 @@ export class PaycheckProfilesService {
       );
     }
 
-    const rows = await this.db
+    const rows = await this.insertProfile(userId, input);
+    return rows[0];
+  }
+
+  /** Isolated so a concurrent-insert unique-violation (race past the pre-check above) is
+   *  translated into the same ConflictException the pre-check throws, instead of a raw
+   *  DB error leaking to the caller. */
+  private async insertProfile(
+    userId: string,
+    input: CreatePaycheckProfileInput,
+  ) {
+    try {
+      return await this.db
       .insert(schema.paycheckProfiles)
       .values({
         userId,
@@ -101,7 +113,14 @@ export class PaycheckProfilesService {
         notes: input.notes ?? null,
       })
       .returning();
-    return rows[0];
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code === '23505') {
+        throw new ConflictException(
+          'A paycheck profile already exists for this effective date',
+        );
+      }
+      throw err;
+    }
   }
 
   async update(id: string, userId: string, input: UpdatePaycheckProfileInput) {
