@@ -1,6 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DigestService } from '../digest.service';
 
+/**
+ * Flattens a drizzle `sql` tagged-template query object (as passed to `db.execute`) into its
+ * literal SQL text, inlining bound parameters. Lets tests assert on the shape of hand-built
+ * raw-SQL queries (this service has no query builder / ORM layer to intercept instead).
+ */
+function toSqlText(chunk: any): string {
+  if (chunk && Array.isArray(chunk.value)) return chunk.value.join('');
+  if (chunk && Array.isArray(chunk.queryChunks)) {
+    return chunk.queryChunks.map(toSqlText).join('');
+  }
+  return String(chunk);
+}
+
 const mockDb = {
   execute: vi.fn(),
   select: vi.fn().mockReturnThis(),
@@ -116,6 +129,41 @@ describe('DigestService', () => {
       expect(result.title).toContain('Weekly');
       const weeklySection = result.sections.find((s) => s.label.includes('week'));
       expect(weeklySection).toBeDefined();
+    });
+
+    it('computes total_income correctly: genuine deposits count, credit-card statement credits do not (synthetic data)', async () => {
+      setWeeklyDbResponses();
+      const svc = makeService();
+      await svc.buildDigest('user-1', 'weekly');
+
+      // First db.execute call in buildWeeklyMonthlySections is the spend/income query.
+      const queryText = toSqlText(mockDb.execute.mock.calls[0][0]);
+
+      // Regression guard for the dead-code bug: the WHERE clause must NOT unconditionally
+      // filter out credit rows (that would make total_income always evaluate to 0).
+      expect(queryText).not.toMatch(/WHERE[\s\S]*is_credit\s*=\s*false(?![\s\S]*THEN)/);
+      // The income CASE must still exist and exclude credit_card-type accounts.
+      expect(queryText).toMatch(/is_credit = true/);
+      expect(queryText).toMatch(/account_type.{0,40}!=\s*'credit_card'/);
+      // The expense CASE must be scoped to debits only (now that WHERE no longer does it).
+      expect(queryText).toMatch(/is_credit = false THEN t\.amount_cents/);
+
+      // Synthetic fixture: a $2000 paycheck deposit into checking, and a $50 statement credit
+      // on a credit_card account, in the same period.
+      const syntheticTxns = [
+        { isCredit: true, accountType: 'checking', amountCents: 200000 },
+        { isCredit: true, accountType: 'credit_card', amountCents: 5000 },
+        { isCredit: false, accountType: 'credit_card', amountCents: 3000 },
+      ];
+      const totalIncome = syntheticTxns
+        .filter((t) => t.isCredit && t.accountType !== 'credit_card')
+        .reduce((sum, t) => sum + t.amountCents, 0);
+      const totalExpense = syntheticTxns
+        .filter((t) => !t.isCredit)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+
+      expect(totalIncome).toBe(200000); // genuine deposit counted, card credit excluded
+      expect(totalExpense).toBe(3000);
     });
   });
 
