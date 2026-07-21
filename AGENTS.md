@@ -9,6 +9,7 @@ This repository is the local-first MoneyPulse application: NestJS API, Next.js w
 - Prefer vertical slices with explicit file inventories, validation commands, and acceptance criteria.
 - Keep backend, frontend, shared package, and PDF parser changes coordinated in specs when a feature crosses boundaries.
 - Any change to `apps/api/src/sync/` payload shapes must update the shared sync-contract schema and the matching golden fixture in the same PR.
+- The shared sync-contract schemas (`packages/shared/src/sync-contracts/`) are mirrored as a version-pinned snapshot in the separate moneypulse-web repo (cross-repo import is impractical there); any schema change must also be ported to that snapshot in the same change window.
 - Use the rubber-duck loop in `docs/agentic/rule-set.md` for every plan, spec, bug fix, and implementation.
 
 ## Key Paths

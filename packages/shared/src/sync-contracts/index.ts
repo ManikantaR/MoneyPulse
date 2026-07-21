@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+// Cross-repo consumption note (issue #99 / PHASE11-AWARENESS-SPEC §11.1):
+// moneypulse-web (the separate Firebase-hosted ingest project — see
+// docs/FIREBASE-SETUP-SECRETS-HANDOFF.md) lives in its own repo/deploy
+// pipeline, so it cannot `import` this package directly. It instead keeps a
+// version-pinned snapshot of these schemas (functions/src/sync-contracts.ts
+// in that repo, copied verbatim from this file). Any change to a schema in
+// this file must be mirrored there in the same change window — the AGENTS.md
+// rule in this repo only guards the local half of that contract.
 export const ALIAS_ID_PATTERN = /^a\d+_[0-9a-f]{40}$/;
 
 const aliasIdSchema = z.string().regex(ALIAS_ID_PATTERN);
