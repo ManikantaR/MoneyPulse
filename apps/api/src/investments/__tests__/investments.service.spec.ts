@@ -174,6 +174,93 @@ describe('InvestmentsService', () => {
     });
   });
 
+  describe('getPortfolioValue', () => {
+    it('returns zero total with no holdings when the user has none', async () => {
+      mockDb.execute.mockResolvedValue({ rows: [] });
+      const result = await service.getPortfolioValue(userId);
+      expect(result).toEqual({
+        totalCents: 0,
+        holdings: [],
+        staleFound: false,
+        missingPriceFound: false,
+        staleDays: 90,
+      });
+    });
+
+    it('computes market value as shares x latest close and flags stale/missing-price holdings', async () => {
+      const recentDate = new Date().toISOString().slice(0, 10);
+      const staleDate = '2020-01-01';
+      mockDb.execute
+        // getCurrentHoldings query
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              investment_account_id: accountId,
+              ticker: 'AAA',
+              share_count: '10',
+              as_of: recentDate,
+              notes: null,
+            },
+            {
+              investment_account_id: accountId,
+              ticker: 'BBB',
+              share_count: '5',
+              as_of: staleDate,
+              notes: null,
+            },
+          ],
+        })
+        // security_prices query — only AAA has a price
+        .mockResolvedValueOnce({
+          rows: [{ ticker: 'AAA', price_date: recentDate, close_cents: 1000, source: 'test' }],
+        });
+
+      const result = await service.getPortfolioValue(userId, 90);
+      expect(result.totalCents).toBe(10 * 1000);
+      expect(result.staleFound).toBe(true);
+      expect(result.missingPriceFound).toBe(true);
+      const bbb = result.holdings.find((h: any) => h.ticker === 'BBB');
+      expect(bbb.marketValueCents).toBeNull();
+      expect(bbb.isStale).toBe(true);
+    });
+  });
+
+  describe('getAllocation', () => {
+    it('computes percent of total value per ticker, excluding unpriced holdings', async () => {
+      const recentDate = new Date().toISOString().slice(0, 10);
+      mockDb.execute
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              investment_account_id: accountId,
+              ticker: 'AAA',
+              share_count: '10',
+              as_of: recentDate,
+              notes: null,
+            },
+            {
+              investment_account_id: accountId,
+              ticker: 'CCC',
+              share_count: '30',
+              as_of: recentDate,
+              notes: null,
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            { ticker: 'AAA', price_date: recentDate, close_cents: 1000, source: 'test' },
+            { ticker: 'CCC', price_date: recentDate, close_cents: 1000, source: 'test' },
+          ],
+        });
+
+      const result = await service.getAllocation(userId);
+      expect(result.totalCents).toBe(40000);
+      const ccc = result.allocations.find((a) => a.ticker === 'CCC');
+      expect(ccc?.pct).toBeCloseTo(75);
+    });
+  });
+
   describe('getHoldings', () => {
     it('throws ForbiddenException when reading another user\'s holdings', async () => {
       mockDb.limit.mockResolvedValue([{ ...baseAccount, userId: otherId }]);

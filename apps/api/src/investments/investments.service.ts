@@ -212,6 +212,97 @@ export class InvestmentsService {
   }
 
   /**
+   * Portfolio market value: shares x latest EOD close, per holding, summed to a
+   * total. Mirrors the `get_portfolio_value` MCP tool's computation (same
+   * "latest holding per ticker per account" + "latest price per ticker" joins),
+   * but returns structured JSON instead of prose text so the web app can render
+   * it without a REST->MCP hop (MCP tools aren't directly callable from the web
+   * app in this codebase).
+   */
+  async getPortfolioValue(userId: string, staleDays = DEFAULT_HOLDINGS_STALE_DAYS) {
+    const holdings = await this.getCurrentHoldings(userId);
+    if (holdings.length === 0) {
+      return { totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false, staleDays };
+    }
+
+    const tickers = Array.from(new Set(holdings.map((h: any) => h.ticker)));
+    const priceRows = await this.db.execute(sql`
+      SELECT DISTINCT ON (ticker) ticker, price_date::text AS price_date, close_cents, source
+      FROM ${schema.securityPrices}
+      WHERE ticker = ANY(${tickers})
+      ORDER BY ticker, price_date DESC
+    `);
+    const prices = (priceRows.rows ?? priceRows) as any[];
+    const priceByTicker = new Map(prices.map((p) => [p.ticker, p]));
+
+    const now = Date.now();
+    let totalCents = 0;
+    let staleFound = false;
+    let missingPriceFound = false;
+
+    const result = holdings.map((h: any) => {
+      const isStale = now - new Date(h.asOf).getTime() > staleDays * 24 * 3600_000;
+      if (isStale) staleFound = true;
+      const price = priceByTicker.get(h.ticker);
+      if (!price) {
+        missingPriceFound = true;
+        return {
+          investmentAccountId: h.investmentAccountId,
+          ticker: h.ticker,
+          shareCount: h.shareCount,
+          asOf: h.asOf,
+          isStale,
+          priceDate: null,
+          closeCents: null,
+          marketValueCents: null,
+        };
+      }
+      const marketValueCents = Math.round(Number(h.shareCount) * Number(price.close_cents));
+      totalCents += marketValueCents;
+      return {
+        investmentAccountId: h.investmentAccountId,
+        ticker: h.ticker,
+        shareCount: h.shareCount,
+        asOf: h.asOf,
+        isStale,
+        priceDate: String(price.price_date).slice(0, 10),
+        closeCents: Number(price.close_cents),
+        marketValueCents,
+      };
+    });
+
+    return { totalCents, holdings: result, staleFound, missingPriceFound, staleDays };
+  }
+
+  /**
+   * Portfolio allocation: percent of total market value by ticker. Mirrors the
+   * `get_allocation` MCP tool's computation — see getPortfolioValue for why this
+   * is a structured-JSON REST wrapper rather than an MCP call from the web app.
+   */
+  async getAllocation(userId: string, staleDays = DEFAULT_HOLDINGS_STALE_DAYS) {
+    const { totalCents, holdings, staleFound, missingPriceFound } = await this.getPortfolioValue(
+      userId,
+      staleDays,
+    );
+
+    const valueByTicker = new Map<string, number>();
+    for (const h of holdings) {
+      if (h.marketValueCents == null) continue;
+      valueByTicker.set(h.ticker, (valueByTicker.get(h.ticker) ?? 0) + h.marketValueCents);
+    }
+
+    const allocations = Array.from(valueByTicker.entries())
+      .map(([ticker, valueCents]) => ({
+        ticker,
+        valueCents,
+        pct: totalCents > 0 ? (valueCents / totalCents) * 100 : 0,
+      }))
+      .sort((a, b) => b.valueCents - a.valueCents);
+
+    return { totalCents, allocations, staleFound, missingPriceFound, staleDays };
+  }
+
+  /**
    * Verify account exists, is not deleted, and belongs to userId.
    */
   private async assertOwnership(userId: string, accountId: string) {

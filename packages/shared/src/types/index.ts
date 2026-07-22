@@ -461,3 +461,44 @@ export interface SecurityPrice {
   source: string;
   fetchedAt: string;
 }
+
+/** One priced (or unpriced) holding line in a portfolio value breakdown. */
+export interface PortfolioValueHolding {
+  investmentAccountId: string;
+  ticker: string;
+  shareCount: string;
+  asOf: string;
+  /** True when this holding's as-of date is older than staleDays. */
+  isStale: boolean;
+  priceDate: string | null;
+  closeCents: number | null;
+  /** Null when no price data is available yet for this ticker. */
+  marketValueCents: number | null;
+}
+
+/** Total portfolio market value + per-holding breakdown (shares x latest EOD close). */
+export interface PortfolioValue {
+  totalCents: number;
+  holdings: PortfolioValueHolding[];
+  /** True if any holding is older than staleDays — declared shares may be stale. */
+  staleFound: boolean;
+  /** True if any held ticker has no price data yet (excluded from totalCents). */
+  missingPriceFound: boolean;
+  staleDays: number;
+}
+
+/** One ticker's share of total portfolio market value. */
+export interface AllocationEntry {
+  ticker: string;
+  valueCents: number;
+  pct: number;
+}
+
+/** Portfolio allocation: percent of total market value held in each ticker. */
+export interface Allocation {
+  totalCents: number;
+  allocations: AllocationEntry[];
+  staleFound: boolean;
+  missingPriceFound: boolean;
+  staleDays: number;
+}
