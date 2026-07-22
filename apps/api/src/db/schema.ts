@@ -55,6 +55,13 @@ export const ruleMatchTypeEnum = pgEnum('rule_match_type', [
 ]);
 export const ruleFieldEnum = pgEnum('rule_field', ['description', 'merchant']);
 export const themeEnum = pgEnum('theme', ['light', 'dark', 'system']);
+// 12.3: user-maintained rate-watchlist candidate product type.
+export const watchlistProductTypeEnum = pgEnum('watchlist_product_type', [
+  'hysa',
+  'cd',
+  'mmf',
+  'treasury',
+]);
 export const notificationSeverityEnum = pgEnum('notification_severity', [
   'info',
   'insight',
@@ -1097,6 +1104,10 @@ export const marketMetrics = pgTable(
     value: numeric('value', { precision: 14, scale: 4 }).notNull(),
     unit: varchar('unit', { length: 32 }).notNull(),
     source: varchar('source', { length: 16 }).notNull(),
+    // 12.3: Treasury interest is exempt from state (not federal) tax — stored per-row
+    // so evidence built off a historical row still carries the right framing even if
+    // this attribute is later made source-configurable rather than source-implied.
+    stateTaxExempt: boolean('state_tax_exempt').notNull().default(false),
     fetchedAt: timestamp('fetched_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1109,4 +1120,32 @@ export const marketMetrics = pgTable(
     ),
     index('idx_market_metrics_key_period').on(table.metricKey, table.periodDate),
   ],
+);
+
+// ── Rate Watchlist (12.3) ───────────────────────────────────
+// User-maintained candidate parking spots for idle cash. Explicitly NOT scraped —
+// purely user-entered advertised rates, EXCEPT rows with source='treasury' which are
+// auto-populated/updated by the Treasury adapter refresh (see MarketDataService).
+export const rateWatchlist = pgTable(
+  'rate_watchlist',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    institution: varchar('institution', { length: 200 }).notNull(),
+    productType: watchlistProductTypeEnum('product_type').notNull(),
+    apyBps: integer('apy_bps').notNull(),
+    termMonths: integer('term_months'),
+    notes: varchar('notes', { length: 1000 }),
+    // 'user' (default) or 'treasury' — distinguishes manually entered rows from the
+    // ones the Treasury adapter auto-populates/refreshes, so a refresh never clobbers
+    // a user's own manual entry and the UI can label auto-populated rows.
+    source: varchar('source', { length: 16 }).notNull().default('user'),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('idx_rate_watchlist_user').on(table.userId)],
 );

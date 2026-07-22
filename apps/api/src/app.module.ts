@@ -27,6 +27,7 @@ import { PaycheckProfilesModule } from './paycheck-profiles/paycheck-profiles.mo
 import { InvestmentsModule } from './investments/investments.module';
 import { AdvisorModule } from './advisor/advisor.module';
 import { MarketDataModule } from './market-data/market-data.module';
+import { RateWatchlistModule } from './rate-watchlist/rate-watchlist.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { MarketDataModule } from './market-data/market-data.module';
     InvestmentsModule,
     AdvisorModule,
     MarketDataModule,
+    RateWatchlistModule,
     HealthModule,
   ],
   providers: [

@@ -6,6 +6,7 @@ import { FredClient } from './fred.client';
 import { StooqClient } from './stooq.client';
 import { AlphaVantageClient } from './alphavantage.client';
 import { SecurityPricesService } from './security-prices.service';
+import { TreasuryClient } from './treasury.client';
 
 @Module({
   controllers: [MarketDataController],
@@ -16,6 +17,7 @@ import { SecurityPricesService } from './security-prices.service';
     StooqClient,
     AlphaVantageClient,
     SecurityPricesService,
+    TreasuryClient,
   ],
   exports: [MarketDataService, SecurityPricesService],
 })

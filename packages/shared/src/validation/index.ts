@@ -378,6 +378,21 @@ export const updateLoanSchema = createLoanSchema.partial();
 export type CreateLoanInput = z.infer<typeof createLoanSchema>;
 export type UpdateLoanInput = z.infer<typeof updateLoanSchema>;
 
+// ── Rate watchlist (12.3) ─────────────────────────────────────
+
+export const createRateWatchlistSchema = z.object({
+  institution: z.string().min(1).max(200),
+  productType: z.enum(['hysa', 'cd', 'mmf', 'treasury']),
+  apyBps: z.int().min(0).max(100000),
+  termMonths: z.int().positive().max(600).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+});
+
+export const updateRateWatchlistSchema = createRateWatchlistSchema.partial();
+
+export type CreateRateWatchlistInput = z.infer<typeof createRateWatchlistSchema>;
+export type UpdateRateWatchlistInput = z.infer<typeof updateRateWatchlistSchema>;
+
 // ── Paycheck Profiles (11.11 — take-home pay modeling) ──────
 // Effective-dated: a new row is created whenever gross pay, withholdings, or
 // deductions change (raise, benefits election, etc). Rows are never mutated to

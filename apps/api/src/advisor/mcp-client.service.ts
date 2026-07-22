@@ -36,6 +36,8 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_yoy_comparison',
   'get_portfolio_value', // holdings x latest EOD close, aggregate only
   'get_allocation', // percent-of-portfolio by ticker, aggregate only
+  'get_earned_apy', // trailing-12mo interest / avg balance, aggregate only
+  'get_rate_watchlist', // user-entered advertised rates + auto-populated Treasury rows, no PII
 ]);
 
 /** Anthropic tool definition shape (name + description + JSON schema). */

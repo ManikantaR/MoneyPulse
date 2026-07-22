@@ -42,12 +42,16 @@ function makeFred(points: any[] = []) {
   return { fetchSeries: vi.fn().mockResolvedValue(points) } as any;
 }
 
+function makeTreasury(points: any[] = []) {
+  return { fetchSeries: vi.fn().mockResolvedValue(points) } as any;
+}
+
 describe('MarketDataService.refreshAll', () => {
   it('no-fire: never-fetched series are due and get refreshed', async () => {
     const { db, upserts } = makeDb([]); // isDue's select returns [] -> never fetched -> due
     const eia = makeEia({ gas: [{ period: '2026-07-14', value: 3.4 }] });
     const fred = makeFred([{ date: '2026-07-14', value: 6.8 }]);
-    const svc = new MarketDataService(db, makeConfig(), eia, fred);
+    const svc = new MarketDataService(db, makeConfig(), eia, fred, makeTreasury());
 
     const result = await svc.refreshAll();
 
@@ -64,7 +68,7 @@ describe('MarketDataService.refreshAll', () => {
     const { db, upserts } = makeDb([]);
     const eia = makeEia();
     const fred = makeFred([{ date: '2026-07-14', value: 6.8 }]);
-    const svc = new MarketDataService(db, makeConfig(), eia, fred);
+    const svc = new MarketDataService(db, makeConfig(), eia, fred, makeTreasury());
 
     await svc.refreshAll();
 
@@ -80,7 +84,7 @@ describe('MarketDataService.refreshAll', () => {
     const { db } = makeDb([]);
     const eia = makeEia(); // fetchGasPrice/fetchElectricityPrice default to []
     const fred = makeFred([]); // no key configured -> []
-    const svc = new MarketDataService(db, makeConfig(), eia, fred);
+    const svc = new MarketDataService(db, makeConfig(), eia, fred, makeTreasury());
 
     const result = await svc.refreshAll();
 
@@ -96,7 +100,7 @@ describe('MarketDataService.refreshAll', () => {
       fetchElectricityPrice: vi.fn().mockResolvedValue([{ period: '2026-07-01', value: 12 }]),
     } as any;
     const fred = makeFred([{ date: '2026-07-14', value: 6.8 }]);
-    const svc = new MarketDataService(db, makeConfig(), eia, fred);
+    const svc = new MarketDataService(db, makeConfig(), eia, fred, makeTreasury());
 
     const result = await svc.refreshAll();
 
@@ -110,7 +114,7 @@ describe('MarketDataService.refreshAll', () => {
     const { db } = makeDb([{ fetchedAt: twoDaysAgo }]); // isDue sees a recent fetch
     const eia = makeEia({ gas: [{ period: '2026-07-14', value: 3.4 }] });
     const fred = makeFred([{ date: '2026-07-14', value: 6.8 }]);
-    const svc = new MarketDataService(db, makeConfig(), eia, fred);
+    const svc = new MarketDataService(db, makeConfig(), eia, fred, makeTreasury());
 
     const result = await svc.refreshAll();
 
@@ -130,7 +134,7 @@ describe('MarketDataService.getLatestWithDeltas', () => {
       { periodDate: '2025-07-01', value: '3.10', unit: 'usd_per_gallon', fetchedAt: now.toISOString() }, // ~54wk back
     ];
     const { db } = makeDb(rows);
-    const svc = new MarketDataService(db, makeConfig(), makeEia(), makeFred());
+    const svc = new MarketDataService(db, makeConfig(), makeEia(), makeFred(), makeTreasury());
 
     const result = await svc.getLatestWithDeltas('gas_retail_regular', 'SCA');
 
@@ -141,7 +145,7 @@ describe('MarketDataService.getLatestWithDeltas', () => {
 
   it('no-fire: no history returns nulls, not a throw', async () => {
     const { db } = makeDb([]);
-    const svc = new MarketDataService(db, makeConfig(), makeEia(), makeFred());
+    const svc = new MarketDataService(db, makeConfig(), makeEia(), makeFred(), makeTreasury());
 
     const result = await svc.getLatestWithDeltas('gas_retail_regular', 'SCA');
 

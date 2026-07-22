@@ -320,7 +320,7 @@ export const EXPECTED_FEE_CATEGORY_NAMES: string[] = [
 /** A single market_metrics series this app tracks, keyed by metric_key. */
 export type MarketSeriesDef = {
   metricKey: string;
-  source: 'eia' | 'fred';
+  source: 'eia' | 'fred' | 'treasury';
   unit: string;
   /** How often the underlying series actually updates — used to skip a daily
    *  refresh call for a weekly/monthly series that hasn't rolled over yet. */
@@ -364,7 +364,70 @@ export const MARKET_SERIES: MarketSeriesDef[] = [
     cadence: 'monthly',
     description: 'Effective federal funds rate (FRED FEDFUNDS)',
   },
+  // 12.3: US Treasury par yield curve (fiscaldata.treasury.gov), daily. Interest is
+  // exempt from state (not federal) tax — see `stateTaxExempt` on market_metrics.
+  {
+    metricKey: 'treasury_bill_4w',
+    source: 'treasury',
+    unit: 'percent',
+    cadence: 'daily',
+    description: '4-week Treasury bill yield (Daily Treasury Par Yield Curve Rates)',
+  },
+  {
+    metricKey: 'treasury_bill_13w',
+    source: 'treasury',
+    unit: 'percent',
+    cadence: 'daily',
+    description: '13-week Treasury bill yield (Daily Treasury Par Yield Curve Rates)',
+  },
+  {
+    metricKey: 'treasury_bill_26w',
+    source: 'treasury',
+    unit: 'percent',
+    cadence: 'daily',
+    description: '26-week Treasury bill yield (Daily Treasury Par Yield Curve Rates)',
+  },
+  {
+    metricKey: 'treasury_bill_52w',
+    source: 'treasury',
+    unit: 'percent',
+    cadence: 'daily',
+    description: '52-week Treasury bill yield (Daily Treasury Par Yield Curve Rates)',
+  },
+  {
+    metricKey: 'treasury_note_2y',
+    source: 'treasury',
+    unit: 'percent',
+    cadence: 'daily',
+    description: '2-year Treasury note yield (Daily Treasury Par Yield Curve Rates)',
+  },
+  {
+    metricKey: 'treasury_note_10y',
+    source: 'treasury',
+    unit: 'percent',
+    cadence: 'daily',
+    description: '10-year Treasury note yield (Daily Treasury Par Yield Curve Rates)',
+  },
 ];
+
+/** Treasury series keys eligible for rate-watchlist auto-population (short-duration,
+ *  parking-spot-comparable maturities — the 2y/10y notes are excluded, they're not a
+ *  cash-parking alternative). */
+export const TREASURY_WATCHLIST_SERIES = [
+  'treasury_bill_4w',
+  'treasury_bill_13w',
+  'treasury_bill_26w',
+  'treasury_bill_52w',
+];
+
+/** Rate-watchlist row goes stale (nag surfaced) after this many days without an
+ *  update — env-overridable via `WATCHLIST_STALE_DAYS`. */
+export const DEFAULT_WATCHLIST_STALE_DAYS = 45;
+
+/** Interest-credit transaction description patterns (case-insensitive substring
+ *  match) used to derive earned APY — mirrors the categorization-rule convention of
+ *  simple substring matching rather than a full regex engine. */
+export const INTEREST_CREDIT_PATTERNS = ['INTEREST PAID', 'INTEREST PAYMENT', 'DIVIDEND'];
 
 /** FRED series ID used as the HYSA-comparable benchmark — env-overridable per the
  *  spec (`MARKET_HYSA_FRED_SERIES`). No FRED series *is* an actual HYSA APY; FEDFUNDS

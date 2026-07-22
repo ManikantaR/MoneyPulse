@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { MARKET_SERIES, DEFAULT_HYSA_FRED_SERIES, type MarketSeriesDef } from '@moneypulse/shared';
 import { EiaClient } from './eia.client';
 import { FredClient } from './fred.client';
+import { TreasuryClient } from './treasury.client';
 
 /** National-scope sentinel — never write NULL into `region`. Postgres unique
  * indexes treat NULL as distinct-from-everything, so onConflictDoUpdate would
@@ -35,6 +36,7 @@ export class MarketDataService {
     private readonly config: ConfigService,
     private readonly eia: EiaClient,
     private readonly fred: FredClient,
+    private readonly treasury: TreasuryClient,
   ) {
     // EIA `duoarea` code convention is `S` + 2-letter postal code (e.g. SCA); verify
     // against https://www.eia.gov/opendata/browser/ once a real key is available.
@@ -106,7 +108,9 @@ export class MarketDataService {
     const points =
       series.source === 'eia'
         ? await this.fetchEia(series, region)
-        : await this.fred.fetchSeries(this.fredSeriesId(series), 52);
+        : series.source === 'treasury'
+          ? await this.treasury.fetchSeries(series.metricKey, 30)
+          : await this.fred.fetchSeries(this.fredSeriesId(series), 52);
     if (points.length === 0) return false;
 
     const rows = points.map((p) => ({
@@ -116,6 +120,8 @@ export class MarketDataService {
       value: String(p.value),
       unit: series.unit,
       source: series.source,
+      // Treasury interest is exempt from state (not federal) income tax.
+      stateTaxExempt: series.source === 'treasury',
       fetchedAt: new Date(),
     }));
 
@@ -125,7 +131,13 @@ export class MarketDataService {
         .values(row)
         .onConflictDoUpdate({
           target: [marketMetrics.metricKey, marketMetrics.region, marketMetrics.periodDate],
-          set: { value: row.value, unit: row.unit, source: row.source, fetchedAt: row.fetchedAt },
+          set: {
+            value: row.value,
+            unit: row.unit,
+            source: row.source,
+            stateTaxExempt: row.stateTaxExempt,
+            fetchedAt: row.fetchedAt,
+          },
         });
     }
     return true;
