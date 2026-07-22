@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdvisorSettingsSection } from '@/components/AdvisorSettingsSection';
+import { SuitabilitySettingsSection } from '@/components/SuitabilitySettingsSection';
 import { useSendTestNotification } from '@/lib/hooks/useNotifications';
 
 export default function SettingsPage() {
@@ -332,6 +333,9 @@ export default function SettingsPage() {
 
       {/* AI Advisor (self-contained: own save/test) */}
       <AdvisorSettingsSection />
+
+      {/* Suitability settings & investment policy — feeds future advisory recommendations */}
+      <SuitabilitySettingsSection />
 
       {/* Paycheck Profiles — powers the 50/30/20 dashboard */}
       <section className="space-y-4 rounded-2xl bg-[var(--surface-container-low)] p-6">
