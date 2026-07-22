@@ -341,6 +341,24 @@ export type CreateInvestmentAccountInput = z.infer<typeof createInvestmentAccoun
 export type UpdateInvestmentAccountInput = z.infer<typeof updateInvestmentAccountSchema>;
 export type AddSnapshotInput = z.infer<typeof addSnapshotSchema>;
 
+// ── Investment Holdings (12.2) ───────────────────────────────
+// User-declared ticker + share count as-of a date. Edits APPEND a new row
+// (history kept) — same append-only pattern as investment snapshots above.
+
+export const addHoldingSchema = z.object({
+  ticker: z
+    .string()
+    .trim()
+    .min(1)
+    .max(20)
+    .transform((s) => s.toUpperCase()),
+  shareCount: z.number().positive(),
+  asOf: z.iso.date(),
+  notes: z.string().max(500).optional(),
+});
+
+export type AddHoldingInput = z.infer<typeof addHoldingSchema>;
+
 // ── Loans (mortgage / auto payoff tracker) ───────────────────
 
 export const createLoanSchema = z.object({

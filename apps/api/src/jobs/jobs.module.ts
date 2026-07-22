@@ -161,6 +161,15 @@ export class JobsModule implements OnModuleInit {
         { name: 'market-data-refresh' },
       ),
 
+      // Security price refresh (12.2) — daily 9:15 AM UTC, only for tickers actually
+      // held (never the whole market). Stooq primary, Alpha Vantage fallback for
+      // mutual-fund NAVs; jitter added in the processor per the 11.6 pattern.
+      this.alertsQueue.upsertJobScheduler(
+        'daily-security-prices-refresh',
+        { pattern: '15 9 * * *' },
+        { name: 'security-prices-refresh' },
+      ),
+
       // Market-joined insights (11.7) — monthly detectors run on the 2nd (after the
       // 1st-of-month market-data-adjacent digests) at staggered hours so they don't all
       // hammer the DB/notification pipeline at once; the weekly gas-dip note runs Mondays.

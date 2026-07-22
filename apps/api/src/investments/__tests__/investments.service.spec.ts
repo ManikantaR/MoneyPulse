@@ -139,4 +139,56 @@ describe('InvestmentsService', () => {
       expect(result[0].balanceCents).toBe(10000);
     });
   });
+
+  describe('addHolding', () => {
+    it('throws ForbiddenException when declaring a holding on another user\'s account', async () => {
+      mockDb.limit.mockResolvedValue([{ ...baseAccount, userId: otherId }]);
+      await expect(
+        service.addHolding(userId, accountId, {
+          ticker: 'VTI',
+          shareCount: 100,
+          asOf: '2026-07-01',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('appends a new holding row rather than mutating an existing one', async () => {
+      mockDb.limit.mockResolvedValue([baseAccount]);
+      const holdingRow = {
+        id: 'hold-1',
+        investmentAccountId: accountId,
+        ticker: 'VTI',
+        shareCount: '100',
+        asOf: '2026-07-01',
+        notes: null,
+      };
+      mockDb.returning.mockResolvedValue([holdingRow]);
+      const result = await service.addHolding(userId, accountId, {
+        ticker: 'VTI',
+        shareCount: 100,
+        asOf: '2026-07-01',
+      });
+      expect(mockDb.insert).toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled(); // append, never mutate
+      expect(result.ticker).toBe('VTI');
+    });
+  });
+
+  describe('getHoldings', () => {
+    it('throws ForbiddenException when reading another user\'s holdings', async () => {
+      mockDb.limit.mockResolvedValue([{ ...baseAccount, userId: otherId }]);
+      await expect(service.getHoldings(userId, accountId)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('returns holding history newest-first for owned account', async () => {
+      mockDb.limit.mockResolvedValue([baseAccount]);
+      const rows = [
+        { id: 'h2', ticker: 'VTI', shareCount: '110', asOf: '2026-07-15' },
+        { id: 'h1', ticker: 'VTI', shareCount: '100', asOf: '2026-07-01' },
+      ];
+      mockDb.orderBy.mockResolvedValue(rows);
+      const result = await service.getHoldings(userId, accountId);
+      expect(result).toEqual(rows);
+    });
+  });
 });

@@ -439,3 +439,25 @@ export interface InvestmentSnapshot {
   balanceCents: number;
   createdAt: string;
 }
+
+/** User-declared ticker + share count as-of a date. Append-only: an edit is a new row. */
+export interface InvestmentHolding {
+  id: string;
+  investmentAccountId: string;
+  ticker: string;
+  shareCount: string;
+  asOf: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One EOD close price for a ticker, from an autonomous market-data refresh. */
+export interface SecurityPrice {
+  ticker: string;
+  priceDate: string;
+  closeCents: number;
+  currency: string;
+  source: string;
+  fetchedAt: string;
+}

@@ -34,6 +34,8 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_cash_runway',
   'get_subscription_total',
   'get_yoy_comparison',
+  'get_portfolio_value', // holdings x latest EOD close, aggregate only
+  'get_allocation', // percent-of-portfolio by ticker, aggregate only
 ]);
 
 /** Anthropic tool definition shape (name + description + JSON schema). */

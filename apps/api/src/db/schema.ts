@@ -659,6 +659,51 @@ export const investmentSnapshots = pgTable('investment_snapshots', {
     .defaultNow(),
 });
 
+// ── Investment Holdings & Security Prices (Phase 12.2) ──────
+// Append-only, same history-kept pattern as investment_snapshots above: an "edit"
+// inserts a new row with a newer as_of date rather than mutating.
+
+export const investmentHoldings = pgTable(
+  'investment_holdings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    investmentAccountId: uuid('investment_account_id')
+      .notNull()
+      .references(() => investmentAccounts.id),
+    ticker: varchar('ticker', { length: 20 }).notNull(),
+    shareCount: numeric('share_count', { precision: 20, scale: 6 }).notNull(),
+    asOf: date('as_of').notNull(),
+    notes: varchar('notes', { length: 500 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_investment_holdings_account').on(
+      table.investmentAccountId,
+      table.ticker,
+      table.asOf,
+    ),
+  ],
+);
+
+/** Global (not user-scoped) EOD close prices — same shape as market_metrics.
+ * Only tickers actually held are fetched (see SecurityPricesService). */
+export const securityPrices = pgTable(
+  'security_prices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ticker: varchar('ticker', { length: 20 }).notNull(),
+    priceDate: date('price_date').notNull(),
+    closeCents: integer('close_cents').notNull(),
+    currency: varchar('currency', { length: 8 }).notNull().default('USD'),
+    source: varchar('source', { length: 16 }).notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_security_prices_ticker_latest').on(table.ticker, table.priceDate),
+  ],
+);
+
 // ── Loans (mortgage / auto payoff tracker) ──────────────────
 
 export const loans = pgTable('loans', {
