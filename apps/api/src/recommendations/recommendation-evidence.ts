@@ -6,6 +6,18 @@
  * least one evidence row, at least one stated assumption, and a confidence band.
  * `insight`-kind rows (observations, not actions) are unaffected — this contract is
  * scoped to `kind === 'recommendation'` per the Phase 12 spec (fail-closed render).
+ *
+ * RULE — no account credentials in evidence or narration (binding on every agent that
+ * uses this contract: 12.5 Cash Manager, 12.6 Investment Coach, 12.7 Savings Coach, and
+ * any future one). Narration may be shown to the user and, depending on the agent's
+ * manifest privacy class, sent to a cloud LLM provider. Dollar AMOUNTS, account
+ * NICKNAMES (user-chosen labels), institution NAMES, and account TYPES are all fine —
+ * that's the actual content of these features. A raw account number, `lastFour` (the
+ * accounts table's last-4-digits column), a routing number, or any other real-world
+ * identifying account credential must NEVER appear in an `EvidenceItem`, tool output
+ * string, or narration string built from this contract. Internal UUIDs (accountId as a
+ * DB primary key) may be passed between internal tool calls but must never reach
+ * user-facing/LLM-narrated text either — use the nickname there instead.
  */
 
 export interface EvidenceItem {

@@ -15,6 +15,7 @@ import { BillsService } from '../bills/bills.service';
 import { LoansService } from '../loans/loans.service';
 import { MarketDataService } from '../market-data/market-data.service';
 import { SecurityPricesService } from '../market-data/security-prices.service';
+import { CashManagerService } from '../recommendations/cash-manager.service';
 
 const MARKET_DATA_JITTER_MAX_MS = 15 * 60_000; // spread load on the free EIA/FRED tiers
 
@@ -41,6 +42,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly loansService: LoansService,
     private readonly marketDataService: MarketDataService,
     private readonly securityPricesService: SecurityPricesService,
+    private readonly cashManagerService: CashManagerService,
   ) {
     super();
   }
@@ -174,6 +176,13 @@ export class AlertCronProcessor extends WorkerHost {
 
       case 'gas-dip-check':
         await this.marketInsightDetectorService.checkGasDipAllUsers();
+        break;
+
+      // 12.5 Cash Manager: monthly schedule (this job name) + event triggers (benchmark
+      // rate move >=25bps, liquid-balance move >=20%) fired ad hoc by the callers that
+      // detect those events, reusing the same `runForAllUsers` entry point.
+      case 'cash-manager-check':
+        await this.cashManagerService.runForAllUsers();
         break;
 
       default:
