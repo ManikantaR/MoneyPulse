@@ -62,6 +62,11 @@ export const watchlistProductTypeEnum = pgEnum('watchlist_product_type', [
   'mmf',
   'treasury',
 ]);
+export const riskToleranceEnum = pgEnum('risk_tolerance', [
+  'conservative',
+  'moderate',
+  'aggressive',
+]);
 export const notificationSeverityEnum = pgEnum('notification_severity', [
   'info',
   'insight',
@@ -1148,4 +1153,37 @@ export const rateWatchlist = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('idx_rate_watchlist_user').on(table.userId)],
+);
+
+// ── Suitability Settings & Investment Policy (12.4) ──────────
+// VERSIONED — an "update" always inserts a new row with an incremented `version`
+// rather than mutating the previous one, so a past recommendation can cite the exact
+// policy version that was in effect when it was made (same idea as calculation_version
+// on the recommendation-evidence contract). `version` is per-user, starting at 1.
+export const suitabilitySettings = pgTable(
+  'suitability_settings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    version: integer('version').notNull(),
+    emergencyFundTargetMonths: integer('emergency_fund_target_months').notNull().default(6),
+    liquidityHorizonMonths: integer('liquidity_horizon_months'),
+    riskTolerance: riskToleranceEnum('risk_tolerance'),
+    taxState: varchar('tax_state', { length: 2 }),
+    monthlyInvestingTargetCents: integer('monthly_investing_target_cents'),
+    // [{assetClass: string, targetPercent: number}, ...] — percentages need not be
+    // validated to sum to 100 here (service layer's concern); stored as entered.
+    targetAllocation: jsonb('target_allocation').notNull().default([]),
+    // {TICKER: assetClass, ...} mapping for currently-held tickers.
+    tickerAssetClassMap: jsonb('ticker_asset_class_map').notNull().default({}),
+    dcaDayOfMonth: integer('dca_day_of_month'),
+    dcaAmountCents: integer('dca_amount_cents'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('uq_suitability_settings_user_version').on(table.userId, table.version),
+    index('idx_suitability_settings_user_created').on(table.userId, table.createdAt.desc()),
+  ],
 );

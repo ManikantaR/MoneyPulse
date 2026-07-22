@@ -393,6 +393,30 @@ export const updateRateWatchlistSchema = createRateWatchlistSchema.partial();
 export type CreateRateWatchlistInput = z.infer<typeof createRateWatchlistSchema>;
 export type UpdateRateWatchlistInput = z.infer<typeof updateRateWatchlistSchema>;
 
+// ── Suitability Settings & Investment Policy (12.4) ─────────────
+// Every successful write creates a new *version* (see schema.ts) — this is the input
+// shape for that write, not a partial patch of an existing row.
+
+export const targetAllocationEntrySchema = z.object({
+  assetClass: z.string().min(1).max(60),
+  targetPercent: z.number().min(0).max(100),
+});
+
+export const suitabilitySettingsInputSchema = z.object({
+  emergencyFundTargetMonths: z.int().min(0).max(60).default(6),
+  liquidityHorizonMonths: z.int().min(0).max(600).nullable().optional(),
+  riskTolerance: z.enum(['conservative', 'moderate', 'aggressive']).nullable().optional(),
+  taxState: z.string().length(2).nullable().optional(),
+  monthlyInvestingTargetCents: z.int().min(0).nullable().optional(),
+  targetAllocation: z.array(targetAllocationEntrySchema).default([]),
+  tickerAssetClassMap: z.record(z.string(), z.string()).default({}),
+  dcaDayOfMonth: z.int().min(1).max(28).nullable().optional(),
+  dcaAmountCents: z.int().min(0).nullable().optional(),
+});
+
+export type SuitabilitySettingsInput = z.infer<typeof suitabilitySettingsInputSchema>;
+export type TargetAllocationEntry = z.infer<typeof targetAllocationEntrySchema>;
+
 // ── Paycheck Profiles (11.11 — take-home pay modeling) ──────
 // Effective-dated: a new row is created whenever gross pay, withholdings, or
 // deductions change (raise, benefits election, etc). Rows are never mutated to

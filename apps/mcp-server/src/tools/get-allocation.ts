@@ -15,13 +15,18 @@ interface PriceRow {
   close_cents: number;
 }
 
+interface SuitabilitySettingsRow {
+  version: number;
+  target_allocation: Array<{ assetClass: string; targetPercent: number }> | null;
+  ticker_asset_class_map: Record<string, string> | null;
+}
+
 /**
- * Portfolio allocation: percent of total market value by ticker.
- *
- * TODO(#120): once suitability-settings/target-allocation lands, add per-asset-class
- * target percentages here and surface drift (actual - target) per class. That
- * feature doesn't exist in this codebase yet, so this tool only computes actual
- * percentages for now.
+ * Portfolio allocation: percent of total market value by ticker, plus (12.4) percent
+ * by asset class vs the user's target allocation with drift, when suitability
+ * settings with a target allocation have been saved. If no target allocation is on
+ * file, the tool still returns ticker-level actuals and says so explicitly rather
+ * than fabricating a comparison (fail-closed, per the Phase 12 suitability gate).
  */
 export function registerGetAllocation(server: McpServer) {
   server.tool(
@@ -94,10 +99,54 @@ export function registerGetAllocation(server: McpServer) {
         const pct = (valueCents / totalCents) * 100;
         lines.push(`${ticker}: ${pct.toFixed(2)}% ($${(valueCents / 100).toFixed(2)})`);
       }
-      lines.push(
-        '(Allocation by asset class with target-vs-actual drift is not yet available — ' +
-          'see issue #120 for the suitability-settings/target-allocation feature this depends on.)',
+      // 12.4: compare against the user's target allocation (latest saved version), if any.
+      const [policy] = await query<SuitabilitySettingsRow>(
+        `SELECT version, target_allocation, ticker_asset_class_map
+         FROM suitability_settings
+         WHERE user_id = $1
+         ORDER BY version DESC
+         LIMIT 1`,
+        [userId],
       );
+
+      const targets = policy?.target_allocation ?? [];
+      if (!policy || targets.length === 0) {
+        lines.push(
+          '(No target allocation on file — save one in Settings to see target-vs-actual drift. ' +
+            'Refusing to guess a target rather than fabricating a comparison.)',
+        );
+      } else {
+        const tickerToClass = policy.ticker_asset_class_map ?? {};
+        const valueByClass = new Map<string, number>();
+        let unmappedCents = 0;
+        for (const [ticker, valueCents] of valueByTicker.entries()) {
+          const assetClass = tickerToClass[ticker];
+          if (!assetClass) {
+            unmappedCents += valueCents;
+            continue;
+          }
+          valueByClass.set(assetClass, (valueByClass.get(assetClass) ?? 0) + valueCents);
+        }
+
+        lines.push('', `Target allocation (policy version ${policy.version}):`);
+        for (const { assetClass, targetPercent } of targets) {
+          const actualCents = valueByClass.get(assetClass) ?? 0;
+          const actualPercent = (actualCents / totalCents) * 100;
+          const driftPct = actualPercent - targetPercent;
+          const sign = driftPct >= 0 ? '+' : '';
+          lines.push(
+            `${assetClass}: target ${targetPercent.toFixed(1)}%, actual ${actualPercent.toFixed(
+              1,
+            )}% (drift ${sign}${driftPct.toFixed(1)}pp)`,
+          );
+        }
+        if (unmappedCents > 0) {
+          const unmappedPct = (unmappedCents / totalCents) * 100;
+          lines.push(
+            `dataCaveat: ${unmappedPct.toFixed(1)}% of holdings have no ticker→asset-class mapping in suitability settings and are excluded from the target comparison.`,
+          );
+        }
+      }
 
       if (staleFound) {
         lines.push(
