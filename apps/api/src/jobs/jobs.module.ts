@@ -11,6 +11,7 @@ import { AdvisorModule } from '../advisor/advisor.module';
 import { BillsModule } from '../bills/bills.module';
 import { LoansModule } from '../loans/loans.module';
 import { MarketDataModule } from '../market-data/market-data.module';
+import { RecommendationsModule } from '../recommendations/recommendations.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { MarketDataModule } from '../market-data/market-data.module';
     BillsModule,
     LoansModule,
     MarketDataModule,
+    RecommendationsModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -197,6 +199,16 @@ export class JobsModule implements OnModuleInit {
         'weekly-gas-dip-check',
         { pattern: '0 11 * * 1' },
         { name: 'gas-dip-check' },
+      ),
+
+      // 12.5 Cash Manager — monthly on the 2nd at 11:00 UTC (after the other monthly
+      // market-joined sweeps above). Event-triggered re-runs (benchmark rate move
+      // >=25bps, liquid-balance move >=20%) are fired ad hoc by the callers that detect
+      // those events via `alertsQueue.add('cash-manager-check', ...)`, not by a scheduler.
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-cash-manager-check',
+        { pattern: '0 11 2 * *' },
+        { name: 'cash-manager-check' },
       ),
 
       // Frequent sync delivery sweep for outbox events.
