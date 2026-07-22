@@ -28,6 +28,8 @@ const ALL_TOOLS = [
   { name: 'get_cash_runway', description: 't', inputSchema: { type: 'object' } },
   { name: 'get_subscription_total', description: 'u', inputSchema: { type: 'object' } },
   { name: 'get_yoy_comparison', description: 'v', inputSchema: { type: 'object' } },
+  { name: 'get_portfolio_value', description: 'w', inputSchema: { type: 'object' } },
+  { name: 'get_allocation', description: 'x', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   {

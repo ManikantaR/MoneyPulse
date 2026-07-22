@@ -18,11 +18,13 @@ import {
   createInvestmentAccountSchema,
   updateInvestmentAccountSchema,
   addSnapshotSchema,
+  addHoldingSchema,
 } from '@moneypulse/shared';
 import type {
   CreateInvestmentAccountInput,
   UpdateInvestmentAccountInput,
   AddSnapshotInput,
+  AddHoldingInput,
   AuthTokenPayload,
 } from '@moneypulse/shared';
 
@@ -99,6 +101,27 @@ export class InvestmentsController {
     @Param('id') id: string,
   ) {
     const data = await this.investmentsService.getSnapshots(user.sub, id);
+    return { data };
+  }
+
+  /** POST /investments/:id/holdings — declare/edit a ticker holding (append-only). */
+  @Post(':id/holdings')
+  @HttpCode(201)
+  @ApiOperation({ summary: 'Declare investment holding (ticker + share count as-of a date)' })
+  async addHolding(
+    @CurrentUser() user: AuthTokenPayload,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(addHoldingSchema)) body: AddHoldingInput,
+  ) {
+    const data = await this.investmentsService.addHolding(user.sub, id, body);
+    return { data };
+  }
+
+  /** GET /investments/:id/holdings — holding history, newest first. */
+  @Get(':id/holdings')
+  @ApiOperation({ summary: 'Get holding history for investment account' })
+  async getHoldings(@CurrentUser() user: AuthTokenPayload, @Param('id') id: string) {
+    const data = await this.investmentsService.getHoldings(user.sub, id);
     return { data };
   }
 }

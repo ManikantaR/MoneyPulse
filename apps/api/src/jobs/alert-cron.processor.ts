@@ -14,6 +14,7 @@ import { AdvisorReviewService } from '../advisor/review/advisor-review.service';
 import { BillsService } from '../bills/bills.service';
 import { LoansService } from '../loans/loans.service';
 import { MarketDataService } from '../market-data/market-data.service';
+import { SecurityPricesService } from '../market-data/security-prices.service';
 
 const MARKET_DATA_JITTER_MAX_MS = 15 * 60_000; // spread load on the free EIA/FRED tiers
 
@@ -39,6 +40,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly billsService: BillsService,
     private readonly loansService: LoansService,
     private readonly marketDataService: MarketDataService,
+    private readonly securityPricesService: SecurityPricesService,
   ) {
     super();
   }
@@ -127,6 +129,21 @@ export class AlertCronProcessor extends WorkerHost {
         this.logger.log(
           `Market data refresh: ${result.refreshed.length} refreshed, ` +
             `${result.skipped.length} skipped, ${result.failed.length} failed`,
+        );
+        break;
+      }
+
+      case 'security-prices-refresh': {
+        // Same jitter rationale as market-data-refresh (11.6) — Alpha Vantage's
+        // free tier is rate-limited, so avoid every daily run hitting it in the
+        // same second. Skipped in tests for the same reason as above.
+        if (process.env.NODE_ENV !== 'test') {
+          await sleep(Math.floor(Math.random() * MARKET_DATA_JITTER_MAX_MS));
+        }
+        const result = await this.securityPricesService.refreshAll();
+        this.logger.log(
+          `Security price refresh: ${result.refreshed.length} refreshed, ` +
+            `${result.failed.length} failed`,
         );
         break;
       }

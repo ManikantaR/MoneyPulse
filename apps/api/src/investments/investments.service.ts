@@ -11,7 +11,12 @@ import type {
   CreateInvestmentAccountInput,
   UpdateInvestmentAccountInput,
   AddSnapshotInput,
+  AddHoldingInput,
 } from '@moneypulse/shared';
+
+/** Holdings older than this trigger a freshness insight + dataCaveat on derived
+ * facts (12.2 spec). Configurable via HOLDINGS_STALE_DAYS. */
+export const DEFAULT_HOLDINGS_STALE_DAYS = 90;
 
 @Injectable()
 export class InvestmentsService {
@@ -148,6 +153,62 @@ export class InvestmentsService {
         desc(schema.investmentSnapshots.createdAt),
       );
     return rows;
+  }
+
+  /**
+   * Declare/update a holding for an account. Edits APPEND a new row (history kept)
+   * rather than mutating an existing one — same pattern as addSnapshot above.
+   */
+  async addHolding(userId: string, accountId: string, input: AddHoldingInput) {
+    await this.assertOwnership(userId, accountId);
+    const rows = await this.db
+      .insert(schema.investmentHoldings)
+      .values({
+        investmentAccountId: accountId,
+        ticker: input.ticker,
+        shareCount: String(input.shareCount),
+        asOf: input.asOf,
+        notes: input.notes ?? null,
+      })
+      .returning();
+    return rows[0];
+  }
+
+  /**
+   * Latest holding per ticker for an account (most recent as_of, then created_at
+   * as tie-breaker), plus full history ordered newest-first.
+   */
+  async getHoldings(userId: string, accountId: string) {
+    await this.assertOwnership(userId, accountId);
+    const rows = await this.db
+      .select()
+      .from(schema.investmentHoldings)
+      .where(eq(schema.investmentHoldings.investmentAccountId, accountId))
+      .orderBy(desc(schema.investmentHoldings.asOf), desc(schema.investmentHoldings.createdAt));
+    return rows;
+  }
+
+  /**
+   * All currently-held tickers with their latest declared share count/as-of date
+   * across a user's accounts (one row per ticker per account).
+   */
+  async getCurrentHoldings(userId: string) {
+    const rows = await this.db.execute(sql`
+      SELECT DISTINCT ON (h.investment_account_id, h.ticker)
+        h.id, h.investment_account_id, h.ticker, h.share_count, h.as_of, h.notes
+      FROM ${schema.investmentHoldings} h
+      JOIN ${schema.investmentAccounts} ia ON ia.id = h.investment_account_id
+      WHERE ia.user_id = ${userId} AND ia.deleted_at IS NULL
+      ORDER BY h.investment_account_id, h.ticker, h.as_of DESC, h.created_at DESC
+    `);
+    return (rows.rows ?? rows).map((r: any) => ({
+      id: r.id,
+      investmentAccountId: r.investment_account_id,
+      ticker: r.ticker,
+      shareCount: r.share_count,
+      asOf: String(r.as_of).slice(0, 10),
+      notes: r.notes ?? null,
+    }));
   }
 
   /**
