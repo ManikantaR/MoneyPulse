@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { TrendingUp, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { TrendingUp, Plus, RefreshCw, Trash2, X, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useInvestments,
@@ -9,7 +9,13 @@ import {
   useDeleteInvestment,
   useAddSnapshot,
 } from '@/lib/hooks/useInvestments';
-import { formatCents } from '@/lib/format';
+import {
+  useHoldings,
+  useAddHolding,
+  usePortfolioValue,
+  useAllocation,
+} from '@/lib/hooks/useHoldings';
+import { formatCents, formatDate } from '@/lib/format';
 import type { InvestmentAccount } from '@moneypulse/shared';
 
 const ACCOUNT_TYPES = [
@@ -233,18 +239,261 @@ function UpdateValueModal({
   );
 }
 
+// ── Add Holding Modal ────────────────────────────────────────
+
+function AddHoldingModal({
+  account,
+  onClose,
+}: {
+  account: InvestmentAccount;
+  onClose: () => void;
+}) {
+  const addHolding = useAddHolding(account.id);
+  const [ticker, setTicker] = useState('');
+  const [shareCountStr, setShareCountStr] = useState('');
+  const [asOf, setAsOf] = useState(new Date().toLocaleDateString('en-CA'));
+  const [notes, setNotes] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function validate() {
+    const e: Record<string, string> = {};
+    if (!ticker.trim()) e.ticker = 'Ticker is required';
+    const shares = Number(shareCountStr);
+    if (!shareCountStr || isNaN(shares) || shares <= 0) {
+      e.shareCount = 'Enter a positive share count';
+    }
+    if (!asOf) e.asOf = 'As-of date is required';
+    return e;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const errs = validate();
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+    addHolding.mutate(
+      {
+        ticker: ticker.trim(),
+        shareCount: Number(shareCountStr),
+        asOf,
+        notes: notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Holding declared');
+          onClose();
+        },
+        onError: () => toast.error('Failed to declare holding'),
+      },
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div aria-hidden="true" className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold">Declare Holding</h2>
+            <p className="text-xs text-[var(--muted-foreground)]">{account.nickname}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-[var(--muted)] transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold">Ticker *</label>
+            <input
+              type="text"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value)}
+              placeholder="e.g. VTI"
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm uppercase focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+            />
+            {errors.ticker && <p className="mt-1 text-xs text-red-500">{errors.ticker}</p>}
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold">Share count *</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={shareCountStr}
+              onChange={(e) => setShareCountStr(e.target.value)}
+              placeholder="0"
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+            />
+            {errors.shareCount && <p className="mt-1 text-xs text-red-500">{errors.shareCount}</p>}
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold">As of *</label>
+            <input
+              type="date"
+              value={asOf}
+              onChange={(e) => setAsOf(e.target.value)}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+            />
+            {errors.asOf && <p className="mt-1 text-xs text-red-500">{errors.asOf}</p>}
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold">Notes (optional)</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. from brokerage statement"
+              maxLength={500}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+            />
+          </div>
+
+          <p className="text-[11px] text-[var(--muted-foreground)]">
+            Editing a holding appends a new entry rather than overwriting the old one, so you
+            can see how your declared shares changed over time.
+          </p>
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={addHolding.isPending}
+              className="flex-1 rounded-full bg-[var(--primary)] py-2.5 text-sm font-bold text-[var(--primary-foreground)] shadow-lg shadow-[var(--primary)]/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+            >
+              {addHolding.isPending ? 'Saving…' : 'Save Holding'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-[var(--border)] px-5 py-2.5 text-sm font-semibold hover:bg-[var(--muted)] transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Holdings History ─────────────────────────────────────────
+
+function HoldingsHistory({ accountId }: { accountId: string }) {
+  const { data: holdings = [], isLoading } = useHoldings(accountId);
+
+  if (isLoading) {
+    return <p className="py-3 text-xs text-[var(--muted-foreground)]">Loading holdings…</p>;
+  }
+  if (holdings.length === 0) {
+    return (
+      <p className="py-3 text-xs text-[var(--muted-foreground)] italic">
+        No holdings declared yet for this account.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="mt-2 space-y-1.5">
+      {holdings.map((h) => (
+        <li
+          key={h.id}
+          className="flex items-center justify-between rounded-lg bg-[var(--muted)]/50 px-3 py-2 text-xs"
+        >
+          <div className="min-w-0">
+            <span className="font-bold">{h.ticker}</span>
+            <span className="ml-2 text-[var(--muted-foreground)]">{h.shareCount} shares</span>
+            {h.notes && (
+              <p className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">{h.notes}</p>
+            )}
+          </div>
+          <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
+            as of {formatDate(h.asOf)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ── Portfolio Summary (value + allocation) ──────────────────
+
+function PortfolioSummary() {
+  const { data: value, isLoading: valueLoading } = usePortfolioValue();
+  const { data: allocation, isLoading: allocationLoading } = useAllocation();
+
+  if (valueLoading || allocationLoading) return null;
+  if (!value || value.holdings.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-6 py-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+            Portfolio value (declared holdings)
+          </p>
+          <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight">
+            {formatCents(value.totalCents)}
+          </p>
+          <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+            Shares x latest EOD close, across {value.holdings.length} holding
+            {value.holdings.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        {(value.staleFound || value.missingPriceFound) && (
+          <div className="flex shrink-0 items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              {value.staleFound &&
+                `One or more holdings are older than ${value.staleDays} days. `}
+              {value.missingPriceFound && 'No price data yet for one or more tickers.'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {allocation && allocation.allocations.length > 0 && (
+        <div className="mt-4 space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+            Allocation
+          </p>
+          {allocation.allocations.map((a) => (
+            <div key={a.ticker} className="flex items-center gap-3 text-xs">
+              <span className="w-16 shrink-0 font-bold">{a.ticker}</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--muted)]">
+                <div
+                  className="h-full rounded-full bg-[var(--primary)]"
+                  style={{ width: `${Math.min(100, a.pct)}%` }}
+                />
+              </div>
+              <span className="w-14 shrink-0 text-right tabular-nums text-[var(--muted-foreground)]">
+                {a.pct.toFixed(1)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Account Card ─────────────────────────────────────────────
 
 function AccountCard({
   account,
   onUpdateValue,
   onDelete,
+  onAddHolding,
 }: {
   account: InvestmentAccount;
   onUpdateValue: () => void;
   onDelete: () => void;
+  onAddHolding: () => void;
 }) {
   const typeLabel = ACCOUNT_TYPES.find((t) => t.value === account.accountType)?.label ?? account.accountType;
+  const [showHoldings, setShowHoldings] = useState(false);
 
   return (
     <div className="flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm transition-shadow hover:shadow-md">
@@ -277,13 +526,38 @@ function AccountCard({
         )}
       </div>
 
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={onUpdateValue}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--border)] py-2 text-xs font-semibold transition-colors hover:bg-[var(--muted)]"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Update value
+        </button>
+        <button
+          onClick={onAddHolding}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--border)] py-2 text-xs font-semibold transition-colors hover:bg-[var(--muted)]"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Holding
+        </button>
+      </div>
+
       <button
-        onClick={onUpdateValue}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] py-2 text-xs font-semibold transition-colors hover:bg-[var(--muted)]"
+        onClick={() => setShowHoldings((v) => !v)}
+        className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]"
       >
-        <RefreshCw className="h-3.5 w-3.5" />
-        Update value
+        {showHoldings ? (
+          <>
+            Hide holdings <ChevronUp className="h-3 w-3" />
+          </>
+        ) : (
+          <>
+            Show holdings <ChevronDown className="h-3 w-3" />
+          </>
+        )}
       </button>
+      {showHoldings && <HoldingsHistory accountId={account.id} />}
     </div>
   );
 }
@@ -295,6 +569,7 @@ export default function InvestmentsPage() {
   const deleteAccount = useDeleteInvestment();
   const [showAddModal, setShowAddModal] = useState(false);
   const [updatingAccount, setUpdatingAccount] = useState<InvestmentAccount | null>(null);
+  const [addingHoldingAccount, setAddingHoldingAccount] = useState<InvestmentAccount | null>(null);
 
   const totalCents = accounts.reduce(
     (sum, a) => sum + (a.latestBalanceCents ?? 0),
@@ -343,6 +618,9 @@ export default function InvestmentsPage() {
         </div>
       )}
 
+      {/* Portfolio value + allocation from declared holdings */}
+      <PortfolioSummary />
+
       {/* Modeling help */}
       <div className="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300">
         <p className="font-semibold mb-1">How to track investment accounts</p>
@@ -372,6 +650,7 @@ export default function InvestmentsPage() {
               account={account}
               onUpdateValue={() => setUpdatingAccount(account)}
               onDelete={() => handleDelete(account)}
+              onAddHolding={() => setAddingHoldingAccount(account)}
             />
           ))}
         </div>
@@ -382,6 +661,12 @@ export default function InvestmentsPage() {
         <UpdateValueModal
           account={updatingAccount}
           onClose={() => setUpdatingAccount(null)}
+        />
+      )}
+      {addingHoldingAccount && (
+        <AddHoldingModal
+          account={addingHoldingAccount}
+          onClose={() => setAddingHoldingAccount(null)}
         />
       )}
     </div>

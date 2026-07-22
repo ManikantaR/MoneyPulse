@@ -42,6 +42,26 @@ export class InvestmentsController {
     return { data };
   }
 
+  /**
+   * GET /investments/portfolio/value — total portfolio market value (shares x
+   * latest EOD close) across all of the user's declared holdings.
+   * Registered before the `:id` routes so "portfolio" is never matched as an id.
+   */
+  @Get('portfolio/value')
+  @ApiOperation({ summary: 'Get total portfolio market value across all holdings' })
+  async getPortfolioValue(@CurrentUser() user: AuthTokenPayload) {
+    const data = await this.investmentsService.getPortfolioValue(user.sub);
+    return { data };
+  }
+
+  /** GET /investments/portfolio/allocation — percent of portfolio value by ticker. */
+  @Get('portfolio/allocation')
+  @ApiOperation({ summary: 'Get portfolio allocation (percent of value by ticker)' })
+  async getAllocation(@CurrentUser() user: AuthTokenPayload) {
+    const data = await this.investmentsService.getAllocation(user.sub);
+    return { data };
+  }
+
   /** POST /investments — create an investment account. */
   @Post()
   @HttpCode(201)
