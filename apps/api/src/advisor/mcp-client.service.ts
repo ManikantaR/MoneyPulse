@@ -36,7 +36,8 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_yoy_comparison',
   'get_portfolio_value', // holdings x latest EOD close, aggregate only
   'get_allocation', // percent-of-portfolio by ticker, aggregate only
-  'get_earned_apy', // trailing-12mo interest / avg balance, aggregate only
+  // get_earned_apy is intentionally excluded: its evidence cites individual interest
+  // transactions (date/amount/description) — row-level data, same as get_transactions.
   'get_rate_watchlist', // user-entered advertised rates + auto-populated Treasury rows, no PII
 ]);
 

@@ -7,7 +7,7 @@ export interface TreasuryPoint {
 }
 
 const TREASURY_BASE_URL =
-  'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/avg_interest_rates';
+  'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/daily_treasury_yield_curve';
 
 // fiscaldata's Daily Treasury Par Yield Curve Rates dataset field names for each
 // maturity we track. Field names per https://fiscaldata.treasury.gov/datasets/
