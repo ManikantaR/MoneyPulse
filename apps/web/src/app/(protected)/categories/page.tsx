@@ -123,7 +123,6 @@ export default function CategoriesPage() {
   /** Grand total across all root categories. */
   const grandTotal = useMemo(
     () => tree.reduce((sum, node) => sum + getParentTotal(node), 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [tree, spendMap],
   );
 

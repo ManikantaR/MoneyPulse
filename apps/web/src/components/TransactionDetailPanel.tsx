@@ -193,7 +193,6 @@ export function TransactionDetailPanel({
             >
               {/* Thumbnail or icon */}
               {isImage(att.mimeType) ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={downloadUrl(att.id)}
                   alt={att.originalFilename}
