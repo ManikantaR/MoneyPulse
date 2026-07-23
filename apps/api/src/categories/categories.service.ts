@@ -55,11 +55,11 @@ export class CategoriesService {
   async findTree() {
     const result = await this.db.execute(sql`
       WITH RECURSIVE cat_tree AS (
-        SELECT id, name, icon, color, parent_id, sort_order, is_transfer, 0 AS depth
+        SELECT id, name, icon, color, parent_id, sort_order, is_transfer, bucket, 0 AS depth
         FROM ${schema.categories}
         WHERE parent_id IS NULL AND deleted_at IS NULL
         UNION ALL
-        SELECT c.id, c.name, c.icon, c.color, c.parent_id, c.sort_order, c.is_transfer, ct.depth + 1
+        SELECT c.id, c.name, c.icon, c.color, c.parent_id, c.sort_order, c.is_transfer, c.bucket, ct.depth + 1
         FROM ${schema.categories} c
         JOIN cat_tree ct ON c.parent_id = ct.id
         WHERE c.deleted_at IS NULL
@@ -77,6 +77,7 @@ export class CategoriesService {
       parentId: r.parent_id ?? r.parentId ?? null,
       sortOrder: r.sort_order ?? r.sortOrder ?? 0,
       isTransfer: r.is_transfer ?? r.isTransfer ?? false,
+      bucket: r.bucket ?? null,
       depth: r.depth,
     }));
   }

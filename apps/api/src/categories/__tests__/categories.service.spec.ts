@@ -130,5 +130,19 @@ describe('CategoriesService', () => {
       expect(transfers?.isTransfer).toBe(true);
       expect(groceries?.isTransfer).toBe(false);
     });
+
+    it('findTree maps bucket from raw SQL result (regression: the tree CTE previously omitted bucket entirely, so the categories page always showed "Unset" even after a successful save)', async () => {
+      mockDb.execute.mockResolvedValue({
+        rows: [
+          { id: 'cat-1', name: 'Dining', icon: '🍽️', color: '#f97316', parent_id: null, sort_order: 0, is_transfer: false, bucket: 'wants', depth: 0 },
+          { id: 'cat-2', name: 'Rent', icon: '🏠', color: '#6366f1', parent_id: null, sort_order: 1, is_transfer: false, bucket: null, depth: 0 },
+        ],
+      });
+      const result = await service.findTree();
+      const dining = result.find((r: any) => r.name === 'Dining');
+      const rent = result.find((r: any) => r.name === 'Rent');
+      expect(dining?.bucket).toBe('wants');
+      expect(rent?.bucket).toBeNull();
+    });
   });
 });
