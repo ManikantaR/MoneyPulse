@@ -6,6 +6,7 @@ import { AgentRunnerService } from './agent-runner.service';
 import { RecommendationSuppressionService } from './recommendation-suppression.service';
 import { CashManagerService } from './cash-manager.service';
 import { InvestmentCoachService } from './investment-coach.service';
+import { SavingsCoachService } from './savings-coach.service';
 
 /**
  * 12.1 — the recommendation layer's runtime pieces: the agent manifest runner
@@ -18,7 +19,19 @@ import { InvestmentCoachService } from './investment-coach.service';
  */
 @Module({
   imports: [NotificationsModule, AnalyticsModule, InvestmentsModule],
-  providers: [AgentRunnerService, RecommendationSuppressionService, CashManagerService, InvestmentCoachService],
-  exports: [AgentRunnerService, RecommendationSuppressionService, CashManagerService, InvestmentCoachService],
+  providers: [
+    AgentRunnerService,
+    RecommendationSuppressionService,
+    CashManagerService,
+    InvestmentCoachService,
+    SavingsCoachService,
+  ],
+  exports: [
+    AgentRunnerService,
+    RecommendationSuppressionService,
+    CashManagerService,
+    InvestmentCoachService,
+    SavingsCoachService,
+  ],
 })
 export class RecommendationsModule {}
