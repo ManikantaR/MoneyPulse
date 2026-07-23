@@ -8,6 +8,12 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Behind Traefik: trust exactly one hop so req.ip resolves the real client
+  // (X-Forwarded-For) instead of Traefik's own address for every request —
+  // without this, IP-keyed guards like ThrottleLoginGuard see one shared IP
+  // for the whole LAN and rate-limit everyone together.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.setGlobalPrefix('api');
   app.use(helmet());
   app.use(cookieParser());
