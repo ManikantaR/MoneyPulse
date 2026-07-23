@@ -65,7 +65,7 @@ export default function TransactionsPage() {
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   const [autoCategResult, setAutoCategResult] = useState<string | null>(null);
   const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
-  const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
+  const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const { data, isLoading } = useTransactions({
@@ -83,6 +83,14 @@ export default function TransactionsPage() {
   const categories = categoriesData?.data ?? [];
   const transactions = data?.data ?? [];
   const totalPages = data?.totalPages ?? 1;
+
+  /** The transaction backing the detail panel, re-derived from the live query result
+   *  every render — NOT a frozen snapshot — so a category change made inside the panel
+   *  (or any other refetch-triggering edit) is reflected immediately instead of the
+   *  panel silently reverting to whatever it looked like at the moment it was opened. */
+  const selectedTxn = selectedTxnId
+    ? (transactions.find((t) => t.id === selectedTxnId) ?? null)
+    : null;
 
   /** Build account ID → display label lookup. */
   const accountMap = useMemo(
@@ -515,7 +523,7 @@ export default function TransactionsPage() {
                     'cursor-pointer hover:bg-[var(--surface-container-low)] transition-colors',
                     selectedIds.has(txn.id) && 'bg-[var(--accent)]',
                   )}
-                  onClick={() => setSelectedTxn(txn as Transaction)}
+                  onClick={() => setSelectedTxnId(txn.id)}
                 >
                   <td
                     className="w-10 px-3 py-4"
@@ -614,7 +622,7 @@ export default function TransactionsPage() {
             return (
               <MobileCard
                 key={txn.id}
-                onClick={() => setSelectedTxn(txn as Transaction)}
+                onClick={() => setSelectedTxnId(txn.id)}
                 fields={[
                   {
                     primary: true,
@@ -699,7 +707,7 @@ export default function TransactionsPage() {
               : undefined
           }
           accountLabel={accountMap[selectedTxn.accountId]}
-          onClose={() => setSelectedTxn(null)}
+          onClose={() => setSelectedTxnId(null)}
           categories={categoryOptions}
           onCategoryChange={handleCategoryChange}
         />
