@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { BillsService } from '../bills.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { DATABASE_CONNECTION } from '../../db/db.module';
@@ -367,7 +367,20 @@ describe('BillsService', () => {
           frequency: 'annual',
           categoryId: null,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects a whitespace-only bill name with a 400, not a "duplicate" conflict', async () => {
+      mockDb.limit = vi.fn().mockResolvedValue([]);
+
+      await expect(
+        service.create(userId, {
+          normalizedName: '   ',
+          expectedAmountCents: 20000,
+          frequency: 'annual',
+          categoryId: null,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

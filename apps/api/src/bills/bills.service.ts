@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
@@ -431,7 +432,7 @@ export class BillsService {
   async create(userId: string, input: CreateBillInput) {
     const merchantPattern = input.normalizedName.trim();
     if (!merchantPattern) {
-      throw new ConflictException('Bill name cannot be empty');
+      throw new BadRequestException('Bill name cannot be empty');
     }
 
     const existing = await this.db
