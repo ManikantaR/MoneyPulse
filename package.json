@@ -31,7 +31,7 @@
     "@playwright/test": "^1.60.0",
     "simple-git-hooks": "^2.13.1",
     "turbo": "^2.9.14",
-    "vite": "8.0.8"
+    "vite": "8.0.16"
   },
   "pnpm": {
     "overrides": {
