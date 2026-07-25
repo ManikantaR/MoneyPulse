@@ -100,7 +100,11 @@ export class CashManagerService {
     // Select only the columns this agent needs — deliberately never `lastFour`/account
     // number/routing number (see recommendation-evidence.ts's no-credentials rule).
     const accounts = await this.db
-      .select({ id: schema.accounts.id, nickname: schema.accounts.nickname })
+      .select({
+        id: schema.accounts.id,
+        nickname: schema.accounts.nickname,
+        interestRateBps: schema.accounts.interestRateBps,
+      })
       .from(schema.accounts)
       .where(
         and(
@@ -118,8 +122,14 @@ export class CashManagerService {
       WHERE account_id = ANY(${accountIds})
       ORDER BY account_id, snapshot_date DESC
     `);
-    const liquidBalanceCents = (balanceRows.rows ?? balanceRows).reduce(
-      (sum: number, r: any) => sum + Number(r.balance_cents),
+    const balanceByAccountId = new Map<string, number>(
+      (balanceRows.rows ?? balanceRows).map((r: any) => [
+        String(r.account_id),
+        Number(r.balance_cents),
+      ]),
+    );
+    const liquidBalanceCents = Array.from(balanceByAccountId.values()).reduce(
+      (sum, cents) => sum + cents,
       0,
     );
 
@@ -146,10 +156,33 @@ export class CashManagerService {
     const emergencyFundTargetMonths = settingsRows[0]?.emergencyFundTargetMonths ?? 6;
     const idleCashBufferMonths = 1; // 11.7 default; overridden by user_settings when present, handled upstream
 
-    const { apyBps: currentEarnedApyBps, asOfDate: earnedApyAsOf } = await this.computeBlendedEarnedApyBps(
-      userId,
-      accountIds,
+    // Prefer the user-entered interest_rate_bps on each account (a direct signal) over the
+    // transaction-heuristic when at least one in-scope account has it set. Blend by current
+    // balance across the accounts that have a rate set; accounts without one are excluded from
+    // this direct-signal blend (their balances still count toward liquidBalanceCents above).
+    const today = new Date().toISOString().slice(0, 10);
+    const ratedAccounts = accounts.filter(
+      (a: any) => a.interestRateBps !== null && a.interestRateBps !== undefined,
     );
+    const ratedWeight = ratedAccounts.reduce(
+      (sum: number, a: any) => sum + (balanceByAccountId.get(a.id) ?? 0),
+      0,
+    );
+
+    let currentEarnedApyBps: number;
+    let earnedApyAsOf: string;
+    if (ratedAccounts.length > 0 && ratedWeight > 0) {
+      const weightedSum = ratedAccounts.reduce(
+        (sum: number, a: any) =>
+          sum + a.interestRateBps * (balanceByAccountId.get(a.id) ?? 0),
+        0,
+      );
+      currentEarnedApyBps = Math.round(weightedSum / ratedWeight);
+      earnedApyAsOf = today;
+    } else {
+      ({ apyBps: currentEarnedApyBps, asOfDate: earnedApyAsOf } =
+        await this.computeBlendedEarnedApyBps(userId, accountIds));
+    }
 
     const watchlistRows = await this.db
       .select()

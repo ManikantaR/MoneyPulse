@@ -53,6 +53,7 @@ export class AccountsService {
         lastFour: encryptField(input.lastFour),
         startingBalanceCents: input.startingBalanceCents,
         creditLimitCents: input.creditLimitCents ?? null,
+        interestRateBps: input.interestRateBps ?? null,
       })
       .returning();
 
