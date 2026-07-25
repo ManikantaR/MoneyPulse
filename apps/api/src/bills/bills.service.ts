@@ -10,7 +10,7 @@ import { eq, and, isNull, lt, gte, lte, or, asc } from 'drizzle-orm';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { BillFrequency, UpdateBillInput, SubscriptionItem } from '@moneypulse/shared';
 
-function annualCostCents(amountCents: number, frequency: BillFrequency): number {
+export function annualCostCents(amountCents: number, frequency: BillFrequency): number {
   const multipliers: Record<BillFrequency, number> = {
     weekly: 52,
     biweekly: 26,

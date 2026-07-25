@@ -6,7 +6,9 @@ import type {
   AnalyticsQuery,
   SpendingTrendQuery,
   TopMerchantsQuery,
+  BillFrequency,
 } from '@moneypulse/shared';
+import { annualCostCents } from '../bills/bills.service';
 
 @Injectable()
 export class AnalyticsService {
@@ -814,25 +816,20 @@ export class AnalyticsService {
    * @returns {Promise<{ monthlyTotalCents: number; activeCount: number; trend: Array<{ month: string; totalCents: number }> }>}
    */
   async subscriptionTotal(userId: string) {
-    const MONTHLY_MULTIPLIER: Record<string, number> = {
-      weekly: 4.345,
-      biweekly: 2.173,
-      monthly: 1,
-      quarterly: 1 / 3,
-      yearly: 1 / 12,
-      annual: 1 / 12,
-    };
-
     const billRows = await this.db.execute(sql`
       SELECT normalized_name, expected_amount_cents, frequency
       FROM ${schema.recurringBills}
       WHERE user_id = ${userId} AND is_active = true
     `);
     const bills = this.extractRows(billRows);
+    // Reuse the single canonical per-frequency annualization (bills.service.ts) so
+    // this total can't drift from the one shown on /subscriptions — a duplicate
+    // multiplier table here previously used a slightly different weekly constant
+    // and didn't handle semi_annual at all.
     const monthlyTotalCents = Math.round(
       bills.reduce((sum: number, b: any) => {
-        const multiplier = MONTHLY_MULTIPLIER[String(b.frequency ?? 'monthly')] ?? 1;
-        return sum + Number(b.expected_amount_cents) * multiplier;
+        const frequency = (b.frequency ?? 'monthly') as BillFrequency;
+        return sum + annualCostCents(Number(b.expected_amount_cents), frequency) / 12;
       }, 0),
     );
 

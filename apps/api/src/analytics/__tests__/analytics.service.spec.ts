@@ -582,7 +582,8 @@ describe('AnalyticsService', () => {
 
   describe('subscriptionTotal', () => {
     it('sums active bills normalized to monthly-equivalent, hand-computed', async () => {
-      // $10 weekly (~4.345x) + $30 monthly + $60 quarterly (1/3x) = $43.45 + $30 + $20 = $93.45 -> 9345 cents
+      // $10 weekly (52/12x, same annualization as /subscriptions) + $30 monthly + $60 quarterly (4/12x)
+      // = $43.333... + $30 + $20 = $93.333... -> 9333 cents
       mockDb.execute
         .mockResolvedValueOnce({
           rows: [
@@ -596,7 +597,7 @@ describe('AnalyticsService', () => {
       const result = await service.subscriptionTotal(TEST_USER_ID);
 
       expect(result.activeCount).toBe(3);
-      expect(result.monthlyTotalCents).toBe(9345);
+      expect(result.monthlyTotalCents).toBe(9333);
     });
 
     it('returns zero total and skips the trend query when there are no active bills', async () => {
