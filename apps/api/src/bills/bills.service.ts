@@ -3,18 +3,25 @@ import {
   Inject,
   Logger,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, isNull, lt, gte, lte, or, asc } from 'drizzle-orm';
 import { NotificationsService } from '../notifications/notifications.service';
-import type { BillFrequency, UpdateBillInput, SubscriptionItem } from '@moneypulse/shared';
+import type {
+  BillFrequency,
+  UpdateBillInput,
+  CreateBillInput,
+  SubscriptionItem,
+} from '@moneypulse/shared';
 
 function annualCostCents(amountCents: number, frequency: BillFrequency): number {
   const multipliers: Record<BillFrequency, number> = {
     weekly: 52,
     biweekly: 26,
     monthly: 12,
+    bimonthly: 6,
     quarterly: 4,
     semi_annual: 2,
     annual: 1,
@@ -33,6 +40,7 @@ function classifyFrequency(medianDays: number): BillFrequency | null {
   if (medianDays >= 5 && medianDays <= 9) return 'weekly';
   if (medianDays >= 12 && medianDays <= 18) return 'biweekly';
   if (medianDays >= 25 && medianDays <= 35) return 'monthly';
+  if (medianDays >= 50 && medianDays <= 70) return 'bimonthly';
   if (medianDays >= 80 && medianDays <= 100) return 'quarterly';
   if (medianDays >= 170 && medianDays <= 200) return 'semi_annual';
   if (medianDays >= 340 && medianDays <= 400) return 'annual';
@@ -50,6 +58,9 @@ function addFrequency(date: Date, frequency: BillFrequency): Date {
       break;
     case 'monthly':
       d.setMonth(d.getMonth() + 1);
+      break;
+    case 'bimonthly':
+      d.setMonth(d.getMonth() + 2);
       break;
     case 'quarterly':
       d.setMonth(d.getMonth() + 3);
@@ -70,6 +81,8 @@ function windowDaysForFrequency(frequency: string): number {
       return 7;
     case 'biweekly':
       return 14;
+    case 'bimonthly':
+      return 20;
     case 'quarterly':
       return 30;
     case 'semi_annual':
@@ -139,31 +152,48 @@ export class BillsService {
     let existingUpdated = 0;
 
     for (const [merchantKey, occurrences] of groups) {
-      // Need at least 3 for reliable detection
-      if (occurrences.length < 3) continue;
-
       occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-      // Calculate day intervals
-      const intervals: number[] = [];
-      for (let i = 1; i < occurrences.length; i++) {
-        const days = Math.round(
-          (occurrences[i].date.getTime() - occurrences[i - 1].date.getTime()) /
-            86_400_000,
+      // Need at least 3 occurrences for reliable detection of short/medium
+      // cadences, but for long cadences (semi-annual/annual) waiting for a
+      // 3rd occurrence can mean waiting years. If we only have exactly 2
+      // charges, still allow detection when the single gap between them
+      // cleanly classifies as semi_annual or annual and the amounts
+      // roughly match — otherwise require the usual 3+.
+      let frequency: BillFrequency | null;
+      if (occurrences.length === 2) {
+        const [a, b] = occurrences;
+        const days = Math.round((b.date.getTime() - a.date.getTime()) / 86_400_000);
+        const freq = classifyFrequency(days);
+        if (freq !== 'semi_annual' && freq !== 'annual') continue;
+        const amountDelta =
+          Math.abs(a.amountCents - b.amountCents) / Math.max(a.amountCents, b.amountCents);
+        if (amountDelta > 0.2) continue;
+        frequency = freq;
+      } else if (occurrences.length < 3) {
+        continue;
+      } else {
+        // Calculate day intervals
+        const intervals: number[] = [];
+        for (let i = 1; i < occurrences.length; i++) {
+          const days = Math.round(
+            (occurrences[i].date.getTime() - occurrences[i - 1].date.getTime()) /
+              86_400_000,
+          );
+          intervals.push(days);
+        }
+
+        const med = median(intervals);
+        if (med === 0) continue;
+
+        // Require 80% of intervals within 20% of median
+        const withinTolerance = intervals.filter(
+          (d) => Math.abs(d - med) / med <= 0.2,
         );
-        intervals.push(days);
+        if (withinTolerance.length / intervals.length < 0.8) continue;
+
+        frequency = classifyFrequency(med);
       }
-
-      const med = median(intervals);
-      if (med === 0) continue;
-
-      // Require 80% of intervals within 20% of median
-      const withinTolerance = intervals.filter(
-        (d) => Math.abs(d - med) / med <= 0.2,
-      );
-      if (withinTolerance.length / intervals.length < 0.8) continue;
-
-      const frequency = classifyFrequency(med);
       if (!frequency) continue;
 
       const last3 = occurrences.slice(-3);
@@ -390,6 +420,61 @@ export class BillsService {
   }
 
   // ── CRUD ─────────────────────────────────────────────────
+
+  /**
+   * Manually declare a recurring bill/subscription. Lets a user register a
+   * known subscription (e.g. an annual renewal) immediately instead of
+   * waiting for it to accumulate enough transaction history to be
+   * auto-detected. Behaves identically to a detected bill afterward
+   * (edit/deactivate/delete/merge all operate on the same table/rows).
+   */
+  async create(userId: string, input: CreateBillInput) {
+    const merchantPattern = input.normalizedName.trim();
+    if (!merchantPattern) {
+      throw new ConflictException('Bill name cannot be empty');
+    }
+
+    const existing = await this.db
+      .select({ id: schema.recurringBills.id })
+      .from(schema.recurringBills)
+      .where(
+        and(
+          eq(schema.recurringBills.userId, userId),
+          eq(schema.recurringBills.merchantPattern, merchantPattern),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      throw new ConflictException(
+        `A bill named "${merchantPattern}" already exists`,
+      );
+    }
+
+    const now = new Date();
+    const nextExpectedDate = addFrequency(now, input.frequency);
+
+    const [created] = await this.db
+      .insert(schema.recurringBills)
+      .values({
+        userId,
+        merchantPattern,
+        normalizedName: merchantPattern,
+        categoryId: input.categoryId ?? null,
+        expectedAmountCents: input.expectedAmountCents,
+        amountTolerancePercent: input.amountTolerancePercent ?? 15,
+        frequency: input.frequency,
+        nextExpectedDate,
+        lastSeenDate: null,
+        lastAmountCents: null,
+        // A manually declared bill is, by definition, user-confirmed —
+        // it should immediately participate in upcoming/missed-bill alerts.
+        isConfirmed: true,
+        isActive: true,
+      })
+      .returning();
+
+    return created;
+  }
 
   async findAll(userId: string) {
     return this.db

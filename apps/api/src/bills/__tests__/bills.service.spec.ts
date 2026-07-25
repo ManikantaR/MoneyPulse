@@ -177,6 +177,65 @@ describe('BillsService', () => {
 
       expect(insertedValues?.frequency).toBe('weekly');
     });
+
+    it('detects an annual subscription from just 2 occurrences ~365 days apart with a matching amount', async () => {
+      const txns = [0, 370].map((d) => makeTxn(d, 'Anthropic', 20000));
+      mockDb.orderBy = vi.fn().mockResolvedValue(txns);
+      mockDb.limit = vi.fn().mockResolvedValue([]);
+
+      let insertedValues: any = null;
+      mockDb.insert = vi.fn().mockReturnValue({
+        values: vi.fn().mockImplementation((v) => {
+          insertedValues = v;
+          return Promise.resolve([]);
+        }),
+      });
+
+      const result = await service.detectRecurring(userId);
+
+      expect(result.newBills).toBe(1);
+      expect(insertedValues?.frequency).toBe('annual');
+    });
+
+    it('does not detect 2 occurrences whose gap is a monthly-ish cadence', async () => {
+      const txns = [0, 30].map((d) => makeTxn(d, 'Netflix'));
+      mockDb.orderBy = vi.fn().mockResolvedValue(txns);
+
+      const result = await service.detectRecurring(userId);
+
+      expect(result.newBills).toBe(0);
+    });
+
+    it('does not detect 2 occurrences with an annual-ish gap but mismatched amounts', async () => {
+      const txns = [
+        { date: new Date('2024-01-01T00:00:00Z'), amountCents: 20000, normalizedMerchantName: 'RingSub', merchantName: 'RingSub' },
+        { date: new Date('2025-01-05T00:00:00Z'), amountCents: 5000, normalizedMerchantName: 'RingSub', merchantName: 'RingSub' },
+      ];
+      mockDb.orderBy = vi.fn().mockResolvedValue(txns);
+
+      const result = await service.detectRecurring(userId);
+
+      expect(result.newBills).toBe(0);
+    });
+
+    it('classifies a ~60-day cadence with 3 occurrences as bimonthly', async () => {
+      const txns = [0, 60, 121].map((d) => makeTxn(d, 'HenricoUtilDes', 8000));
+      mockDb.orderBy = vi.fn().mockResolvedValue(txns);
+      mockDb.limit = vi.fn().mockResolvedValue([]);
+
+      let insertedValues: any = null;
+      mockDb.insert = vi.fn().mockReturnValue({
+        values: vi.fn().mockImplementation((v) => {
+          insertedValues = v;
+          return Promise.resolve([]);
+        }),
+      });
+
+      const result = await service.detectRecurring(userId);
+
+      expect(result.newBills).toBe(1);
+      expect(insertedValues?.frequency).toBe('bimonthly');
+    });
   });
 
   // ── Missed Bills ──────────────────────────────────────────
@@ -264,6 +323,53 @@ describe('BillsService', () => {
   });
 
   // ── CRUD ─────────────────────────────────────────────────
+
+  describe('create (manual add)', () => {
+    it('creates a confirmed, active bill immediately usable for annual-total projections', async () => {
+      mockDb.limit = vi.fn().mockResolvedValue([]);
+      const created = {
+        id: 'new-bill-1',
+        userId,
+        merchantPattern: 'Claude.ai',
+        normalizedName: 'Claude.ai',
+        categoryId: null,
+        expectedAmountCents: 20000,
+        frequency: 'annual',
+        isConfirmed: true,
+        isActive: true,
+      };
+      mockDb.insert = vi.fn().mockReturnValue({
+        values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([created]) }),
+      });
+
+      const result = await service.create(userId, {
+        normalizedName: 'Claude.ai',
+        expectedAmountCents: 20000,
+        frequency: 'annual',
+        categoryId: null,
+      });
+
+      expect(result).toMatchObject({
+        normalizedName: 'Claude.ai',
+        frequency: 'annual',
+        isConfirmed: true,
+        isActive: true,
+      });
+    });
+
+    it('rejects a duplicate manual bill name for the same user', async () => {
+      mockDb.limit = vi.fn().mockResolvedValue([{ id: 'existing-1' }]);
+
+      await expect(
+        service.create(userId, {
+          normalizedName: 'Claude.ai',
+          expectedAmountCents: 20000,
+          frequency: 'annual',
+          categoryId: null,
+        }),
+      ).rejects.toThrow();
+    });
+  });
 
   describe('findAll', () => {
     it('returns bills ordered by nextExpectedDate for user', async () => {

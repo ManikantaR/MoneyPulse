@@ -309,6 +309,7 @@ export const billFrequencyEnum = z.enum([
   'weekly',
   'biweekly',
   'monthly',
+  'bimonthly',
   'quarterly',
   'semi_annual',
   'annual',
@@ -323,6 +324,17 @@ export const updateBillSchema = z.object({
 });
 
 export type UpdateBillInput = z.infer<typeof updateBillSchema>;
+
+/** Manual subscription/bill creation — user directly declares a recurring bill. */
+export const createBillSchema = z.object({
+  normalizedName: z.string().min(1).max(200),
+  expectedAmountCents: z.number().int().positive(),
+  frequency: billFrequencyEnum,
+  amountTolerancePercent: z.number().int().min(0).max(50).optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+});
+
+export type CreateBillInput = z.infer<typeof createBillSchema>;
 
 // ── Investment Accounts ──────────────────────────────────────
 

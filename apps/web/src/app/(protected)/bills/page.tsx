@@ -21,6 +21,7 @@ const FREQ_LABELS: Record<BillFrequency, string> = {
   weekly: 'Weekly',
   biweekly: 'Biweekly',
   monthly: 'Monthly',
+  bimonthly: 'Bimonthly',
   quarterly: 'Quarterly',
   semi_annual: 'Semi-annual',
   annual: 'Annual',

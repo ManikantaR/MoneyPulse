@@ -127,6 +127,7 @@ export type BillFrequency =
   | 'weekly'
   | 'biweekly'
   | 'monthly'
+  | 'bimonthly'
   | 'quarterly'
   | 'semi_annual'
   | 'annual';
