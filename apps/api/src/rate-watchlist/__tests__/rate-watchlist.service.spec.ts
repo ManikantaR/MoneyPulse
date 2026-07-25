@@ -9,6 +9,7 @@ vi.mock('drizzle-orm', () => ({
   eq: (col: any, val: any) => (row: any) => row[col] === val,
   and: (...preds: Array<(row: any) => boolean>) => (row: any) => preds.every((p) => p(row)),
   desc: (col: any) => col,
+  isNull: (col: any) => (row: any) => row[col] == null,
 }));
 
 vi.mock('../../db/schema', () => ({
@@ -21,6 +22,10 @@ vi.mock('../../db/schema', () => ({
   marketMetrics: {
     metricKey: 'metricKey',
     periodDate: 'periodDate',
+  },
+  users: {
+    id: 'id',
+    deletedAt: 'deletedAt',
   },
 }));
 
@@ -154,5 +159,49 @@ describe('RateWatchlistService', () => {
   it('falls back to the default staleness window when unset', () => {
     const service = new RateWatchlistService(makeFakeDb() as any, makeConfig());
     expect(service.getStaleDays()).toBe(45);
+  });
+});
+
+describe('RateWatchlistService — syncTreasuryRowsForAllUsers', () => {
+  it('syncs every active user and isolates one user\'s failure from the others', async () => {
+    const activeUserIds = ['user-a', 'user-b', 'user-c'];
+    const db: any = {
+      select: () => ({
+        from: () => ({
+          where: () => Promise.resolve(activeUserIds.map((id) => ({ id }))),
+        }),
+      }),
+    };
+    const service = new RateWatchlistService(db, makeConfig());
+    const spy = vi
+      .spyOn(service, 'syncTreasuryRows')
+      .mockImplementationOnce(() => Promise.resolve({ synced: 4 }))
+      .mockImplementationOnce(() => Promise.reject(new Error('synthetic failure')))
+      .mockImplementationOnce(() => Promise.resolve({ synced: 4 }));
+
+    const result = await service.syncTreasuryRowsForAllUsers();
+
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(spy.mock.calls.map((c) => c[0])).toEqual(activeUserIds);
+    // Only the 2 users whose sync resolved are counted — the failed one is logged,
+    // not re-thrown, so it never blocks the remaining users' syncs.
+    expect(result.usersSynced).toBe(2);
+  });
+
+  it('is a no-op with usersSynced: 0 when there are no active users', async () => {
+    const db: any = {
+      select: () => ({
+        from: () => ({
+          where: () => Promise.resolve([]),
+        }),
+      }),
+    };
+    const service = new RateWatchlistService(db, makeConfig());
+    const spy = vi.spyOn(service, 'syncTreasuryRows');
+
+    const result = await service.syncTreasuryRowsForAllUsers();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(result.usersSynced).toBe(0);
   });
 });

@@ -12,6 +12,7 @@ import { BillsModule } from '../bills/bills.module';
 import { LoansModule } from '../loans/loans.module';
 import { MarketDataModule } from '../market-data/market-data.module';
 import { RecommendationsModule } from '../recommendations/recommendations.module';
+import { RateWatchlistModule } from '../rate-watchlist/rate-watchlist.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { RecommendationsModule } from '../recommendations/recommendations.module
     LoansModule,
     MarketDataModule,
     RecommendationsModule,
+    RateWatchlistModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -204,11 +206,32 @@ export class JobsModule implements OnModuleInit {
       // 12.5 Cash Manager — monthly on the 2nd at 11:00 UTC (after the other monthly
       // market-joined sweeps above). Event-triggered re-runs (benchmark rate move
       // >=25bps, liquid-balance move >=20%) are fired ad hoc by the callers that detect
-      // those events via `alertsQueue.add('cash-manager-check', ...)`, not by a scheduler.
+      // those events via `alertsQueue.add('cash-manager-check', ...)`, not by a scheduler
+      // (see alert-cron.processor.ts's 'market-data-refresh'/'snapshot-all' cases).
       this.alertsQueue.upsertJobScheduler(
         'monthly-cash-manager-check',
         { pattern: '0 11 2 * *' },
         { name: 'cash-manager-check' },
+      ),
+
+      // 12.6 Investment Coach — monthly on the 1st at 10:00 UTC, after month-end so a
+      // full month of transaction data is settled (unlike the other monthly sweeps
+      // above, which run on the 2nd, this only needs settled transactions, not a
+      // market-data-adjacent join, so the 1st is fine).
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-investment-coach-check',
+        { pattern: '0 10 1 * *' },
+        { name: 'investment-coach-check' },
+      ),
+
+      // 12.7 Savings Coach — monthly on the 2nd at 11:30 UTC, after both the daily
+      // watchdog sweep (budget-pace-sweep, 7 AM UTC daily) has had a full month to
+      // produce price_creep/fee_detected observations, and after the other 2nd-of-month
+      // market-joined sweeps above so it doesn't collide with them.
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-savings-coach-check',
+        { pattern: '30 11 2 * *' },
+        { name: 'savings-coach-check' },
       ),
 
       // Frequent sync delivery sweep for outbox events.

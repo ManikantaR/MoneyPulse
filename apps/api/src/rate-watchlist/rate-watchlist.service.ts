@@ -1,8 +1,8 @@
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, isNull } from 'drizzle-orm';
 import { ConfigService } from '@nestjs/config';
 import { DATABASE_CONNECTION } from '../db/db.module';
-import { rateWatchlist, marketMetrics } from '../db/schema';
+import { rateWatchlist, marketMetrics, users } from '../db/schema';
 import {
   DEFAULT_WATCHLIST_STALE_DAYS,
   TREASURY_WATCHLIST_SERIES,
@@ -167,5 +167,30 @@ export class RateWatchlistService {
 
   getStaleDays(): number {
     return this.staleDays;
+  }
+
+  /**
+   * Runs `syncTreasuryRows` for every active user — called automatically right after
+   * `MarketDataService.refreshAll()` (daily market-data-refresh cron) so Treasury rows
+   * in the watchlist stay current without anyone needing to hit `POST
+   * /rate-watchlist/sync-treasury` by hand. One user's failure must never block the
+   * others, mirroring the recommendation agents' per-user isolation.
+   */
+  async syncTreasuryRowsForAllUsers(): Promise<{ usersSynced: number }> {
+    const activeUsers = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(isNull(users.deletedAt));
+
+    let usersSynced = 0;
+    for (const user of activeUsers) {
+      try {
+        await this.syncTreasuryRows(user.id);
+        usersSynced += 1;
+      } catch (err: any) {
+        this.logger.error(`Treasury watchlist sync failed for user ${user.id}: ${err.message}`, err.stack);
+      }
+    }
+    return { usersSynced };
   }
 }

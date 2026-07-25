@@ -1,5 +1,5 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -19,6 +19,15 @@ const INTEREST_PATTERNS = ['INTEREST PAID', 'INTEREST PAYMENT', 'DIVIDEND'];
  * nagged twice for the same underlying "cash looks idle" signal — the detector is
  * the cheap monthly observation, this agent is the full placement recommendation. */
 const CASH_MANAGER_NOTIFICATION_TYPE = 'idle_cash';
+
+/** 3-month Treasury bill yield — the standard short-duration risk-free-rate
+ * benchmark, and one of `TREASURY_WATCHLIST_SERIES`'s own comparison points, so a
+ * benchmark move is inherently relevant to this agent's own recommendation inputs. */
+const BENCHMARK_RATE_METRIC_KEY = 'treasury_bill_13w';
+/** Manifest schedule: "benchmark-rate-move(>=25bps)". */
+const BENCHMARK_RATE_MOVE_THRESHOLD_BPS = 25;
+/** Manifest schedule: "liquid-balance-move(>=20%)". */
+const LIQUID_BALANCE_MOVE_THRESHOLD_PCT = 0.2;
 
 /**
  * 12.5 — Cash Manager agent. Gathers sanitized (no lastFour/account-number) inputs,
@@ -42,14 +51,92 @@ export class CashManagerService {
     return this.db.select({ id: schema.users.id }).from(schema.users).where(isNull(schema.users.deletedAt));
   }
 
-  async runForAllUsers(): Promise<void> {
-    for (const user of await this.activeUsers()) {
+  /** `userIds`, when given, restricts the run to those users (used by the event-triggered
+   * legs below); omitted/empty means "all active users" (the monthly scheduled leg). */
+  async runForAllUsers(userIds?: string[]): Promise<void> {
+    const targets =
+      userIds && userIds.length > 0
+        ? userIds.map((id) => ({ id }))
+        : await this.activeUsers();
+    for (const user of targets) {
       try {
         await this.runForUser(user.id);
       } catch (err: any) {
         this.logger.error(`Cash Manager run failed for user ${user.id}: ${err.message}`, err.stack);
       }
     }
+  }
+
+  /**
+   * Event trigger leg 1 (manifest: "benchmark-rate-move(>=25bps)"). Only meaningful right
+   * after a market-data refresh actually wrote a new value for the benchmark series today
+   * — `refreshedMetricKeys` should be the `refreshed` list from that same
+   * `MarketDataService.refreshAll()` call, so a day where the series was merely *skipped*
+   * (already fetched, or upstream outage) never re-compares the same two rows and re-fires.
+   * Compares the two most recent stored values for the benchmark series; a straightforward
+   * latest-vs-previous comparison, no new detector framework.
+   */
+  async checkBenchmarkRateMove(refreshedMetricKeys: string[]): Promise<boolean> {
+    if (!refreshedMetricKeys.includes(BENCHMARK_RATE_METRIC_KEY)) return false;
+
+    const rows = await this.db
+      .select({ value: schema.marketMetrics.value, periodDate: schema.marketMetrics.periodDate })
+      .from(schema.marketMetrics)
+      .where(eq(schema.marketMetrics.metricKey, BENCHMARK_RATE_METRIC_KEY))
+      .orderBy(desc(schema.marketMetrics.periodDate))
+      .limit(2);
+    if (rows.length < 2) return false;
+
+    const [latest, previous] = rows;
+    const deltaBps = Math.round(Math.abs(Number(latest.value) - Number(previous.value)) * 100);
+    return deltaBps >= BENCHMARK_RATE_MOVE_THRESHOLD_BPS;
+  }
+
+  /**
+   * Event trigger leg 2 (manifest: "liquid-balance-move(>=20%)"). Compares each user's
+   * latest two liquid (checking+savings) balance snapshot totals — a straightforward
+   * latest-vs-previous comparison over `account_balance_snapshots`, reusing the same
+   * checking/savings account-type filter as `runForUser`'s own liquid-balance query.
+   * Users with fewer than two snapshot dates, or a zero/negative prior total (nothing
+   * to compute a meaningful percentage move against), are skipped rather than flagged.
+   */
+  async findUsersWithLiquidBalanceMove(): Promise<string[]> {
+    const rows = await this.db.execute(sql`
+      WITH liquid_accounts AS (
+        SELECT id, user_id FROM ${schema.accounts}
+        WHERE deleted_at IS NULL AND account_type IN ('checking', 'savings')
+      ),
+      by_date AS (
+        SELECT la.user_id, abs.snapshot_date, SUM(abs.balance_cents) AS total_cents
+        FROM ${schema.accountBalanceSnapshots} abs
+        JOIN liquid_accounts la ON la.id = abs.account_id
+        GROUP BY la.user_id, abs.snapshot_date
+      ),
+      ranked AS (
+        SELECT
+          user_id,
+          total_cents,
+          ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY snapshot_date DESC) AS rnk
+        FROM by_date
+      )
+      SELECT
+        user_id,
+        MAX(CASE WHEN rnk = 1 THEN total_cents END) AS latest_cents,
+        MAX(CASE WHEN rnk = 2 THEN total_cents END) AS prior_cents
+      FROM ranked
+      WHERE rnk <= 2
+      GROUP BY user_id
+    `);
+
+    const moved: string[] = [];
+    for (const r of rows.rows ?? rows) {
+      const priorCents = Number(r.prior_cents ?? 0);
+      const latestCents = Number(r.latest_cents ?? 0);
+      if (r.prior_cents === null || r.latest_cents === null || priorCents <= 0) continue;
+      const pctMove = Math.abs(latestCents - priorCents) / priorCents;
+      if (pctMove >= LIQUID_BALANCE_MOVE_THRESHOLD_PCT) moved.push(r.user_id);
+    }
+    return moved;
   }
 
   /** Trailing-12mo interest credits / avg balance, per checking+savings account —
