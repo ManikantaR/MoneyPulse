@@ -122,6 +122,11 @@ export class CashManagerService {
       WHERE account_id = ANY(${accountIds})
       ORDER BY account_id, snapshot_date DESC
     `);
+    // The query above is `DISTINCT ON (account_id)`, so Postgres guarantees at most one row
+    // per account_id (the most recent snapshot). Map construction is therefore safe — there is
+    // no later-row-wins ambiguity to worry about. If this query is ever changed to return
+    // multiple snapshot rows per account, this Map.set()-per-row approach would silently keep
+    // only the last-iterated row instead of summing; re-verify this invariant before doing so.
     const balanceByAccountId = new Map<string, number>(
       (balanceRows.rows ?? balanceRows).map((r: any) => [
         String(r.account_id),

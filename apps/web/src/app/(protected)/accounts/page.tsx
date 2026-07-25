@@ -41,6 +41,7 @@ export default function AccountsPage() {
     lastFour: '',
     startingBalanceCents: 0,
     creditLimitCents: null as number | null,
+    interestRatePercent: '',
   });
 
   const accounts = accountsData?.data ?? [];
@@ -57,12 +58,17 @@ export default function AccountsPage() {
   /** Handle form submission to create a new account. */
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    const isInterestBearing = INTEREST_BEARING_TYPES.includes(form.accountType);
     await createAccount.mutateAsync({
       ...form,
       startingBalanceCents: Math.round(form.startingBalanceCents * 100),
       creditLimitCents:
         form.accountType === 'credit_card' && form.creditLimitCents !== null
           ? Math.round(form.creditLimitCents * 100)
+          : null,
+      interestRateBps:
+        isInterestBearing && form.interestRatePercent.trim() !== ''
+          ? Math.round(parseFloat(form.interestRatePercent) * 100)
           : null,
     });
     setShowForm(false);
@@ -73,6 +79,7 @@ export default function AccountsPage() {
       lastFour: '',
       startingBalanceCents: 0,
       creditLimitCents: null,
+      interestRatePercent: '',
     });
   }
 
@@ -204,6 +211,20 @@ export default function AccountsPage() {
                   onChange={(e) =>
                     setForm({ ...form, creditLimitCents: e.target.value ? Number(e.target.value) : null })
                   }
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                />
+              </div>
+            )}
+            {INTEREST_BEARING_TYPES.includes(form.accountType) && (
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold">Interest Rate / APY (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.interestRatePercent}
+                  onChange={(e) => setForm({ ...form, interestRatePercent: e.target.value })}
+                  placeholder="e.g. 4.50"
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
                 />
               </div>
