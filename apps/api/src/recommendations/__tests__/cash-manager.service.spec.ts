@@ -7,8 +7,8 @@ import { RecommendationSuppressionService } from '../recommendation-suppression.
 // even if a future edit accidentally widens the select().
 const SYNTHETIC_LAST_FOUR = '4242';
 const accountsRows = [
-  { id: 'acct-1', nickname: 'Everyday Checking', lastFour: SYNTHETIC_LAST_FOUR },
-  { id: 'acct-2', nickname: 'Online Savings', lastFour: '9911' },
+  { id: 'acct-1', nickname: 'Everyday Checking', lastFour: SYNTHETIC_LAST_FOUR, interestRateBps: null },
+  { id: 'acct-2', nickname: 'Online Savings', lastFour: '9911', interestRateBps: null },
 ];
 
 function buildMockDb(opts: {
@@ -19,6 +19,8 @@ function buildMockDb(opts: {
   avgCents: number;
   watchlist: any[];
   usersRow?: any[];
+  accountsRows?: any[];
+  balanceRows?: any[];
 }) {
   let selectCall = 0;
   const db: any = {
@@ -29,7 +31,7 @@ function buildMockDb(opts: {
         from: () => ({
           where: (): any => {
             // 1st select = accounts, 3rd = watchlist (2nd is suitabilitySettings, chained)
-            if (call === 1) return Promise.resolve(accountsRows);
+            if (call === 1) return Promise.resolve(opts.accountsRows ?? accountsRows);
             if (call === 3) return Promise.resolve(opts.watchlist);
             return {
               orderBy: () => ({
@@ -43,7 +45,9 @@ function buildMockDb(opts: {
     }),
     execute: vi
       .fn()
-      .mockResolvedValueOnce([{ balance_cents: opts.balanceCents }]) // liquid balance
+      .mockResolvedValueOnce(
+        opts.balanceRows ?? [{ balance_cents: opts.balanceCents }],
+      ) // liquid balance
       .mockResolvedValueOnce([{ total_cents: opts.expenseCents * 3 }]) // trailing-3mo expense total
       .mockResolvedValueOnce([{ total_cents: opts.interestCents }]) // interest credits
       .mockResolvedValueOnce([{ avg_cents: opts.avgCents }]), // avg balance basis
@@ -246,5 +250,47 @@ describe('CashManagerService — decision-memory suppression', () => {
     expect(result.suppressed).toBe(true);
     expect(result.recommended).toBe(false);
     expect(notifications.createAndDispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe('CashManagerService — prefers account-level interest_rate_bps', () => {
+  it('uses the account-entered rate instead of the transaction heuristic when set', async () => {
+    // Savings account has a directly-entered 4.00% APY; the transaction-derived heuristic
+    // (interestCents/avgCents below) would compute a much lower ~25bps figure. The account's
+    // rate should win since it's a more direct signal.
+    const db = buildMockDb({
+      balanceCents: 22_000_00,
+      expenseCents: 200_000,
+      settings: [{ emergencyFundTargetMonths: 6, taxState: 'CA' }],
+      interestCents: 5_000, // would compute ~25bps if the heuristic were used
+      avgCents: 20_000_00,
+      accountsRows: [
+        { id: 'acct-2', nickname: 'Online Savings', lastFour: '9911', interestRateBps: 400 },
+      ],
+      balanceRows: [{ account_id: 'acct-2', balance_cents: 22_000_00 }],
+      watchlist: [
+        {
+          id: 'wl-1',
+          institution: 'Synthetic Bank',
+          productType: 'hysa',
+          apyBps: 700,
+          termMonths: null,
+          updatedAt: new Date('2026-07-10'),
+        },
+      ],
+    });
+    const notifications = buildNotifications();
+    const suppression = { checkAndSuppress: vi.fn().mockResolvedValue({ suppressed: false }) };
+
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+    await svc.runForUser('user-1');
+
+    // The spread between the 700bps watchlist candidate and the account's own 400bps rate
+    // (300bps) should drive the narration/evidence, not the heuristic's much wider spread
+    // (which would have used ~25bps as the current earned rate).
+    const payload = notifications.createAndDispatch.mock.calls[0]?.[0];
+    expect(payload).toBeDefined();
+    const serialized = JSON.stringify(payload);
+    expect(serialized).toContain('4.00');
   });
 });

@@ -78,6 +78,8 @@ export interface Account {
   lastFour: string;
   startingBalanceCents: number;
   creditLimitCents: number | null;
+  /** Basis points (e.g. 450 = 4.50% APY). Only meaningful for interest-bearing types. */
+  interestRateBps: number | null;
   createdAt: string;
   updatedAt: string;
 }

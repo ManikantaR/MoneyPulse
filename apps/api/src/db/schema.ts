@@ -236,6 +236,8 @@ export const accounts = pgTable('accounts', {
   lastFour: varchar('last_four', { length: 255 }).notNull(),
   startingBalanceCents: integer('starting_balance_cents').notNull().default(0),
   creditLimitCents: integer('credit_limit_cents'),
+  /** Basis points (e.g. 450 = 4.50% APY). Only meaningful for interest-bearing types (savings, cash_sweep, brokerage). */
+  interestRateBps: integer('interest_rate_bps'),
   csvFormatConfig: jsonb('csv_format_config'),
   expectedImportCadenceDays: integer('expected_import_cadence_days'),
   isDormant: boolean('is_dormant').notNull().default(false),

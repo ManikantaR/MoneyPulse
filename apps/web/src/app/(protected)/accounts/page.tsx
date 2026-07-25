@@ -1,12 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Landmark, Trash2, Pencil } from 'lucide-react';
-import { useAccounts, useCreateAccount, useDeleteAccount, useReconcileAccount } from '@/lib/hooks/useAccounts';
+import { Plus, Landmark, Trash2, Pencil, Settings } from 'lucide-react';
+import {
+  useAccounts,
+  useCreateAccount,
+  useDeleteAccount,
+  useReconcileAccount,
+  useUpdateAccount,
+} from '@/lib/hooks/useAccounts';
 import { formatCents } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { BankLogo } from '@/components/BankLogo';
-import type { Institution, AccountType } from '@moneypulse/shared';
+import type { Account, Institution, AccountType } from '@moneypulse/shared';
+
+/** Account types that can carry an interest rate. */
+const INTEREST_BEARING_TYPES: AccountType[] = ['savings', 'cash_sweep', 'brokerage'];
 
 /** Accounts page — view, create, and manage bank accounts. */
 export default function AccountsPage() {
@@ -14,10 +23,17 @@ export default function AccountsPage() {
   const createAccount = useCreateAccount();
   const deleteAccount = useDeleteAccount();
   const reconcileAccount = useReconcileAccount();
+  const updateAccount = useUpdateAccount();
   const [showForm, setShowForm] = useState(false);
   const [reconcileTarget, setReconcileTarget] = useState<{ id: string; nickname: string; accountType: string } | null>(null);
   const [reconcileAmount, setReconcileAmount] = useState('');
   const [reconcileMsg, setReconcileMsg] = useState('');
+  const [editTarget, setEditTarget] = useState<Account | null>(null);
+  const [editForm, setEditForm] = useState({
+    nickname: '',
+    accountType: 'checking' as AccountType,
+    interestRatePercent: '',
+  });
   const [form, setForm] = useState({
     institution: 'boa' as Institution,
     accountType: 'checking' as AccountType,
@@ -25,6 +41,7 @@ export default function AccountsPage() {
     lastFour: '',
     startingBalanceCents: 0,
     creditLimitCents: null as number | null,
+    interestRatePercent: '',
   });
 
   const accounts = accountsData?.data ?? [];
@@ -41,12 +58,17 @@ export default function AccountsPage() {
   /** Handle form submission to create a new account. */
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    const isInterestBearing = INTEREST_BEARING_TYPES.includes(form.accountType);
     await createAccount.mutateAsync({
       ...form,
       startingBalanceCents: Math.round(form.startingBalanceCents * 100),
       creditLimitCents:
         form.accountType === 'credit_card' && form.creditLimitCents !== null
           ? Math.round(form.creditLimitCents * 100)
+          : null,
+      interestRateBps:
+        isInterestBearing && form.interestRatePercent.trim() !== ''
+          ? Math.round(parseFloat(form.interestRatePercent) * 100)
           : null,
     });
     setShowForm(false);
@@ -57,7 +79,37 @@ export default function AccountsPage() {
       lastFour: '',
       startingBalanceCents: 0,
       creditLimitCents: null,
+      interestRatePercent: '',
     });
+  }
+
+  /** Open the edit modal, pre-filling from the selected account. */
+  function openEdit(account: Account) {
+    setEditTarget(account);
+    setEditForm({
+      nickname: account.nickname,
+      accountType: account.accountType,
+      interestRatePercent:
+        account.interestRateBps != null ? (account.interestRateBps / 100).toString() : '',
+    });
+  }
+
+  /** Handle form submission to update an existing account's nickname/type/interest rate. */
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget) return;
+    const isInterestBearing = INTEREST_BEARING_TYPES.includes(editForm.accountType);
+    const interestRateBps =
+      isInterestBearing && editForm.interestRatePercent.trim() !== ''
+        ? Math.round(parseFloat(editForm.interestRatePercent) * 100)
+        : null;
+    await updateAccount.mutateAsync({
+      id: editTarget.id,
+      nickname: editForm.nickname,
+      accountType: editForm.accountType,
+      interestRateBps,
+    });
+    setEditTarget(null);
   }
 
   return (
@@ -163,6 +215,20 @@ export default function AccountsPage() {
                 />
               </div>
             )}
+            {INTEREST_BEARING_TYPES.includes(form.accountType) && (
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold">Interest Rate / APY (%)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.interestRatePercent}
+                  onChange={(e) => setForm({ ...form, interestRatePercent: e.target.value })}
+                  placeholder="e.g. 4.50"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                />
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
             <button
@@ -224,6 +290,14 @@ export default function AccountsPage() {
                   </div>
                   <div className="flex items-center gap-1">
                     <button
+                      onClick={() => openEdit(account)}
+                      className="rounded-full p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--primary)] transition-colors"
+                      aria-label="Edit account"
+                      title="Edit nickname, type, or interest rate"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </button>
+                    <button
                       onClick={() => {
                         setReconcileTarget({
                           id: account.id,
@@ -258,6 +332,11 @@ export default function AccountsPage() {
                 {account.creditLimitCents && (
                   <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                     Limit: {formatCents(account.creditLimitCents)}
+                  </p>
+                )}
+                {account.interestRateBps != null && (
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    APY: {(account.interestRateBps / 100).toFixed(2)}%
                   </p>
                 )}
                 {/* Bottom accent bar */}
@@ -338,6 +417,75 @@ export default function AccountsPage() {
               {reconcileMsg && (
                 <p className="text-sm text-green-600 dark:text-green-400">{reconcileMsg}</p>
               )}
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Modal */}
+      {editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-xl">
+            <h2 className="text-lg font-semibold mb-4">Edit Account</h2>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold">Nickname</label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.nickname}
+                  onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })}
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold">Account Type</label>
+                <select
+                  value={editForm.accountType}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, accountType: e.target.value as AccountType })
+                  }
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                >
+                  <option value="checking">Checking</option>
+                  <option value="savings">Savings</option>
+                  <option value="credit_card">Credit Card</option>
+                  <option value="edu_529">529 Education Savings</option>
+                  <option value="brokerage">Brokerage / Index Fund</option>
+                  <option value="cash_sweep">Cash Sweep (interest-bearing)</option>
+                </select>
+              </div>
+              {INTEREST_BEARING_TYPES.includes(editForm.accountType) && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold">Interest Rate / APY (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editForm.interestRatePercent}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, interestRatePercent: e.target.value })
+                    }
+                    placeholder="e.g. 4.50"
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                  />
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditTarget(null)}
+                  className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--muted)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateAccount.isPending}
+                  className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+                >
+                  {updateAccount.isPending ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
