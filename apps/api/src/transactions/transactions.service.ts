@@ -174,6 +174,19 @@ export class TransactionsService {
     }
     if (query.isCredit !== undefined) {
       conditions.push(eq(schema.transactions.isCredit, query.isCredit));
+      if (query.isCredit) {
+        // Credit-card statement credits (e.g. Amex Dining/Dunkin' Credit) are a
+        // partial refund of prior spend, not income — matches the income
+        // definition used by analytics.service.ts's income_cents aggregates.
+        // Without this, the "Total Income" drill-down (isCredit=true) lists
+        // them as income even though the KPI total above it already excludes them.
+        conditions.push(
+          sql`${schema.transactions.accountId} IN (
+            SELECT id FROM ${schema.accounts}
+            WHERE account_type IS NULL OR account_type != 'credit_card'
+          )`,
+        );
+      }
     }
     if (query.excludeTransfers) {
       conditions.push(
