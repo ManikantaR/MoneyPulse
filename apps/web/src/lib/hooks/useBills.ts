@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import type { RecurringBill, UpdateBillInput } from '@moneypulse/shared';
+import type { RecurringBill, UpdateBillInput, CreateBillInput } from '@moneypulse/shared';
 
 /** Fetch all recurring bills for the current user. */
 export function useBills() {
@@ -17,6 +17,19 @@ export function useUpcomingBills() {
   return useQuery({
     queryKey: ['bills', 'upcoming'],
     queryFn: () => api.get<{ data: RecurringBill[] }>('/bills/upcoming'),
+  });
+}
+
+/** Manually declare a recurring bill/subscription. */
+export function useCreateBill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateBillInput) =>
+      api.post<{ data: RecurringBill }>('/bills', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bills'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+    },
   });
 }
 

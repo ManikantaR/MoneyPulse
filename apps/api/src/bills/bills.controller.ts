@@ -15,8 +15,8 @@ import { BillsService } from './bills.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { updateBillSchema } from '@moneypulse/shared';
-import type { AuthTokenPayload, UpdateBillInput } from '@moneypulse/shared';
+import { updateBillSchema, createBillSchema } from '@moneypulse/shared';
+import type { AuthTokenPayload, UpdateBillInput, CreateBillInput } from '@moneypulse/shared';
 
 @ApiTags('Bills')
 @Controller('bills')
@@ -35,6 +35,17 @@ export class BillsController {
   @ApiOperation({ summary: 'Bills due within the next 7 days (for dashboard)' })
   async upcoming(@CurrentUser() user: AuthTokenPayload) {
     const data = await this.billsService.findUpcoming(user.sub, 7);
+    return { data };
+  }
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Manually declare a recurring bill/subscription' })
+  async create(
+    @Body(new ZodValidationPipe(createBillSchema)) body: CreateBillInput,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.billsService.create(user.sub, body);
     return { data };
   }
 

@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Repeat, TrendingUp, AlertTriangle, Pencil, Ban, Trash2, Merge, X, Check } from 'lucide-react';
+import { Repeat, TrendingUp, AlertTriangle, Pencil, Ban, Trash2, Merge, X, Check, Plus } from 'lucide-react';
 import { formatCents } from '@/lib/format';
 import { useSubscriptions } from '@/lib/hooks/useSubscriptions';
 import { useCategories } from '@/lib/hooks/useCategories';
 import {
   useBills,
+  useCreateBill,
   useUpdateBill,
   useDeactivateBill,
   useDeleteBill,
@@ -21,6 +22,7 @@ const FREQ_LABELS: Record<BillFrequency, string> = {
   weekly: 'Weekly',
   biweekly: 'Biweekly',
   monthly: 'Monthly',
+  bimonthly: 'Bimonthly',
   quarterly: 'Quarterly',
   semi_annual: 'Semi-annual',
   annual: 'Annual',
@@ -139,6 +141,109 @@ function EditSubscriptionForm({
       >
         <X className="h-4 w-4" />
       </button>
+    </div>
+  );
+}
+
+function AddSubscriptionForm({
+  categories,
+  onDone,
+  onCancel,
+}: {
+  categories: Array<{ id: string; name: string }>;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const createBill = useCreateBill();
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [frequency, setFrequency] = useState<BillFrequency>('annual');
+  const [categoryId, setCategoryId] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setError(null);
+    const cents = Math.round(parseFloat(amount) * 100);
+    if (!name.trim()) {
+      setError('Name is required.');
+      return;
+    }
+    if (!Number.isFinite(cents) || cents <= 0) {
+      setError('Enter a valid amount.');
+      return;
+    }
+    try {
+      await createBill.mutateAsync({
+        normalizedName: name.trim(),
+        expectedAmountCents: cents,
+        frequency,
+        categoryId: categoryId || null,
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not add subscription.');
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Plus className="h-4 w-4 text-[var(--primary)]" />
+        <span className="text-sm font-semibold">Add a subscription</span>
+      </div>
+      <div className="flex flex-1 flex-wrap items-center gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="min-w-[10rem] flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+          placeholder="Name (e.g. Claude.ai)"
+        />
+        <input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          inputMode="decimal"
+          className="w-24 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+          placeholder="Amount"
+        />
+        <select
+          value={frequency}
+          onChange={(e) => setFrequency(e.target.value as BillFrequency)}
+          className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+        >
+          {FREQ_OPTIONS.map((f) => (
+            <option key={f} value={f}>
+              {FREQ_LABELS[f]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+        >
+          <option value="">Uncategorized</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={handleSave}
+          disabled={createBill.isPending}
+          className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-50"
+        >
+          {createBill.isPending ? 'Adding…' : 'Add'}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={createBill.isPending}
+          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm font-semibold hover:bg-[var(--muted)] disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
     </div>
   );
 }
@@ -370,6 +475,7 @@ export default function SubscriptionsPage() {
   const { data: billsData, isLoading: isBillsLoading } = useBills();
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isAdding, setIsAdding] = useState(false);
 
   const subs = data?.data ?? [];
   const categories = categoriesData?.data ?? [];
@@ -411,13 +517,31 @@ export default function SubscriptionsPage() {
           <Repeat className="h-6 w-6 text-[var(--primary)]" />
           <h1 className="text-2xl font-bold">Subscriptions</h1>
         </div>
-        <Link
-          href="/bills"
-          className="text-sm text-[var(--primary)] hover:underline"
-        >
-          Manage bills →
-        </Link>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setIsAdding((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            Add subscription
+          </button>
+          <Link
+            href="/bills"
+            className="text-sm text-[var(--primary)] hover:underline"
+          >
+            Manage bills →
+          </Link>
+        </div>
       </div>
+
+      {/* Manual add form */}
+      {isAdding && (
+        <AddSubscriptionForm
+          categories={categories}
+          onDone={() => setIsAdding(false)}
+          onCancel={() => setIsAdding(false)}
+        />
+      )}
 
       {/* Summary bar */}
       <div className="grid gap-4 sm:grid-cols-3">
