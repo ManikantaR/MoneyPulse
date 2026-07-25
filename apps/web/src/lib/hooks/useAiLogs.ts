@@ -19,6 +19,8 @@ export interface AiLogEntry {
   pii_detected: boolean;
   pii_types_found: string[];
   created_at: string;
+  /** Estimated cost in USD cents, computed from the price table at read time. */
+  cost_cents: number;
 }
 
 export interface AiModelStats {
@@ -30,6 +32,10 @@ export interface AiModelStats {
   total_transactions: number;
   total_categorized: number;
   pii_detections: number;
+  total_tokens_in: number | null;
+  total_tokens_out: number | null;
+  /** Estimated total cost in USD cents for this prompt_type+model group. */
+  total_cost_cents: number;
   first_call: string;
   last_call: string;
 }

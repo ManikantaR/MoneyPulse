@@ -17,8 +17,19 @@ import {
   AlertTriangle,
   CheckCircle2,
   Zap,
+  DollarSign,
 } from 'lucide-react';
 import { MobileCard } from '@/components/MobileCard';
+
+/** Format a cents figure (may be fractional) as a USD string, e.g. "$0.0032". */
+function formatCents(cents: number): string {
+  const dollars = cents / 100;
+  if (dollars === 0) return '$0.00';
+  // Small AI costs are often fractions of a cent-in-dollars; show enough
+  // precision to be meaningful instead of always rounding to "$0.00".
+  const decimals = dollars < 0.01 ? 4 : 2;
+  return `$${dollars.toFixed(decimals)}`;
+}
 
 function StatCard({
   label,
@@ -132,6 +143,10 @@ function LogRow({ log }: { log: AiLogEntry }) {
               <p className="text-[var(--muted-foreground)]">Categorized</p>
               <p className="font-medium">{log.categories_assigned ?? '—'}</p>
             </div>
+            <div>
+              <p className="text-[var(--muted-foreground)]">Est. Cost</p>
+              <p className="font-medium">{formatCents(log.cost_cents ?? 0)}</p>
+            </div>
           </div>
           {log.pii_detected && log.pii_types_found.length > 0 && (
             <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
@@ -206,6 +221,7 @@ export default function AiLogsPage() {
         )
       : 0;
   const totalPii = stats.reduce((s, r) => s + (r.pii_detections ?? 0), 0);
+  const totalCostCents = stats.reduce((s, r) => s + (r.total_cost_cents ?? 0), 0);
   const avgConf =
     stats.length > 0
       ? stats
@@ -258,6 +274,12 @@ export default function AiLogsPage() {
           icon={ShieldAlert}
           variant={totalPii > 0 ? 'danger' : 'default'}
         />
+        <StatCard
+          label="Est. Total Cost"
+          value={statsLoading ? '—' : formatCents(totalCostCents)}
+          sub="Cloud model cost estimate ($0 for local/Ollama)"
+          icon={DollarSign}
+        />
       </div>
 
       {/* Model Performance Table */}
@@ -288,6 +310,7 @@ export default function AiLogsPage() {
                   <th className="px-5 py-2 font-medium text-right">
                     PII Hits
                   </th>
+                  <th className="px-5 py-2 font-medium text-right">Cost</th>
                   <th className="px-5 py-2 font-medium">Last Used</th>
                 </tr>
               </thead>
@@ -335,6 +358,9 @@ export default function AiLogsPage() {
                         </span>
                       )}
                     </td>
+                    <td className="px-5 py-2 text-right font-mono text-xs">
+                      {formatCents(row.total_cost_cents ?? 0)}
+                    </td>
                     <td className="px-5 py-2 text-xs text-[var(--muted-foreground)]">
                       {row.last_call
                         ? new Date(row.last_call).toLocaleDateString()
@@ -381,6 +407,10 @@ export default function AiLogsPage() {
                     value: row.pii_detections > 0
                       ? String(row.pii_detections)
                       : '0',
+                  },
+                  {
+                    label: 'Cost',
+                    value: formatCents(row.total_cost_cents ?? 0),
                   },
                   {
                     label: 'Last Used',
