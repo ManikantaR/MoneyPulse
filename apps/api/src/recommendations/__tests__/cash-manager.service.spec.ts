@@ -97,6 +97,117 @@ describe('CashManagerService — no-credentials leak', () => {
   });
 });
 
+describe('CashManagerService — benchmark-rate-move event trigger', () => {
+  const notifications = buildNotifications();
+  const suppression = { checkAndSuppress: vi.fn() };
+
+  it('returns false when the benchmark series was not among today\'s refreshed metrics', async () => {
+    const db: any = { execute: vi.fn() };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    const moved = await svc.checkBenchmarkRateMove(['gas_retail_regular']);
+
+    expect(moved).toBe(false);
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns false when fewer than two stored values exist for the benchmark series', async () => {
+    const db: any = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            orderBy: () => ({ limit: () => Promise.resolve([{ value: '4.50', periodDate: '2026-07-24' }]) }),
+          }),
+        }),
+      }),
+    };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    const moved = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
+
+    expect(moved).toBe(false);
+  });
+
+  it('returns true when the latest-vs-previous delta is >= 25bps', async () => {
+    const db: any = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            orderBy: () => ({
+              limit: () =>
+                Promise.resolve([
+                  { value: '4.75', periodDate: '2026-07-24' },
+                  { value: '4.50', periodDate: '2026-07-23' },
+                ]),
+            }),
+          }),
+        }),
+      }),
+    };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    const moved = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
+
+    expect(moved).toBe(true);
+  });
+
+  it('returns false when the delta is below the 25bps threshold', async () => {
+    const db: any = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            orderBy: () => ({
+              limit: () =>
+                Promise.resolve([
+                  { value: '4.55', periodDate: '2026-07-24' },
+                  { value: '4.50', periodDate: '2026-07-23' },
+                ]),
+            }),
+          }),
+        }),
+      }),
+    };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    const moved = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
+
+    expect(moved).toBe(false);
+  });
+});
+
+describe('CashManagerService — liquid-balance-move event trigger', () => {
+  const notifications = buildNotifications();
+  const suppression = { checkAndSuppress: vi.fn() };
+
+  it('flags a user whose latest-vs-prior liquid balance moved >= 20%', async () => {
+    const db: any = {
+      execute: vi.fn().mockResolvedValue([
+        { user_id: 'user-moved', latest_cents: 12_000_00, prior_cents: 10_000_00 }, // +20%
+        { user_id: 'user-stable', latest_cents: 10_050_00, prior_cents: 10_000_00 }, // +0.5%
+        { user_id: 'user-new', latest_cents: 5_000_00, prior_cents: 0 }, // no meaningful prior
+      ]),
+    };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    const moved = await svc.findUsersWithLiquidBalanceMove();
+
+    expect(moved).toEqual(['user-moved']);
+  });
+
+  it('returns an empty list when no user crosses the threshold', async () => {
+    const db: any = {
+      execute: vi.fn().mockResolvedValue([
+        { user_id: 'user-a', latest_cents: 10_100_00, prior_cents: 10_000_00 },
+      ]),
+    };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    const moved = await svc.findUsersWithLiquidBalanceMove();
+
+    expect(moved).toEqual([]);
+  });
+});
+
 describe('CashManagerService — decision-memory suppression', () => {
   it('respects a prior rejected/not_applicable decision until inputs change materially', async () => {
     const db = buildMockDb({
