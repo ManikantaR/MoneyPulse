@@ -29,6 +29,7 @@
 | 10 | In Progress | Feature enhancements: receipt OCR, recurring bills, anomaly alerts | [PHASE10-FEATURES-SPEC.md](PHASE10-FEATURES-SPEC.md) | Partial — some features sync to web |
 | 11 | In Progress | Financial awareness: insights feed, daily brief, watchdog detectors, EIA/FRED market data, proactive advisor, semantic search | [PHASE11-AWARENESS-SPEC.md](PHASE11-AWARENESS-SPEC.md) | None (Web Push, not Firestore) |
 | 12 | Planned | Advisory agents: recommendation + decision memory, holdings & prices, Treasury/rate watchlist, Cash Manager, Investment Coach, Savings Coach | [PHASE12-ADVISORY-SPEC.md](PHASE12-ADVISORY-SPEC.md) | None |
+| 13 | Planned | Monthly Close: editable household financial-health sheet, manual assets, loan balance overrides, ratios, 6/12 month health view | [PHASE13-MONTHLY-CLOSE-SPEC.md](PHASE13-MONTHLY-CLOSE-SPEC.md) | None |
 
 ## Notes
 
