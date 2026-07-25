@@ -17,9 +17,10 @@ import { CategorizationModule } from '../categorization/categorization.module';
 import { BillsModule } from '../bills/bills.module';
 import { LoansModule } from '../loans/loans.module';
 import { MarketDataModule } from '../market-data/market-data.module';
+import { AiLogsModule } from '../ai-logs/ai-logs.module';
 
 @Module({
-  imports: [NotificationsModule, CategorizationModule, BillsModule, LoansModule, MarketDataModule],
+  imports: [NotificationsModule, CategorizationModule, BillsModule, LoansModule, MarketDataModule, AiLogsModule],
   providers: [AnalyticsService, AnomalyDetectorService, DigestService, BriefService, BalanceSnapshotService, ForecastService, AccountFreshnessService, FreshnessDetectorService, WatchdogDetectorService, MarketInsightDetectorService, BudgetPlanService],
   controllers: [AnalyticsController, DigestController],
   exports: [AnalyticsService, AnomalyDetectorService, DigestService, BriefService, BalanceSnapshotService, ForecastService, AccountFreshnessService, FreshnessDetectorService, WatchdogDetectorService, MarketInsightDetectorService, BudgetPlanService],

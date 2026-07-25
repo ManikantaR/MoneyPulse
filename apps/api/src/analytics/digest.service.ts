@@ -5,6 +5,7 @@ import { sql, eq } from 'drizzle-orm';
 import { ConfigService } from '@nestjs/config';
 import { OllamaHealthService } from '../categorization/ollama-health.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AiLogsService } from '../ai-logs/ai-logs.service';
 import type { DigestPeriod } from '@moneypulse/shared';
 
 interface DigestSection {
@@ -53,6 +54,7 @@ export class DigestService {
     private readonly config: ConfigService,
     private readonly ollamaHealth: OllamaHealthService,
     private readonly notificationsService: NotificationsService,
+    private readonly aiLogs: AiLogsService,
   ) {
     this.ollamaUrl = this.config.get<string>('OLLAMA_URL', 'http://localhost:11434');
     this.ollamaModel = this.config.get<string>('OLLAMA_MODEL', 'llama3.2');
@@ -357,6 +359,7 @@ Return ONLY valid JSON with two fields:
   "voiceSummary": "one concise sentence (under 20 words) for a voice assistant announcement"
 }`;
 
+    const startMs = Date.now();
     try {
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
         method: 'POST',
@@ -373,7 +376,11 @@ Return ONLY valid JSON with two fields:
       clearTimeout(timeout);
       if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
 
-      const data = (await response.json()) as { response: string };
+      const data = (await response.json()) as {
+        response: string;
+        prompt_eval_count?: number;
+        eval_count?: number;
+      };
       const raw = data.response ?? '';
       const match = raw.match(/\{[\s\S]*\}/);
       if (!match) throw new Error('No JSON in Ollama response');
@@ -381,9 +388,42 @@ Return ONLY valid JSON with two fields:
       const parsed = JSON.parse(match[0]) as { message?: string; voiceSummary?: string };
       if (!parsed.message || !parsed.voiceSummary) throw new Error('Missing fields in Ollama JSON');
 
+      this.logPrompt(
+        prompt,
+        raw,
+        startMs,
+        data.prompt_eval_count,
+        data.eval_count,
+      );
       return { message: parsed.message, voiceSummary: parsed.voiceSummary };
+    } catch (err) {
+      this.logPrompt(prompt, null, startMs);
+      throw err;
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  /** Fire-and-forget: log this Ollama digest-narrative call for observability. */
+  private logPrompt(
+    inputText: string,
+    outputText: string | null,
+    startMs: number,
+    tokenCountIn?: number,
+    tokenCountOut?: number,
+  ) {
+    this.aiLogs
+      .create({
+        promptType: 'advisor',
+        model: this.ollamaModel,
+        inputText,
+        outputText: outputText ?? undefined,
+        tokenCountIn,
+        tokenCountOut,
+        latencyMs: Date.now() - startMs,
+        piiDetected: false,
+        piiTypesFound: [],
+      })
+      .catch((err) => this.logger.warn(`Failed to log AI prompt: ${err.message}`));
   }
 }

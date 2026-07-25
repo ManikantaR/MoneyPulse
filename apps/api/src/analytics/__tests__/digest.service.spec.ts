@@ -31,12 +31,17 @@ const mockNotifications = {
   createAndDispatch: vi.fn().mockResolvedValue({ id: 'notif-1' }),
 };
 
+const mockAiLogs = {
+  create: vi.fn().mockResolvedValue({ id: 1 }),
+};
+
 function makeService() {
   return new DigestService(
     mockDb as any,
     mockConfig as any,
     mockOllamaHealth as any,
     mockNotifications as any,
+    mockAiLogs as any,
   );
 }
 
@@ -117,6 +122,50 @@ describe('DigestService', () => {
       const result = await svc.buildDigest('user-1', 'daily');
 
       expect(result.voiceSummary).not.toBe('');
+    });
+
+    it('logs the Ollama narrative call to ai_prompt_logs when Ollama is available', async () => {
+      setDailyDbResponses();
+      mockOllamaHealth.isAvailable.mockResolvedValue(true);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            response: '{"message": "You spent $84 today.", "voiceSummary": "You spent $84 today."}',
+            prompt_eval_count: 120,
+            eval_count: 40,
+          }),
+        }),
+      );
+
+      const svc = makeService();
+      await svc.buildDigest('user-1', 'daily');
+
+      expect(mockAiLogs.create).toHaveBeenCalledTimes(1);
+      const dto = mockAiLogs.create.mock.calls[0][0];
+      expect(dto.promptType).toBe('advisor');
+      expect(dto.model).toBe('llama3.2');
+      expect(dto.tokenCountIn).toBe(120);
+      expect(dto.tokenCountOut).toBe(40);
+      expect(dto.piiDetected).toBe(false);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('still logs (with a null output) when the Ollama narrative call fails, then falls back to template', async () => {
+      setDailyDbResponses();
+      mockOllamaHealth.isAvailable.mockResolvedValue(true);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }));
+
+      const svc = makeService();
+      const result = await svc.buildDigest('user-1', 'daily');
+
+      expect(result.voiceSummary).not.toBe('');
+      expect(mockAiLogs.create).toHaveBeenCalledTimes(1);
+      expect(mockAiLogs.create.mock.calls[0][0].outputText).toBeUndefined();
+
+      vi.unstubAllGlobals();
     });
   });
 
