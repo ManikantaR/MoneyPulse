@@ -1,15 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { McpClientService } from './mcp-client.service';
 import { AiLogsService } from '../ai-logs/ai-logs.service';
-import { detectPiiTypes } from '../categorization/pii-sanitizer';
+import { detectPiiTypes, sanitizeText } from '../categorization/pii-sanitizer';
 import { AdvisorSettingsService } from './advisor-settings.service';
 import { LlmProviderFactory } from './llm/provider-factory';
 import type {
   LlmContentBlock,
   LlmMessage,
+  LlmProviderId,
   LlmTool,
   LlmTurnResult,
 } from './llm/types';
+
+/**
+ * Providers whose calls leave this box and go to a third-party cloud API.
+ * Only these get pre-flight PII redaction — a future local provider (e.g. Ollama,
+ * running on the NAS's own network) would not need it and shouldn't pay the cost.
+ */
+const CLOUD_PROVIDERS: ReadonlySet<LlmProviderId> = new Set(['anthropic', 'openai', 'google']);
 
 const MAX_TOKENS = 8192;
 /** Hard cap on tool-use round trips so a loop can't run away. */
@@ -93,6 +101,18 @@ export class AdvisorService {
     }
     const provider = this.factory.create(resolved.provider, resolved.apiKey);
 
+    // Pre-flight PII redaction: cloud-bound providers never see raw PII — neither in
+    // the current message nor in prior turns the client resends as conversation
+    // history (the browser keeps history client-side and replays it every request,
+    // so an unredacted earlier turn would otherwise leak again on every follow-up).
+    // Local providers (e.g. a future Ollama route on the NAS's own network) are
+    // exempt — the two-tier trust model only protects data that leaves the box.
+    const isCloud = CLOUD_PROVIDERS.has(resolved.provider);
+    const outboundMessage = isCloud ? sanitizeText(message) : message;
+    const outboundHistory: ChatTurn[] = isCloud
+      ? history.map((t) => ({ role: t.role, content: sanitizeText(t.content) }))
+      : history;
+
     const toolDefs = await this.mcp.listAdvisorTools(userId);
     const tools: LlmTool[] = toolDefs.map((t) => ({
       name: t.name,
@@ -101,8 +121,8 @@ export class AdvisorService {
     }));
 
     const messages: LlmMessage[] = [
-      ...history.map((t) => ({ role: t.role, content: t.content })),
-      { role: 'user', content: message },
+      ...outboundHistory.map((t) => ({ role: t.role, content: t.content })),
+      { role: 'user', content: outboundMessage },
     ];
 
     const system = buildSystemPrompt();
