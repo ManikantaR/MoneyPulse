@@ -101,12 +101,17 @@ export class AdvisorService {
     }
     const provider = this.factory.create(resolved.provider, resolved.apiKey);
 
-    // Pre-flight PII redaction: cloud-bound providers never see the raw message.
+    // Pre-flight PII redaction: cloud-bound providers never see raw PII — neither in
+    // the current message nor in prior turns the client resends as conversation
+    // history (the browser keeps history client-side and replays it every request,
+    // so an unredacted earlier turn would otherwise leak again on every follow-up).
     // Local providers (e.g. a future Ollama route on the NAS's own network) are
     // exempt — the two-tier trust model only protects data that leaves the box.
-    const outboundMessage = CLOUD_PROVIDERS.has(resolved.provider)
-      ? sanitizeText(message)
-      : message;
+    const isCloud = CLOUD_PROVIDERS.has(resolved.provider);
+    const outboundMessage = isCloud ? sanitizeText(message) : message;
+    const outboundHistory: ChatTurn[] = isCloud
+      ? history.map((t) => ({ role: t.role, content: sanitizeText(t.content) }))
+      : history;
 
     const toolDefs = await this.mcp.listAdvisorTools(userId);
     const tools: LlmTool[] = toolDefs.map((t) => ({
@@ -116,7 +121,7 @@ export class AdvisorService {
     }));
 
     const messages: LlmMessage[] = [
-      ...history.map((t) => ({ role: t.role, content: t.content })),
+      ...outboundHistory.map((t) => ({ role: t.role, content: t.content })),
       { role: 'user', content: outboundMessage },
     ];
 
