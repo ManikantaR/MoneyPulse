@@ -157,6 +157,54 @@ describe('AdvisorService', () => {
       expect(c.turnParams[0].model).toBe('gpt-4o');
     });
 
+    it('redacts PII from the message before it reaches the cloud provider', async () => {
+      ctx.turns.push(
+        makeTurn(['ok'], {
+          text: 'ok',
+          content: [{ type: 'text', text: 'ok' }],
+          toolCalls: [],
+          stopReason: 'end_turn',
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }),
+      );
+      const rawMessage = 'My SSN is 123-45-6789, email me at jane@example.com';
+      await collect(ctx.service.streamChat('u1', rawMessage));
+
+      // What the provider actually received must not contain the raw PII.
+      const sentMessages = ctx.turnParams[0].messages;
+      const sentUserContent = sentMessages[0].content;
+      expect(sentUserContent).not.toContain('123-45-6789');
+      expect(sentUserContent).not.toContain('jane@example.com');
+      expect(sentUserContent).toContain('[SSN]');
+      expect(sentUserContent).toContain('[EMAIL]');
+
+      // The audit log still records what PII types were caught.
+      const log = ctx.aiLogs.create.mock.calls[0][0];
+      expect(log.piiDetected).toBe(true);
+      expect(log.piiTypesFound).toEqual(expect.arrayContaining(['SSN', 'EMAIL']));
+    });
+
+    it('does not redact for a local (non-cloud) provider', async () => {
+      const c = build({
+        resolved: { provider: 'ollama', model: 'llama3.2', apiKey: '', keySource: 'env' },
+      });
+      c.turns.push(
+        makeTurn(['ok'], {
+          text: 'ok',
+          content: [{ type: 'text', text: 'ok' }],
+          toolCalls: [],
+          stopReason: 'end_turn',
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }),
+      );
+      const rawMessage = 'My SSN is 123-45-6789';
+      await collect(c.service.streamChat('u1', rawMessage));
+
+      const sentMessages = c.turnParams[0].messages;
+      const sentUserContent = sentMessages[0].content;
+      expect(sentUserContent).toBe(rawMessage);
+    });
+
     it('refuses without a tool call when nothing fits', async () => {
       ctx.turns.push(
         makeTurn(["I don't have a way to answer that from your data."], {

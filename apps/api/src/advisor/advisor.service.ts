@@ -1,15 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { McpClientService } from './mcp-client.service';
 import { AiLogsService } from '../ai-logs/ai-logs.service';
-import { detectPiiTypes } from '../categorization/pii-sanitizer';
+import { detectPiiTypes, sanitizeText } from '../categorization/pii-sanitizer';
 import { AdvisorSettingsService } from './advisor-settings.service';
 import { LlmProviderFactory } from './llm/provider-factory';
 import type {
   LlmContentBlock,
   LlmMessage,
+  LlmProviderId,
   LlmTool,
   LlmTurnResult,
 } from './llm/types';
+
+/**
+ * Providers whose calls leave this box and go to a third-party cloud API.
+ * Only these get pre-flight PII redaction — a future local provider (e.g. Ollama,
+ * running on the NAS's own network) would not need it and shouldn't pay the cost.
+ */
+const CLOUD_PROVIDERS: ReadonlySet<LlmProviderId> = new Set(['anthropic', 'openai', 'google']);
 
 const MAX_TOKENS = 8192;
 /** Hard cap on tool-use round trips so a loop can't run away. */
@@ -93,6 +101,13 @@ export class AdvisorService {
     }
     const provider = this.factory.create(resolved.provider, resolved.apiKey);
 
+    // Pre-flight PII redaction: cloud-bound providers never see the raw message.
+    // Local providers (e.g. a future Ollama route on the NAS's own network) are
+    // exempt — the two-tier trust model only protects data that leaves the box.
+    const outboundMessage = CLOUD_PROVIDERS.has(resolved.provider)
+      ? sanitizeText(message)
+      : message;
+
     const toolDefs = await this.mcp.listAdvisorTools(userId);
     const tools: LlmTool[] = toolDefs.map((t) => ({
       name: t.name,
@@ -102,7 +117,7 @@ export class AdvisorService {
 
     const messages: LlmMessage[] = [
       ...history.map((t) => ({ role: t.role, content: t.content })),
-      { role: 'user', content: message },
+      { role: 'user', content: outboundMessage },
     ];
 
     const system = buildSystemPrompt();
