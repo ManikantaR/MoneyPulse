@@ -45,6 +45,7 @@ function buildMockDb(opts: {
     }),
     execute: vi
       .fn()
+      .mockResolvedValueOnce([]) // rated investment accounts (none in these fixtures)
       .mockResolvedValueOnce(
         opts.balanceRows ?? [{ balance_cents: opts.balanceCents }],
       ) // liquid balance

@@ -211,6 +211,13 @@
       "when": 1784560700000,
       "tag": "0029_account_interest_rate",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784560800000,
+      "tag": "0030_investment_account_interest_rate",
+      "breakpoints": true
     }
   ]
 }

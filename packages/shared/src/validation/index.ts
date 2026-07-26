@@ -342,6 +342,10 @@ export const createInvestmentAccountSchema = z.object({
   institution: z.string().min(1).max(100),
   accountType: z.string().min(1).max(50),
   nickname: z.string().min(1).max(100),
+  /** Basis points (e.g. 335 = 3.35% APY) for a cash-equivalent position inside this
+   * account (money-market fund, cash sweep). Optional — most investment accounts
+   * (equities, index funds) have no meaningful "yield" to declare here. */
+  interestRateBps: z.int().min(0).max(100000).nullable().optional(),
 });
 
 export const updateInvestmentAccountSchema = createInvestmentAccountSchema.partial();

@@ -652,6 +652,11 @@ export const investmentAccounts = pgTable('investment_accounts', {
   institution: varchar('institution', { length: 100 }).notNull(),
   accountType: varchar('account_type', { length: 50 }).notNull(),
   nickname: varchar('nickname', { length: 100 }).notNull(),
+  /** Basis points (e.g. 335 = 3.35% APY). Optional — lets a cash-equivalent position inside
+   * a brokerage account (money-market fund, cash sweep) declare its own yield, the same way
+   * `accounts.interestRateBps` does for checking/savings. Only meaningful when the account's
+   * balance is effectively cash (see Cash Manager's use of this field). */
+  interestRateBps: integer('interest_rate_bps'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

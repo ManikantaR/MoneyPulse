@@ -34,6 +34,7 @@ export class InvestmentsService {
         ia.institution,
         ia.account_type,
         ia.nickname,
+        ia.interest_rate_bps,
         ia.created_at,
         ia.updated_at,
         ia.deleted_at,
@@ -57,6 +58,7 @@ export class InvestmentsService {
       institution: r.institution,
       accountType: r.account_type,
       nickname: r.nickname,
+      interestRateBps: r.interest_rate_bps != null ? Number(r.interest_rate_bps) : null,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       deletedAt: r.deleted_at ?? null,
@@ -76,6 +78,7 @@ export class InvestmentsService {
         institution: input.institution,
         accountType: input.accountType,
         nickname: input.nickname,
+        interestRateBps: input.interestRateBps ?? null,
       })
       .returning();
     const row = rows[0];

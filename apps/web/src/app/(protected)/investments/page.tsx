@@ -36,6 +36,7 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
     nickname: '',
     institution: '',
     accountType: '401k',
+    cashYieldPercent: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -43,6 +44,10 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
     const e: Record<string, string> = {};
     if (!form.nickname.trim()) e.nickname = 'Nickname is required';
     if (!form.institution.trim()) e.institution = 'Institution is required';
+    if (form.cashYieldPercent.trim()) {
+      const pct = Number(form.cashYieldPercent);
+      if (!Number.isFinite(pct) || pct < 0) e.cashYieldPercent = 'Enter a valid percentage';
+    }
     return e;
   }
 
@@ -51,8 +56,14 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
+    const trimmedYield = form.cashYieldPercent.trim();
     create.mutate(
-      { nickname: form.nickname.trim(), institution: form.institution.trim(), accountType: form.accountType },
+      {
+        nickname: form.nickname.trim(),
+        institution: form.institution.trim(),
+        accountType: form.accountType,
+        interestRateBps: trimmedYield ? Math.round(Number(trimmedYield) * 100) : undefined,
+      },
       {
         onSuccess: () => {
           toast.success('Account added');
@@ -110,6 +121,27 @@ function AddAccountModal({ onClose }: { onClose: () => void }) {
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold">Cash yield % (optional)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={form.cashYieldPercent}
+              onChange={(e) => setForm({ ...form, cashYieldPercent: e.target.value })}
+              placeholder="e.g. 3.66 for a money-market fund or cash sweep"
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+            />
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+              Only set this if the account&apos;s balance is effectively cash (money-market fund,
+              cash sweep) — Cash Manager uses it to compare against your other liquid balances.
+            </p>
+            {errors.cashYieldPercent && (
+              <p className="mt-1 text-xs text-red-500">{errors.cashYieldPercent}</p>
+            )}
           </div>
 
           <div className="flex gap-3 pt-1">
