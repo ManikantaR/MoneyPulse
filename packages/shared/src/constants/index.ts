@@ -453,3 +453,43 @@ export const MARKET_INSIGHT_THRESHOLDS = {
   /** Gas dip note: min week-over-week % move in state gas price to fire a brief update. */
   GAS_WOW_PERCENT: 3,
 } as const;
+
+// ── Monthly Close: target bands & calculation version (13.1) ────
+// Bands are expressed in basis points (1% = 100 bps) to match the *_bps columns on
+// monthly_financial_snapshots — never floats for ratios. All bands are inclusive of
+// their lower bound and exclusive of their upper bound. Defaults per
+// specs/PHASE13-MONTHLY-CLOSE-SPEC.md, as narrowed by epic #158 decision #10
+// (single expense-ratio band for v1 — no fixed/variable split yet).
+
+/** Liquid assets / net worth. Green band centered on a 30% default target. */
+export const LIQUID_NET_WORTH_RATIO_TARGET_BPS = {
+  DEFAULT_TARGET_BPS: 3000,
+  GREEN_MIN_BPS: 2500,
+  GREEN_MAX_BPS: 3500,
+  YELLOW_LOW_MIN_BPS: 1500,
+  YELLOW_HIGH_MAX_BPS: 4500,
+  RED_MAX_BPS: 1500,
+} as const;
+
+/** Total liabilities / total assets. */
+export const DEBT_ASSET_RATIO_TARGET_BPS = {
+  GREEN_MAX_BPS: 2500,
+  YELLOW_MAX_BPS: 4000,
+} as const;
+
+/** Required monthly debt payments / take-home income. */
+export const DEBT_PAYMENT_INCOME_RATIO_TARGET_BPS = {
+  GREEN_MAX_BPS: 2500,
+  YELLOW_MAX_BPS: 3500,
+} as const;
+
+/** Expenses / take-home income. Single band for v1 (decision #10). */
+export const EXPENSE_RATIO_TARGET_BPS = {
+  GREEN_MAX_BPS: 6000,
+  YELLOW_MAX_BPS: 7500,
+} as const;
+
+/** Bumped whenever the monthly-close aggregate/ratio calculation logic changes, so
+ *  a frozen snapshot can be compared against the version that produced it (same
+ *  convention as the recommendation-engine `*_CALCULATION_VERSION` constants). */
+export const MONTHLY_CLOSE_CALCULATION_VERSION = 'monthly-close-v1';

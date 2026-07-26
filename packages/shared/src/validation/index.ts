@@ -430,6 +430,11 @@ export const suitabilitySettingsInputSchema = z.object({
   tickerAssetClassMap: z.record(z.string(), z.string()).default({}),
   dcaDayOfMonth: z.int().min(1).max(28).nullable().optional(),
   dcaAmountCents: z.int().min(0).nullable().optional(),
+  // 13.1 (decision #12): employer 401k match, in basis points of eligible pay
+  // + an annual dollar cap, so the FOO next-dollar overlay can sequence "capture
+  // the match".
+  employerMatchBps: z.int().min(0).max(100000).nullable().optional(),
+  employerMatchLimitCents: z.int().min(0).nullable().optional(),
 });
 
 export type SuitabilitySettingsInput = z.infer<typeof suitabilitySettingsInputSchema>;
@@ -471,3 +476,52 @@ export const updatePaycheckProfileSchema = createPaycheckProfileSchema.partial()
 
 export type CreatePaycheckProfileInput = z.infer<typeof createPaycheckProfileSchema>;
 export type UpdatePaycheckProfileInput = z.infer<typeof updatePaycheckProfileSchema>;
+
+// ── Monthly Close: Manual Assets, Loan Balance Snapshots, Monthly Financial
+// Snapshots (13.1) ────────────────────────────────────────────
+
+export const createManualAssetSchema = z.object({
+  name: z.string().min(1).max(120),
+  assetType: z.enum(['home', 'car', 'gold', 'other']),
+  liquidityClass: z.enum(['liquid', 'semi_liquid', 'illiquid']),
+  isDepreciating: z.boolean().default(false),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+export const updateManualAssetSchema = createManualAssetSchema.partial();
+
+export type CreateManualAssetInput = z.infer<typeof createManualAssetSchema>;
+export type UpdateManualAssetInput = z.infer<typeof updateManualAssetSchema>;
+
+/** Body for `PUT /manual-assets/:id/snapshots/:month` — the month itself comes
+ *  from the URL, not the body. */
+export const putManualAssetSnapshotSchema = z.object({
+  valueCents: z.int().min(0),
+  source: z.enum(['manual', 'estimate', 'imported']).default('manual'),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+export type PutManualAssetSnapshotInput = z.infer<typeof putManualAssetSnapshotSchema>;
+
+/** Body for `PUT /loans/:id/balance-snapshots/:month` — the month itself comes
+ *  from the URL, not the body. `manual_statement` is the only source a user can
+ *  submit; `amortized` rows are system-computed. */
+export const putLoanBalanceSnapshotSchema = z.object({
+  balanceCents: z.int().min(0),
+  source: z.literal('manual_statement').default('manual_statement'),
+  verifiedAt: z.iso.datetime().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+export type PutLoanBalanceSnapshotInput = z.infer<typeof putLoanBalanceSnapshotSchema>;
+
+/** Body for `PATCH /monthly-close/:month` — user edits to notes and a small set of
+ *  overridable fields on an existing (draft or confirmed) close. Recalculated
+ *  aggregate fields are not user-settable directly. */
+export const patchMonthlyCloseSchema = z.object({
+  notes: z.string().max(4000).nullable().optional(),
+  fixedExpenseCents: z.int().min(0).nullable().optional(),
+  variableExpenseCents: z.int().min(0).nullable().optional(),
+});
+
+export type PatchMonthlyCloseInput = z.infer<typeof patchMonthlyCloseSchema>;
