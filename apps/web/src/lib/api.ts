@@ -38,6 +38,33 @@ function buildUrl(
   return url.toString();
 }
 
+/**
+ * Auth bootstrap endpoints — a 401 from any of these is a direct, meaningful
+ * answer (wrong password, not logged in yet) and must NEVER trigger the
+ * refresh-and-retry dance below: there is no session to refresh, and retrying
+ * silently re-submits the same request (e.g. doubling every failed /auth/login
+ * attempt against ThrottleLoginGuard's per-IP rate limit — see 2026-07-26).
+ */
+const NO_REFRESH_RETRY_PATHS = ['/auth/login', '/auth/register', '/auth/refresh'];
+
+/**
+ * Attempt a silent token refresh. `/auth/refresh` returns 200 with
+ * `{ data: null }` as a deliberate no-op when there's no refresh_token cookie
+ * at all (see auth.controller.ts) — that is NOT a successful refresh, so
+ * checking `res.ok` alone (as this used to) treats "nothing to refresh" as
+ * "you're now logged in" and retries the original request pointlessly.
+ * Only `{ data: { refreshed: true } }` counts as success.
+ */
+async function tryRefresh(): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!res.ok) return false;
+  const body = await res.json().catch(() => null);
+  return body?.data?.refreshed === true;
+}
+
 async function request<T>(
   path: string,
   options: FetchOptions = {},
@@ -56,14 +83,8 @@ async function request<T>(
     ...rest,
   });
 
-  if (res.status === 401) {
-    // Try refresh
-    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-
-    if (refreshRes.ok) {
+  if (res.status === 401 && !NO_REFRESH_RETRY_PATHS.includes(path)) {
+    if (await tryRefresh()) {
       // Retry original request with refreshed token
       const retryRes = await fetch(buildUrl(path, params), {
         credentials: 'include',
@@ -108,13 +129,7 @@ async function upload<T>(path: string, formData: FormData): Promise<T> {
   });
 
   if (res.status === 401) {
-    // Try refresh
-    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-
-    if (refreshRes.ok) {
+    if (await tryRefresh()) {
       // Retry upload with refreshed token
       const retryRes = await fetch(buildUrl(path), {
         method: 'POST',
