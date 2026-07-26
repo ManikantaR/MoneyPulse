@@ -94,11 +94,12 @@ export class CashManagerService {
 
   /**
    * Event trigger leg 2 (manifest: "liquid-balance-move(>=20%)"). Compares each user's
-   * latest two liquid (checking+savings) balance snapshot totals — a straightforward
-   * latest-vs-previous comparison over `account_balance_snapshots`, reusing the same
-   * checking/savings account-type filter as `runForUser`'s own liquid-balance query.
-   * Users with fewer than two snapshot dates, or a zero/negative prior total (nothing
-   * to compute a meaningful percentage move against), are skipped rather than flagged.
+   * latest two liquid (checking+savings, plus any investment account with a declared
+   * cash-equivalent yield) balance snapshot totals — a straightforward latest-vs-previous
+   * comparison, reusing the same account-type/rated filter as `runForUser`'s own
+   * liquid-balance query. Users with fewer than two snapshot dates, or a zero/negative
+   * prior total (nothing to compute a meaningful percentage move against), are skipped
+   * rather than flagged.
    */
   async findUsersWithLiquidBalanceMove(): Promise<string[]> {
     const rows = await this.db.execute(sql`
@@ -106,18 +107,32 @@ export class CashManagerService {
         SELECT id, user_id FROM ${schema.accounts}
         WHERE deleted_at IS NULL AND account_type IN ('checking', 'savings')
       ),
+      rated_investment_accounts AS (
+        SELECT id, user_id FROM ${schema.investmentAccounts}
+        WHERE deleted_at IS NULL AND interest_rate_bps IS NOT NULL
+      ),
       by_date AS (
         SELECT la.user_id, abs.snapshot_date, SUM(abs.balance_cents) AS total_cents
         FROM ${schema.accountBalanceSnapshots} abs
         JOIN liquid_accounts la ON la.id = abs.account_id
         GROUP BY la.user_id, abs.snapshot_date
+        UNION ALL
+        SELECT ria.user_id, isn.date::date AS snapshot_date, SUM(isn.balance_cents) AS total_cents
+        FROM ${schema.investmentSnapshots} isn
+        JOIN rated_investment_accounts ria ON ria.id = isn.investment_account_id
+        GROUP BY ria.user_id, isn.date::date
+      ),
+      merged AS (
+        SELECT user_id, snapshot_date, SUM(total_cents) AS total_cents
+        FROM by_date
+        GROUP BY user_id, snapshot_date
       ),
       ranked AS (
         SELECT
           user_id,
           total_cents,
           ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY snapshot_date DESC) AS rnk
-        FROM by_date
+        FROM merged
       )
       SELECT
         user_id,
@@ -200,15 +215,53 @@ export class CashManagerService {
           sql`${schema.accounts.accountType} IN ('checking', 'savings')`,
         ),
       );
-    if (accounts.length === 0) return { ran: false, suppressed: false, recommended: false };
+
+    // Investment accounts with a declared cash-equivalent yield (e.g. a money-market
+    // fund's or cash sweep's rate) are folded into the same rated blend as regular
+    // checking/savings accounts, using their latest `investment_snapshots` balance — a
+    // distinct table from `account_balance_snapshots` since investment accounts have no
+    // CSV-imported transactions. Unrated investment accounts (equities, index funds with
+    // no declared yield) are deliberately excluded — they aren't cash-equivalent.
+    const investmentAccountRows = await this.db.execute(sql`
+      SELECT ia.id, ia.interest_rate_bps, snap.balance_cents AS latest_balance_cents
+      FROM ${schema.investmentAccounts} ia
+      LEFT JOIN LATERAL (
+        SELECT balance_cents
+        FROM ${schema.investmentSnapshots}
+        WHERE investment_account_id = ia.id
+        ORDER BY date DESC, created_at DESC
+        LIMIT 1
+      ) snap ON true
+      WHERE ia.user_id = ${userId}
+        AND ia.deleted_at IS NULL
+        AND ia.interest_rate_bps IS NOT NULL
+    `);
+    const ratedInvestmentAccounts: Array<{
+      id: string;
+      interestRateBps: number;
+      balanceCents: number;
+    }> = (investmentAccountRows.rows ?? investmentAccountRows)
+      .filter((r: any) => r.latest_balance_cents !== null)
+      .map((r: any) => ({
+        id: String(r.id),
+        interestRateBps: Number(r.interest_rate_bps),
+        balanceCents: Number(r.latest_balance_cents),
+      }));
+
+    if (accounts.length === 0 && ratedInvestmentAccounts.length === 0) {
+      return { ran: false, suppressed: false, recommended: false };
+    }
     const accountIds = accounts.map((a: any) => a.id);
 
-    const balanceRows = await this.db.execute(sql`
+    const balanceRows =
+      accountIds.length > 0
+        ? await this.db.execute(sql`
       SELECT DISTINCT ON (account_id) account_id, balance_cents
       FROM ${schema.accountBalanceSnapshots}
       WHERE account_id = ANY(${accountIds})
       ORDER BY account_id, snapshot_date DESC
-    `);
+    `)
+        : { rows: [] };
     // The query above is `DISTINCT ON (account_id)`, so Postgres guarantees at most one row
     // per account_id (the most recent snapshot). Map construction is therefore safe — there is
     // no later-row-wins ambiguity to worry about. If this query is ever changed to return
@@ -220,10 +273,13 @@ export class CashManagerService {
         Number(r.balance_cents),
       ]),
     );
-    const liquidBalanceCents = Array.from(balanceByAccountId.values()).reduce(
-      (sum, cents) => sum + cents,
+    const investmentBalanceCents = ratedInvestmentAccounts.reduce(
+      (sum, a) => sum + a.balanceCents,
       0,
     );
+    const liquidBalanceCents =
+      Array.from(balanceByAccountId.values()).reduce((sum, cents) => sum + cents, 0) +
+      investmentBalanceCents;
 
     const expenseRows = await this.db.execute(sql`
       SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total_cents
@@ -249,26 +305,33 @@ export class CashManagerService {
     const idleCashBufferMonths = 1; // 11.7 default; overridden by user_settings when present, handled upstream
 
     // Prefer the user-entered interest_rate_bps on each account (a direct signal) over the
-    // transaction-heuristic when at least one in-scope account has it set. Blend by current
-    // balance across the accounts that have a rate set; accounts without one are excluded from
-    // this direct-signal blend (their balances still count toward liquidBalanceCents above).
+    // transaction-heuristic when at least one in-scope account (regular or rated investment)
+    // has it set. Blend by current balance across the accounts that have a rate set; accounts
+    // without one are excluded from this direct-signal blend (their balances still count
+    // toward liquidBalanceCents above).
     const today = new Date().toISOString().slice(0, 10);
     const ratedAccounts = accounts.filter(
       (a: any) => a.interestRateBps !== null && a.interestRateBps !== undefined,
     );
-    const ratedWeight = ratedAccounts.reduce(
-      (sum: number, a: any) => sum + (balanceByAccountId.get(a.id) ?? 0),
-      0,
-    );
+    const ratedWeight =
+      ratedAccounts.reduce(
+        (sum: number, a: any) => sum + (balanceByAccountId.get(a.id) ?? 0),
+        0,
+      ) + investmentBalanceCents;
 
     let currentEarnedApyBps: number;
     let earnedApyAsOf: string;
-    if (ratedAccounts.length > 0 && ratedWeight > 0) {
-      const weightedSum = ratedAccounts.reduce(
-        (sum: number, a: any) =>
-          sum + a.interestRateBps * (balanceByAccountId.get(a.id) ?? 0),
-        0,
-      );
+    if ((ratedAccounts.length > 0 || ratedInvestmentAccounts.length > 0) && ratedWeight > 0) {
+      const weightedSum =
+        ratedAccounts.reduce(
+          (sum: number, a: any) =>
+            sum + a.interestRateBps * (balanceByAccountId.get(a.id) ?? 0),
+          0,
+        ) +
+        ratedInvestmentAccounts.reduce(
+          (sum, a) => sum + a.interestRateBps * a.balanceCents,
+          0,
+        );
       currentEarnedApyBps = Math.round(weightedSum / ratedWeight);
       earnedApyAsOf = today;
     } else {
