@@ -13,6 +13,7 @@ import { LoansModule } from '../loans/loans.module';
 import { MarketDataModule } from '../market-data/market-data.module';
 import { RecommendationsModule } from '../recommendations/recommendations.module';
 import { RateWatchlistModule } from '../rate-watchlist/rate-watchlist.module';
+import { MonthlyCloseModule } from '../monthly-close/monthly-close.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { RateWatchlistModule } from '../rate-watchlist/rate-watchlist.module';
     MarketDataModule,
     RecommendationsModule,
     RateWatchlistModule,
+    MonthlyCloseModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -232,6 +234,17 @@ export class JobsModule implements OnModuleInit {
         'monthly-savings-coach-check',
         { pattern: '30 11 2 * *' },
         { name: 'savings-coach-check' },
+      ),
+
+      // 13.5 Monthly Close auto-draft (decision #8) — 1st of month, 8:00 UTC (before
+      // the other 1st/2nd-of-month sweeps above so its own draft feeds them if they
+      // ever need it). Creates/refreshes the previous month's draft close for every
+      // active user, backfilling history on first run (decision #11) and rate-limited
+      // freshness-nudging per decision #3.
+      this.alertsQueue.upsertJobScheduler(
+        'monthly-close-auto-draft',
+        { pattern: '0 8 1 * *' },
+        { name: 'monthly-close-auto-draft' },
       ),
 
       // Frequent sync delivery sweep for outbox events.

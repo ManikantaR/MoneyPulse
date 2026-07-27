@@ -1,0 +1,151 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
+import { MonthlyCloseService } from '../monthly-close.service';
+import { DATABASE_CONNECTION } from '../../db/db.module';
+import { ManualAssetsService } from '../manual-assets.service';
+import { InvestmentsService } from '../../investments/investments.service';
+import { LoansService } from '../../loans/loans.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+
+/** A chainable query-builder stub: every fluent method returns itself, and it's
+ *  awaitable (via `.then`) resolving to `result` — matches how the service calls
+ *  Drizzle both with and without a trailing `.limit()`. */
+function makeChain(result: any[]) {
+  const chain: any = {};
+  chain.from = () => chain;
+  chain.where = () => chain;
+  chain.orderBy = () => chain;
+  chain.limit = () => Promise.resolve(result);
+  chain.then = (resolve: any) => resolve(result);
+  return chain;
+}
+
+describe('MonthlyCloseService', () => {
+  let service: MonthlyCloseService;
+  let mockDb: any;
+  let notificationsService: { createAndDispatch: any };
+
+  const draftRow = { id: 'snap-1', userId: 'user-1', snapshotMonth: '2026-06-01', status: 'draft' };
+
+  beforeEach(async () => {
+    mockDb = {
+      select: vi.fn(() => makeChain([])),
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
+      insert: vi.fn().mockReturnThis(),
+      values: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([draftRow]),
+    };
+
+    notificationsService = { createAndDispatch: vi.fn().mockResolvedValue({}) };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        MonthlyCloseService,
+        { provide: DATABASE_CONNECTION, useValue: mockDb },
+        { provide: ManualAssetsService, useValue: { findAll: vi.fn().mockResolvedValue([]) } },
+        {
+          provide: InvestmentsService,
+          useValue: {
+            getPortfolioValue: vi.fn().mockResolvedValue({ totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false }),
+          },
+        },
+        { provide: LoansService, useValue: { getBalanceForMonth: vi.fn() } },
+        { provide: NotificationsService, useValue: notificationsService },
+      ],
+    }).compile();
+
+    service = module.get<MonthlyCloseService>(MonthlyCloseService);
+  });
+
+  describe('gatherInputs + draft — end-to-end against an empty fixture', () => {
+    it('produces a calculable, all-zero close and persists it', async () => {
+      const input = await service.gatherInputs('user-1', '2026-06');
+      expect(input.month).toBe('2026-06-01');
+      expect(input.takeHomeIncomeCents).toBe(0);
+      expect(input.transactions).toEqual([]);
+      expect(input.freshness).toEqual({ missingManualAssets: [], staleAccounts: [], unverifiedLoans: [] });
+
+      const saved = await service.draft('user-1', '2026-06');
+      expect(saved).toEqual(draftRow);
+      // No existing row (select resolves []) -> insert path, not update.
+      expect(mockDb.insert).toHaveBeenCalledWith(expect.anything());
+    });
+  });
+
+  describe('lifecycle', () => {
+    it('recalculate throws NotFoundException when no close exists yet', async () => {
+      await expect(service.recalculate('user-1', '2026-06')).rejects.toThrow(NotFoundException);
+    });
+
+    it('patch on a confirmed close stamps edited_at + is_edited', async () => {
+      mockDb.select = vi.fn(() => makeChain([{ ...draftRow, status: 'confirmed' }]));
+      await service.patch('user-1', '2026-06', { notes: 'Adjusted' });
+
+      const setArg = mockDb.set.mock.calls.at(-1)[0];
+      expect(setArg.isEdited).toBe(true);
+      expect(setArg.editedAt).toBeInstanceOf(Date);
+      expect(setArg.notes).toBe('Adjusted');
+    });
+
+    it('patch on a draft close does not stamp the audit fields', async () => {
+      mockDb.select = vi.fn(() => makeChain([{ ...draftRow, status: 'draft' }]));
+      await service.patch('user-1', '2026-06', { notes: 'wip' });
+
+      const setArg = mockDb.set.mock.calls.at(-1)[0];
+      expect(setArg.isEdited).toBeUndefined();
+      expect(setArg.editedAt).toBeUndefined();
+    });
+
+    it('confirm sets status=confirmed + confirmedAt', async () => {
+      mockDb.select = vi.fn(() => makeChain([draftRow]));
+      await service.confirm('user-1', '2026-06');
+      const setArg = mockDb.set.mock.calls.at(-1)[0];
+      expect(setArg.status).toBe('confirmed');
+      expect(setArg.confirmedAt).toBeInstanceOf(Date);
+    });
+
+    it('reopen sets status back to draft', async () => {
+      mockDb.select = vi.fn(() => makeChain([{ ...draftRow, status: 'confirmed' }]));
+      await service.reopen('user-1', '2026-06');
+      const setArg = mockDb.set.mock.calls.at(-1)[0];
+      expect(setArg.status).toBe('draft');
+    });
+
+    it('confirm on a missing close throws NotFoundException', async () => {
+      await expect(service.confirm('user-1', '2026-06')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('freshness nudge cap (decision #3)', () => {
+    it('skips the nudge when the close is complete', async () => {
+      mockDb.select = vi.fn(() => makeChain([{ ...draftRow, freshness: { isComplete: true } }]));
+      const sent = await (service as any).maybeNudgeFreshness('user-1', '2026-06-01');
+      expect(sent).toBe(false);
+      expect(notificationsService.createAndDispatch).not.toHaveBeenCalled();
+    });
+
+    it('sends a nudge when incomplete and no recent nudge exists', async () => {
+      mockDb.select = vi.fn(() =>
+        makeChain([{ ...draftRow, freshness: { isComplete: false, missingManualAssets: ['Home'], staleAccounts: [], unverifiedLoans: [] } }]),
+      );
+      mockDb.execute = vi.fn().mockResolvedValue({ rows: [{ last_at: null }] });
+      const sent = await (service as any).maybeNudgeFreshness('user-1', '2026-06-01');
+      expect(sent).toBe(true);
+      expect(notificationsService.createAndDispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('suppresses a second nudge within the 2-month cooldown', async () => {
+      mockDb.select = vi.fn(() =>
+        makeChain([{ ...draftRow, freshness: { isComplete: false, missingManualAssets: ['Home'], staleAccounts: [], unverifiedLoans: [] } }]),
+      );
+      const recentNudge = new Date(Date.now() - 20 * 24 * 3600_000).toISOString(); // 20 days ago
+      mockDb.execute = vi.fn().mockResolvedValue({ rows: [{ last_at: recentNudge }] });
+      const sent = await (service as any).maybeNudgeFreshness('user-1', '2026-06-01');
+      expect(sent).toBe(false);
+      expect(notificationsService.createAndDispatch).not.toHaveBeenCalled();
+    });
+  });
+});
