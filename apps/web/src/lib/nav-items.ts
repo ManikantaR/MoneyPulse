@@ -17,6 +17,7 @@ import {
   HandCoins,
   LayoutGrid,
   Percent,
+  Activity,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -34,6 +35,7 @@ export const navItems: NavItem[] = [
   { href: '/bills', label: 'Bills', icon: CalendarClock, placement: 'tab' },
   // Drawer items
   { href: '/overview', label: 'Overview', icon: LayoutGrid, placement: 'drawer' },
+  { href: '/health', label: 'Health', icon: Activity, placement: 'drawer' },
   { href: '/accounts', label: 'Accounts', icon: Landmark, placement: 'drawer' },
   { href: '/loans', label: 'Loans', icon: HandCoins, placement: 'drawer' },
   { href: '/rate-watchlist', label: 'Rate Watchlist', icon: Percent, placement: 'drawer' },
