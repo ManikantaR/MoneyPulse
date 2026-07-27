@@ -2,6 +2,16 @@ import { describe, it, expect, vi } from 'vitest';
 import { CashManagerService } from '../cash-manager.service';
 import { RecommendationSuppressionService } from '../recommendation-suppression.service';
 
+/** Flattens a drizzle `SQL` wrapper's raw string chunks (ignoring bind-param values) so
+ * tests can assert on the literal SQL text without needing a real dialect/DB connection. */
+function sqlText(node: any): string {
+  if (node == null) return '';
+  if (typeof node === 'string') return node;
+  const chunks = node.queryChunks ?? node.value;
+  if (Array.isArray(chunks)) return chunks.map(sqlText).join(' ');
+  return '';
+}
+
 // Synthetic account fixture that HAS a lastFour set — simulates a real accounts row
 // (even though the service's own query projects only {id, nickname}) so the test holds
 // even if a future edit accidentally widens the select().
@@ -177,6 +187,48 @@ describe('CashManagerService — benchmark-rate-move event trigger', () => {
     const moved = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
 
     expect(moved).toBe(false);
+  });
+});
+
+describe('CashManagerService — cash_sweep account-type inclusion', () => {
+  it('includes cash_sweep alongside checking/savings in the runForUser accounts filter', async () => {
+    const db = buildMockDb({
+      balanceCents: 22_000_00,
+      expenseCents: 200_000,
+      settings: [{ emergencyFundTargetMonths: 6, taxState: 'CA' }],
+      interestCents: 5_000,
+      avgCents: 20_000_00,
+      watchlist: [],
+    });
+    let capturedWhere: any;
+    const originalWhere = db.select;
+    db.select = vi.fn((_proj?: any) => ({
+      from: () => ({
+        where: (whereArg: any): any => {
+          capturedWhere = capturedWhere ?? whereArg;
+          return originalWhere().from().where();
+        },
+      }),
+    }));
+    const notifications = buildNotifications();
+    const suppression = { checkAndSuppress: vi.fn().mockResolvedValue({ suppressed: false }) };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    await svc.runForUser('user-1');
+
+    expect(sqlText(capturedWhere)).toContain('cash_sweep');
+  });
+
+  it('includes cash_sweep alongside checking/savings in the liquid-balance-move CTE filter', async () => {
+    const db: any = { execute: vi.fn().mockResolvedValue([]) };
+    const notifications = buildNotifications();
+    const suppression = { checkAndSuppress: vi.fn() };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    await svc.findUsersWithLiquidBalanceMove();
+
+    const executedSql = sqlText(db.execute.mock.calls[0][0]);
+    expect(executedSql).toContain('cash_sweep');
   });
 });
 
