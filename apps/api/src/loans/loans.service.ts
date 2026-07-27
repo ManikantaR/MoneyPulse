@@ -1,9 +1,22 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, eq, isNull, asc, gte, lte, or, ilike } from 'drizzle-orm';
+import { and, eq, isNull, asc, desc, gte, lte, or, ilike } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import type { CreateLoanInput, UpdateLoanInput } from '@moneypulse/shared';
+import type {
+  CreateLoanInput,
+  UpdateLoanInput,
+  PutLoanBalanceSnapshotInput,
+} from '@moneypulse/shared';
+import { computeLoanState, type ExtraPayment } from '@moneypulse/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+
+export interface LoanBalanceSnapshotView {
+  snapshotMonth: string;
+  balanceCents: number;
+  source: 'manual_statement' | 'amortized';
+  verifiedAt: Date | null;
+  notes: string | null;
+}
 
 /**
  * Most recent monthly payment date that is at least `graceDays` in the past, with the
@@ -239,5 +252,150 @@ export class LoansService {
       }));
 
     return results;
+  }
+
+  private async requireOwnedLoan(id: string, userId: string) {
+    const existing = await this.db
+      .select()
+      .from(schema.loans)
+      .where(and(eq(schema.loans.id, id), eq(schema.loans.userId, userId)))
+      .limit(1);
+    if (!existing[0] || existing[0].deletedAt) {
+      throw new NotFoundException('Loan not found');
+    }
+    return existing[0];
+  }
+
+  /** Amortized balance for `month` (last day of month, UTC) computed via computeLoanState,
+   *  replaying any extra-principal transactions detected by the loan's pattern. */
+  private async computeAmortizedBalance(loan: any, month: string): Promise<number> {
+    let extras: ExtraPayment[] = [];
+    if (loan.extraPrincipalPattern) {
+      const pattern = `%${loan.extraPrincipalPattern}%`;
+      const rows = await this.db
+        .select({ date: schema.transactions.date, amountCents: schema.transactions.amountCents })
+        .from(schema.transactions)
+        .where(
+          and(
+            eq(schema.transactions.userId, loan.userId),
+            eq(schema.transactions.isCredit, false),
+            eq(schema.transactions.isSplitParent, false),
+            isNull(schema.transactions.deletedAt),
+            gte(schema.transactions.date, new Date(loan.startDate + 'T00:00:00Z')),
+            or(
+              ilike(schema.transactions.normalizedMerchantName, pattern),
+              ilike(schema.transactions.merchantName, pattern),
+            ),
+          ),
+        );
+      extras = rows.map((r: any) => ({
+        date: new Date(r.date).toISOString().slice(0, 10),
+        amountCents: Number(r.amountCents),
+      }));
+    }
+
+    // As-of end of the requested month (UTC), so the balance reflects that month's close.
+    const [y, m] = month.split('-').map(Number);
+    const asOf = new Date(Date.UTC(y, m, 0, 23, 59, 59));
+
+    const state = computeLoanState(
+      {
+        originalBalanceCents: loan.originalBalanceCents,
+        aprBps: loan.aprBps,
+        scheduledPaymentCents: loan.scheduledPaymentCents,
+        startDate: loan.startDate,
+      },
+      extras,
+      asOf,
+    );
+    return state.currentBalanceCents;
+  }
+
+  /**
+   * All explicit balance-snapshot rows for a loan (both sources), most recent month first.
+   * Ownership-checked.
+   */
+  async listBalanceSnapshots(loanId: string, userId: string) {
+    await this.requireOwnedLoan(loanId, userId);
+    return this.db
+      .select()
+      .from(schema.loanBalanceSnapshots)
+      .where(eq(schema.loanBalanceSnapshots.loanId, loanId))
+      .orderBy(desc(schema.loanBalanceSnapshots.snapshotMonth));
+  }
+
+  /**
+   * The balance to use for `month`: a `manual_statement` row wins if present for that
+   * month; otherwise the amortized estimate computed via `computeLoanState`. Always
+   * reports which source was used.
+   */
+  async getBalanceForMonth(loanId: string, userId: string, month: string): Promise<LoanBalanceSnapshotView> {
+    const loan = await this.requireOwnedLoan(loanId, userId);
+
+    const manual = await this.db
+      .select()
+      .from(schema.loanBalanceSnapshots)
+      .where(
+        and(
+          eq(schema.loanBalanceSnapshots.loanId, loanId),
+          eq(schema.loanBalanceSnapshots.snapshotMonth, month),
+          eq(schema.loanBalanceSnapshots.source, 'manual_statement'),
+        ),
+      )
+      .limit(1);
+    if (manual[0]) {
+      return {
+        snapshotMonth: month,
+        balanceCents: manual[0].balanceCents,
+        source: 'manual_statement',
+        verifiedAt: manual[0].verifiedAt,
+        notes: manual[0].notes,
+      };
+    }
+
+    const balanceCents = await this.computeAmortizedBalance(loan, month);
+    return {
+      snapshotMonth: month,
+      balanceCents,
+      source: 'amortized',
+      verifiedAt: null,
+      notes: null,
+    };
+  }
+
+  /** Upsert a `manual_statement` balance for one month, keyed on (loan, month, source). */
+  async upsertBalanceSnapshot(
+    loanId: string,
+    userId: string,
+    month: string,
+    input: PutLoanBalanceSnapshotInput,
+  ) {
+    await this.requireOwnedLoan(loanId, userId);
+
+    const rows = await this.db
+      .insert(schema.loanBalanceSnapshots)
+      .values({
+        loanId,
+        snapshotMonth: month,
+        balanceCents: input.balanceCents,
+        source: 'manual_statement',
+        verifiedAt: input.verifiedAt ? new Date(input.verifiedAt) : null,
+        notes: input.notes ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.loanBalanceSnapshots.loanId,
+          schema.loanBalanceSnapshots.snapshotMonth,
+          schema.loanBalanceSnapshots.source,
+        ],
+        set: {
+          balanceCents: input.balanceCents,
+          verifiedAt: input.verifiedAt ? new Date(input.verifiedAt) : null,
+          notes: input.notes ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return rows[0];
   }
 }

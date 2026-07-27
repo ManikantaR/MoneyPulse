@@ -480,11 +480,15 @@ export type UpdatePaycheckProfileInput = z.infer<typeof updatePaycheckProfileSch
 // ── Monthly Close: Manual Assets, Loan Balance Snapshots, Monthly Financial
 // Snapshots (13.1) ────────────────────────────────────────────
 
+// If omitted, the service fills liquidityClass/isDepreciating in from the asset-type
+// defaults in the spec (home=illiquid/not-depreciating, car=illiquid/depreciating,
+// gold=semi_liquid/not-depreciating, other=illiquid/not-depreciating) — callers may
+// still override either field explicitly.
 export const createManualAssetSchema = z.object({
   name: z.string().min(1).max(120),
   assetType: z.enum(['home', 'car', 'gold', 'other']),
-  liquidityClass: z.enum(['liquid', 'semi_liquid', 'illiquid']),
-  isDepreciating: z.boolean().default(false),
+  liquidityClass: z.enum(['liquid', 'semi_liquid', 'illiquid']).optional(),
+  isDepreciating: z.boolean().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
 
