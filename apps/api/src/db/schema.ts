@@ -1187,10 +1187,149 @@ export const suitabilitySettings = pgTable(
     tickerAssetClassMap: jsonb('ticker_asset_class_map').notNull().default({}),
     dcaDayOfMonth: integer('dca_day_of_month'),
     dcaAmountCents: integer('dca_amount_cents'),
+    // 13.1: employer 401k match settings (decision #12) — nullable, appended to this
+    // versioned table rather than creating a new one. Basis points and cents, never
+    // floats.
+    employerMatchBps: integer('employer_match_bps'),
+    employerMatchLimitCents: integer('employer_match_limit_cents'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('uq_suitability_settings_user_version').on(table.userId, table.version),
     index('idx_suitability_settings_user_created').on(table.userId, table.createdAt.desc()),
+  ],
+);
+
+// ── Monthly Close: Manual Assets, Loan Balance Snapshots, Monthly Financial
+// Snapshots (13.1) ────────────────────────────────────────────
+// Schema-only slice — see specs/PHASE13-MONTHLY-CLOSE-SPEC.md Data Model section,
+// WITH overrides from epic #158 "Resolved decisions": no household_id anywhere
+// (household scope deferred, decision #5); monthly_snapshot_events intentionally
+// NOT created — edited_at/is_edited on monthly_financial_snapshots is the whole
+// audit trail (decision #6).
+
+export const manualAssets = pgTable(
+  'manual_assets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    name: varchar('name', { length: 120 }).notNull(),
+    assetType: varchar('asset_type', { length: 30 }).notNull(), // home | car | gold | other
+    liquidityClass: varchar('liquidity_class', { length: 30 }).notNull(), // liquid | semi_liquid | illiquid
+    isDepreciating: boolean('is_depreciating').notNull().default(false),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [index('idx_manual_assets_user').on(table.userId)],
+);
+
+export const manualAssetSnapshots = pgTable(
+  'manual_asset_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    manualAssetId: uuid('manual_asset_id')
+      .notNull()
+      .references(() => manualAssets.id),
+    snapshotMonth: date('snapshot_month').notNull(), // first day of month
+    valueCents: integer('value_cents').notNull(),
+    source: varchar('source', { length: 40 }).notNull().default('manual'), // manual | estimate | imported
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('uq_manual_asset_snapshots_asset_month').on(
+      table.manualAssetId,
+      table.snapshotMonth,
+    ),
+  ],
+);
+
+export const loanBalanceSnapshots = pgTable(
+  'loan_balance_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    loanId: uuid('loan_id')
+      .notNull()
+      .references(() => loans.id),
+    snapshotMonth: date('snapshot_month').notNull(),
+    balanceCents: integer('balance_cents').notNull(),
+    source: varchar('source', { length: 40 }).notNull(), // amortized | manual_statement
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('uq_loan_balance_snapshots_loan_month_source').on(
+      table.loanId,
+      table.snapshotMonth,
+      table.source,
+    ),
+  ],
+);
+
+export const monthlyFinancialSnapshots = pgTable(
+  'monthly_financial_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    snapshotMonth: date('snapshot_month').notNull(), // first day of month
+    status: varchar('status', { length: 20 }).notNull().default('draft'), // draft | confirmed
+
+    takeHomeIncomeCents: integer('take_home_income_cents').notNull().default(0),
+    grossIncomeCents: integer('gross_income_cents'),
+    expenseCents: integer('expense_cents').notNull().default(0),
+    fixedExpenseCents: integer('fixed_expense_cents').notNull().default(0),
+    variableExpenseCents: integer('variable_expense_cents').notNull().default(0),
+
+    cashSavingsCents: integer('cash_savings_cents').notNull().default(0),
+    investmentContributionCents: integer('investment_contribution_cents').notNull().default(0),
+    debtPrincipalPaidCents: integer('debt_principal_paid_cents').notNull().default(0),
+    extraDebtPrincipalPaidCents: integer('extra_debt_principal_paid_cents').notNull().default(0),
+
+    liquidAssetCents: integer('liquid_asset_cents').notNull().default(0),
+    investmentAssetCents: integer('investment_asset_cents').notNull().default(0),
+    manualAssetCents: integer('manual_asset_cents').notNull().default(0),
+    totalAssetCents: integer('total_asset_cents').notNull().default(0),
+
+    creditCardLiabilityCents: integer('credit_card_liability_cents').notNull().default(0),
+    loanLiabilityCents: integer('loan_liability_cents').notNull().default(0),
+    totalLiabilityCents: integer('total_liability_cents').notNull().default(0),
+    netWorthCents: integer('net_worth_cents').notNull().default(0),
+
+    savingsRateBps: integer('savings_rate_bps'), // cash_savings / take_home_income
+    investingRateBps: integer('investing_rate_bps'), // investment_contribution / take_home_income
+    debtPaydownRateBps: integer('debt_paydown_rate_bps'), // debt principal / take_home_income
+    wealthBuildingRateBps: integer('wealth_building_rate_bps'), // savings + investments + principal / take_home_income
+    expenseRatioBps: integer('expense_ratio_bps'), // expenses / take_home_income
+    liquidNetWorthRatioBps: integer('liquid_net_worth_ratio_bps'), // liquid assets / net worth
+    debtAssetRatioBps: integer('debt_asset_ratio_bps'), // total liabilities / total assets
+    debtPaymentIncomeRatioBps: integer('debt_payment_income_ratio_bps'),
+
+    targetStatus: jsonb('target_status').notNull().default({}),
+    freshness: jsonb('freshness').notNull().default({}),
+    calculationVersion: varchar('calculation_version', { length: 30 }).notNull(),
+    notes: text('notes'),
+    aiReview: text('ai_review'),
+    // Lightweight audit trail (decision #6): confirmed snapshots stay editable;
+    // edits stamp these two fields instead of a separate events table.
+    editedAt: timestamp('edited_at', { withTimezone: true }),
+    isEdited: boolean('is_edited').notNull().default(false),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('uq_monthly_financial_snapshots_user_month').on(
+      table.userId,
+      table.snapshotMonth,
+    ),
   ],
 );

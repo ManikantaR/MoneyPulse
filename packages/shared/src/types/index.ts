@@ -505,3 +505,128 @@ export interface Allocation {
   missingPriceFound: boolean;
   staleDays: number;
 }
+
+// ── Monthly Close: Manual Assets, Loan Balance Snapshots, Monthly Financial
+// Snapshots (13.1) ────────────────────────────────────────────
+// User-scoped only — no household_id (household scope deferred per epic #158
+// decision #5).
+
+export type ManualAssetType = 'home' | 'car' | 'gold' | 'other';
+export type ManualAssetLiquidityClass = 'liquid' | 'semi_liquid' | 'illiquid';
+export type ManualAssetSnapshotSource = 'manual' | 'estimate' | 'imported';
+export type LoanBalanceSnapshotSource = 'amortized' | 'manual_statement';
+export type MonthlyCloseStatus = 'draft' | 'confirmed';
+export type TargetStatusLevel = 'green' | 'yellow' | 'red' | 'info' | 'unknown';
+
+export interface ManualAsset {
+  id: string;
+  userId: string;
+  name: string;
+  assetType: ManualAssetType;
+  liquidityClass: ManualAssetLiquidityClass;
+  isDepreciating: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface ManualAssetSnapshot {
+  id: string;
+  manualAssetId: string;
+  snapshotMonth: string; // first day of month
+  valueCents: number;
+  source: ManualAssetSnapshotSource;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LoanBalanceSnapshot {
+  id: string;
+  loanId: string;
+  snapshotMonth: string; // first day of month
+  balanceCents: number;
+  source: LoanBalanceSnapshotSource;
+  verifiedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Frozen monthly household close: balance sheet, income statement, and ratios for
+ *  one calendar month. Confirmed rows stay editable — `isEdited`/`editedAt` are the
+ *  lightweight audit trail (no separate events table, per epic #158 decision #6). */
+export interface MonthlyFinancialSnapshot {
+  id: string;
+  userId: string;
+  snapshotMonth: string; // first day of month
+  status: MonthlyCloseStatus;
+
+  takeHomeIncomeCents: number;
+  grossIncomeCents: number | null;
+  expenseCents: number;
+  fixedExpenseCents: number;
+  variableExpenseCents: number;
+
+  cashSavingsCents: number;
+  investmentContributionCents: number;
+  debtPrincipalPaidCents: number;
+  extraDebtPrincipalPaidCents: number;
+
+  liquidAssetCents: number;
+  investmentAssetCents: number;
+  manualAssetCents: number;
+  totalAssetCents: number;
+
+  creditCardLiabilityCents: number;
+  loanLiabilityCents: number;
+  totalLiabilityCents: number;
+  netWorthCents: number;
+
+  savingsRateBps: number | null;
+  investingRateBps: number | null;
+  debtPaydownRateBps: number | null;
+  wealthBuildingRateBps: number | null;
+  expenseRatioBps: number | null;
+  liquidNetWorthRatioBps: number | null;
+  debtAssetRatioBps: number | null;
+  debtPaymentIncomeRatioBps: number | null;
+
+  targetStatus: Record<string, TargetStatusLevel>;
+  freshness: Record<string, unknown>;
+  calculationVersion: string;
+  notes: string | null;
+  aiReview: string | null;
+  editedAt: string | null;
+  isEdited: boolean;
+  confirmedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Rollup shape returned by `GET /monthly-close` list + detail endpoints. */
+export interface MonthlyCloseSummary {
+  month: string;
+  status: MonthlyCloseStatus;
+  headline: {
+    expensesCents: number;
+    netWorthCents: number;
+    savingsRateBps: number | null;
+    investingRateBps: number | null;
+    debtPaydownRateBps: number | null;
+    liquidNetWorthRatioBps: number | null;
+  };
+  // MonthlyCloseSection shape is defined in a later 13.x slice (grid/UI-facing);
+  // left as unknown[] here since this issue is schema-only.
+  sections: unknown[];
+  targetStatus: Record<string, TargetStatusLevel>;
+  freshness: {
+    isComplete: boolean;
+    missingManualAssets: string[];
+    staleAccounts: string[];
+    unverifiedLoans: string[];
+  };
+  notes: string | null;
+  aiReview: string | null;
+}
