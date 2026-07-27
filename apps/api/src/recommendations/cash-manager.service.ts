@@ -94,7 +94,7 @@ export class CashManagerService {
 
   /**
    * Event trigger leg 2 (manifest: "liquid-balance-move(>=20%)"). Compares each user's
-   * latest two liquid (checking+savings, plus any investment account with a declared
+   * latest two liquid (checking+savings+cash_sweep, plus any investment account with a declared
    * cash-equivalent yield) balance snapshot totals — a straightforward latest-vs-previous
    * comparison, reusing the same account-type/rated filter as `runForUser`'s own
    * liquid-balance query. Users with fewer than two snapshot dates, or a zero/negative
@@ -105,7 +105,7 @@ export class CashManagerService {
     const rows = await this.db.execute(sql`
       WITH liquid_accounts AS (
         SELECT id, user_id FROM ${schema.accounts}
-        WHERE deleted_at IS NULL AND account_type IN ('checking', 'savings')
+        WHERE deleted_at IS NULL AND account_type IN ('checking', 'savings', 'cash_sweep')
       ),
       rated_investment_accounts AS (
         SELECT id, user_id FROM ${schema.investmentAccounts}
@@ -154,7 +154,7 @@ export class CashManagerService {
     return moved;
   }
 
-  /** Trailing-12mo interest credits / avg balance, per checking+savings account —
+  /** Trailing-12mo interest credits / avg balance, per checking+savings+cash_sweep account —
    * mirrors the MCP `get_earned_apy` tool's math, but only the resulting bps figure
    * (never the underlying interest transactions) leaves this method. */
   private async computeBlendedEarnedApyBps(
@@ -212,7 +212,7 @@ export class CashManagerService {
         and(
           eq(schema.accounts.userId, userId),
           isNull(schema.accounts.deletedAt),
-          sql`${schema.accounts.accountType} IN ('checking', 'savings')`,
+          sql`${schema.accounts.accountType} IN ('checking', 'savings', 'cash_sweep')`,
         ),
       );
 
