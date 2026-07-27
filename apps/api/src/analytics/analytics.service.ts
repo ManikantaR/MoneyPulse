@@ -9,6 +9,7 @@ import type {
   BillFrequency,
 } from '@moneypulse/shared';
 import { annualCostCents } from '../bills/bills.service';
+import { computeLoanState } from '@moneypulse/shared';
 
 @Injectable()
 export class AnalyticsService {
@@ -296,16 +297,26 @@ export class AnalyticsService {
   }
 
   /**
-   * Returns a net worth snapshot: assets minus liabilities plus investments.
-   * Assets = checking + savings balances. Liabilities = credit card balances.
-   * Investments = latest snapshot balance per investment account.
+   * Returns a full net worth snapshot across every asset/liability source the app
+   * tracks (see Phase 13 epic #158 decisions):
+   *  - Liquid = checking + savings + cash_sweep regular accounts (starting balance
+   *    + summed non-deleted transactions).
+   *  - Investments = per investment_account, holdings x latest EOD close when the
+   *    account has declared holdings, ELSE its latest manual investment_snapshot
+   *    — never both (decision #2) — plus brokerage/edu_529 balances held as
+   *    regular accounts (starting balance + transactions, same as liquid).
+   *  - Manual assets = latest carry-forward manual_asset_snapshots value per
+   *    non-deleted manual_asset (home/car/gold/other).
+   *  - Liabilities = credit_card account balances plus loan balances
+   *    (manual-statement-wins else amortized via `computeLoanState`).
    * Scoped to the authenticated user or their household members.
    *
    * @param {string} userId - The authenticated user's ID.
    * @param {Pick<AnalyticsQuery, 'household'>} query - Household flag for scoping.
    * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
    * @returns {Promise<{ assets: number; liabilities: number; investments: number; netWorth: number }>}
-   *   Net worth snapshot with assets, liabilities, investments, and net total.
+   *   Net worth snapshot with assets (liquid + investments + manual assets),
+   *   liabilities (credit cards + loans), investments, and net total.
    * @throws {Error} If the database query fails.
    */
   async netWorth(
@@ -313,21 +324,35 @@ export class AnalyticsService {
     query: Pick<AnalyticsQuery, 'household'>,
     householdId?: string | null,
   ) {
-    const userScope = householdId && query.household
+    const acctUserScope = householdId && query.household
       ? sql`a.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
       : sql`a.user_id = ${userId}`;
-
     const invUserScope = householdId && query.household
       ? sql`ia.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
       : sql`ia.user_id = ${userId}`;
+    const maUserScope = householdId && query.household
+      ? sql`ma.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`ma.user_id = ${userId}`;
+    const loanUserScope = householdId && query.household
+      ? sql`l.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`l.user_id = ${userId}`;
 
-    const rows = await this.db.execute(sql`
+    // Liquid (checking/savings/cash_sweep), regular-account investments
+    // (brokerage/edu_529 held directly on `accounts`, not via investment_accounts),
+    // and credit-card liabilities — all computed the same way (starting balance +
+    // summed non-deleted transactions).
+    const acctRows = await this.db.execute(sql`
       SELECT
         SUM(CASE
-          WHEN a.account_type IN ('checking', 'savings') THEN
+          WHEN a.account_type IN ('checking', 'savings', 'cash_sweep') THEN
             a.starting_balance_cents + COALESCE(sub.net, 0)
           ELSE 0
-        END) AS assets_cents,
+        END) AS liquid_cents,
+        SUM(CASE
+          WHEN a.account_type IN ('brokerage', 'edu_529') THEN
+            a.starting_balance_cents + COALESCE(sub.net, 0)
+          ELSE 0
+        END) AS regular_investment_cents,
         SUM(CASE
           WHEN a.account_type = 'credit_card' THEN
             ABS(a.starting_balance_cents + COALESCE(sub.net, 0))
@@ -344,38 +369,137 @@ export class AnalyticsService {
           AND t.deleted_at IS NULL
       ) sub ON true
       WHERE a.deleted_at IS NULL
-        AND ${userScope}
+        AND ${acctUserScope}
     `);
-
-    const row = this.extractRows(rows)[0] || {
-      assets_cents: 0,
+    const acctRow = this.extractRows(acctRows)[0] || {
+      liquid_cents: 0,
+      regular_investment_cents: 0,
       liabilities_cents: 0,
     };
 
-    // Add investment balances (latest snapshot per account) scoped to user
+    // Manual investment_accounts (Phase 8): per account, holdings x latest EOD
+    // close when holdings exist, else the latest manual snapshot — never both.
     const investmentRows = await this.db.execute(sql`
-      SELECT COALESCE(SUM(latest.balance_cents), 0) AS investment_total_cents
-      FROM (
-        SELECT DISTINCT ON (ia.id) is2.balance_cents
+      WITH acct AS (
+        SELECT ia.id,
+          EXISTS (
+            SELECT 1 FROM ${schema.investmentHoldings} ih
+            WHERE ih.investment_account_id = ia.id
+          ) AS has_holdings
         FROM ${schema.investmentAccounts} ia
-        JOIN ${schema.investmentSnapshots} is2 ON ia.id = is2.investment_account_id
         WHERE ia.deleted_at IS NULL
           AND ${invUserScope}
-        ORDER BY ia.id, is2.date DESC
-      ) latest
+      ),
+      holdings_value AS (
+        SELECT ih.investment_account_id, SUM(
+          ih.share_count * COALESCE(sp.close_cents, 0)
+        ) AS value_cents
+        FROM ${schema.investmentHoldings} ih
+        JOIN acct ON acct.id = ih.investment_account_id AND acct.has_holdings
+        LEFT JOIN LATERAL (
+          SELECT close_cents
+          FROM ${schema.securityPrices} sp2
+          WHERE sp2.ticker = ih.ticker
+          ORDER BY sp2.price_date DESC
+          LIMIT 1
+        ) sp ON true
+        GROUP BY ih.investment_account_id
+      ),
+      snapshot_value AS (
+        SELECT acct.id AS investment_account_id, snap.balance_cents
+        FROM acct
+        LEFT JOIN LATERAL (
+          SELECT balance_cents
+          FROM ${schema.investmentSnapshots} s
+          WHERE s.investment_account_id = acct.id
+          ORDER BY s.date DESC, s.created_at DESC
+          LIMIT 1
+        ) snap ON true
+        WHERE NOT acct.has_holdings
+      )
+      SELECT
+        COALESCE((SELECT SUM(value_cents) FROM holdings_value), 0) AS holdings_total_cents,
+        COALESCE((SELECT SUM(balance_cents) FROM snapshot_value), 0) AS snapshot_total_cents
     `);
+    const investmentRow = this.extractRows(investmentRows)[0] || {
+      holdings_total_cents: 0,
+      snapshot_total_cents: 0,
+    };
 
+    // Manual assets (home/car/gold/other): latest carry-forward value per asset.
+    const manualAssetRows = await this.db.execute(sql`
+      SELECT COALESCE(SUM(latest.value_cents), 0) AS manual_asset_total_cents
+      FROM ${schema.manualAssets} ma
+      LEFT JOIN LATERAL (
+        SELECT value_cents
+        FROM ${schema.manualAssetSnapshots} mas
+        WHERE mas.manual_asset_id = ma.id
+        ORDER BY mas.snapshot_month DESC
+        LIMIT 1
+      ) latest ON true
+      WHERE ma.deleted_at IS NULL
+        AND ${maUserScope}
+    `);
+    const manualAssetCents = Number(
+      this.extractRows(manualAssetRows)[0]?.manual_asset_total_cents ?? 0,
+    );
+
+    // Loans: manual-statement-wins else amortized via computeLoanState.
+    const loanRows = await this.db.execute(sql`
+      SELECT
+        l.original_balance_cents,
+        l.apr_bps,
+        l.scheduled_payment_cents,
+        l.start_date::text AS start_date,
+        latest.balance_cents AS manual_balance_cents,
+        latest.source AS latest_source
+      FROM ${schema.loans} l
+      LEFT JOIN LATERAL (
+        SELECT balance_cents, source
+        FROM ${schema.loanBalanceSnapshots} lbs
+        WHERE lbs.loan_id = l.id
+        ORDER BY lbs.snapshot_month DESC
+        LIMIT 1
+      ) latest ON true
+      WHERE l.deleted_at IS NULL
+        AND l.is_active = true
+        AND ${loanUserScope}
+    `);
+    const loanLiabilityCents = this.extractRows(loanRows).reduce(
+      (sum: number, l: any) => {
+        if (l.latest_source === 'manual_statement' && l.manual_balance_cents != null) {
+          return sum + Number(l.manual_balance_cents);
+        }
+        const state = computeLoanState(
+          {
+            originalBalanceCents: Number(l.original_balance_cents),
+            aprBps: Number(l.apr_bps),
+            scheduledPaymentCents: Number(l.scheduled_payment_cents),
+            startDate: l.start_date,
+          },
+          [],
+        );
+        return sum + state.currentBalanceCents;
+      },
+      0,
+    );
+
+    const liquidCents = Number(acctRow.liquid_cents ?? 0);
+    const regularInvestmentCents = Number(acctRow.regular_investment_cents ?? 0);
+    const creditCardLiabilityCents = Number(acctRow.liabilities_cents ?? 0);
     const investmentCents =
-      this.extractRows(investmentRows)[0]?.investment_total_cents ?? 0;
+      Number(investmentRow.holdings_total_cents ?? 0) +
+      Number(investmentRow.snapshot_total_cents ?? 0) +
+      regularInvestmentCents;
+
+    const assets = liquidCents + investmentCents + manualAssetCents;
+    const liabilities = creditCardLiabilityCents + loanLiabilityCents;
 
     return {
-      assets: Number(row.assets_cents) + Number(investmentCents),
-      liabilities: Number(row.liabilities_cents),
-      investments: Number(investmentCents),
-      netWorth:
-        Number(row.assets_cents) +
-        Number(investmentCents) -
-        Number(row.liabilities_cents),
+      assets,
+      liabilities,
+      investments: investmentCents,
+      netWorth: assets - liabilities,
     };
   }
 
