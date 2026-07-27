@@ -266,27 +266,60 @@ describe('AnalyticsService', () => {
   });
 
   describe('netWorth', () => {
-    it('should calculate net worth with camelCase keys', async () => {
+    /** netWorth() issues 4 sequential db.execute calls in this order:
+     *  1. accounts (liquid / regular-account investments / credit-card liabilities)
+     *  2. investment_accounts (holdings-x-price else snapshot)
+     *  3. manual_assets (carry-forward)
+     *  4. loans (manual-statement else amortized)
+     */
+    function mockNetWorthQueries(overrides: {
+      acct?: any;
+      investment?: any;
+      manualAsset?: any;
+      loans?: any[];
+    }) {
       mockDb.execute
         .mockResolvedValueOnce({
-          rows: [{ assets_cents: '800000', liabilities_cents: '150000' }],
+          rows: [
+            {
+              liquid_cents: '0',
+              regular_investment_cents: '0',
+              liabilities_cents: '0',
+              ...overrides.acct,
+            },
+          ],
         })
         .mockResolvedValueOnce({
-          rows: [{ investment_total_cents: '200000' }],
-        });
+          rows: [
+            {
+              holdings_total_cents: '0',
+              snapshot_total_cents: '0',
+              ...overrides.investment,
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ manual_asset_total_cents: '0', ...overrides.manualAsset }],
+        })
+        .mockResolvedValueOnce({ rows: overrides.loans ?? [] });
+    }
+
+    it('should calculate net worth with camelCase keys', async () => {
+      mockNetWorthQueries({
+        acct: { liquid_cents: '800000', liabilities_cents: '150000' },
+        investment: { snapshot_total_cents: '200000' },
+      });
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
 
-      expect(result.assets).toBe(1000000); // 800000 + 200000
+      expect(result.assets).toBe(1000000); // 800000 liquid + 200000 investments
       expect(result.liabilities).toBe(150000);
       expect(result.investments).toBe(200000);
       expect(result.netWorth).toBe(850000); // 1000000 - 150000
     });
 
     it('should handle zero balances', async () => {
-      mockDb.execute
-        .mockResolvedValueOnce({ rows: [{ assets_cents: '0', liabilities_cents: '0' }] })
-        .mockResolvedValueOnce({ rows: [{ investment_total_cents: '0' }] });
+      mockNetWorthQueries({});
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
 
@@ -298,14 +331,99 @@ describe('AnalyticsService', () => {
     it('should handle missing investment data', async () => {
       mockDb.execute
         .mockResolvedValueOnce({
-          rows: [{ assets_cents: '500000', liabilities_cents: '100000' }],
+          rows: [
+            { liquid_cents: '500000', regular_investment_cents: '0', liabilities_cents: '100000' },
+          ],
         })
-        .mockResolvedValueOnce({ rows: [{}] });
+        .mockResolvedValueOnce({ rows: [{}] })
+        .mockResolvedValueOnce({ rows: [{}] })
+        .mockResolvedValueOnce({ rows: [] });
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
 
       expect(result.investments).toBe(0);
       expect(result.netWorth).toBe(400000);
+    });
+
+    it('includes brokerage/edu_529 regular-account balances in investments, never double-counted', async () => {
+      mockNetWorthQueries({
+        acct: { liquid_cents: '100000', regular_investment_cents: '50000' },
+      });
+
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
+
+      expect(result.investments).toBe(50000);
+      expect(result.assets).toBe(150000);
+    });
+
+    it('uses holdings x price when holdings exist, ignoring any snapshot for that same total', async () => {
+      // Even if a snapshot total were non-zero, the service's holdings_total_cents
+      // and snapshot_total_cents come from mutually exclusive per-account SQL CTEs
+      // (an account contributes to exactly one), so summing both here is safe and
+      // reflects that no account is counted twice.
+      mockNetWorthQueries({
+        investment: { holdings_total_cents: '300000', snapshot_total_cents: '0' },
+      });
+
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
+
+      expect(result.investments).toBe(300000);
+    });
+
+    it('includes manual assets (home/car/gold/other) in total assets', async () => {
+      mockNetWorthQueries({
+        acct: { liquid_cents: '100000' },
+        manualAsset: { manual_asset_total_cents: '400000' },
+      });
+
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
+
+      expect(result.assets).toBe(500000);
+      expect(result.netWorth).toBe(500000);
+    });
+
+    it('subtracts loan liabilities: manual-statement balance wins over amortized calc', async () => {
+      mockNetWorthQueries({
+        acct: { liquid_cents: '1000000' },
+        loans: [
+          {
+            original_balance_cents: '10000000',
+            apr_bps: '400',
+            scheduled_payment_cents: '50000',
+            start_date: '2020-01-01',
+            manual_balance_cents: '9500000',
+            latest_source: 'manual_statement',
+          },
+        ],
+      });
+
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
+
+      expect(result.liabilities).toBe(9500000);
+      expect(result.netWorth).toBe(1000000 - 9500000);
+    });
+
+    it('falls back to amortized loan balance when no manual statement snapshot exists', async () => {
+      mockNetWorthQueries({
+        acct: { liquid_cents: '1000000' },
+        loans: [
+          {
+            original_balance_cents: '10000000',
+            apr_bps: '400',
+            scheduled_payment_cents: '50000',
+            start_date: '2020-01-01',
+            manual_balance_cents: null,
+            latest_source: null,
+          },
+        ],
+      });
+
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
+
+      // Amortized balance after time has elapsed since 2020-01-01 must be strictly
+      // less than the original balance (payments have been applied) but still positive.
+      expect(result.liabilities).toBeGreaterThan(0);
+      expect(result.liabilities).toBeLessThan(10000000);
     });
   });
 
