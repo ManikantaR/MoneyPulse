@@ -19,6 +19,7 @@ import { CashManagerService } from '../recommendations/cash-manager.service';
 import { InvestmentCoachService } from '../recommendations/investment-coach.service';
 import { SavingsCoachService } from '../recommendations/savings-coach.service';
 import { RateWatchlistService } from '../rate-watchlist/rate-watchlist.service';
+import { MonthlyCloseService } from '../monthly-close/monthly-close.service';
 
 const MARKET_DATA_JITTER_MAX_MS = 15 * 60_000; // spread load on the free EIA/FRED tiers
 
@@ -49,6 +50,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly investmentCoachService: InvestmentCoachService,
     private readonly savingsCoachService: SavingsCoachService,
     private readonly rateWatchlistService: RateWatchlistService,
+    private readonly monthlyCloseService: MonthlyCloseService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
   ) {
     super();
@@ -238,6 +240,16 @@ export class AlertCronProcessor extends WorkerHost {
       case 'savings-coach-check':
         await this.savingsCoachService.runForAllUsers();
         break;
+
+      // 13.5 Monthly Close auto-draft — creates/refreshes the previous month's draft
+      // for every active user, backfilling history on first run.
+      case 'monthly-close-auto-draft': {
+        const result = await this.monthlyCloseService.runAutoDraftForAllUsers();
+        this.logger.log(
+          `Monthly-close auto-draft: ${result.usersProcessed} user(s) processed, ${result.closesCreated} close(s) created`,
+        );
+        break;
+      }
 
       default:
         this.logger.warn(`Unknown alert job: ${job.name}`);
