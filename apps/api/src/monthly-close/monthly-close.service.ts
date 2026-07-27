@@ -540,9 +540,10 @@ export class MonthlyCloseService {
    */
   async runAutoDraftForAllUsers(referenceMonth?: string): Promise<{ usersProcessed: number; closesCreated: number }> {
     const targetMonth = addMonths(referenceMonth ?? new Date().toISOString().slice(0, 7), -1);
+    const users = await this.activeUsers();
     let closesCreated = 0;
 
-    for (const user of await this.activeUsers()) {
+    for (const user of users) {
       try {
         const created = await this.runAutoDraftForUser(user.id, targetMonth);
         closesCreated += created;
@@ -550,7 +551,18 @@ export class MonthlyCloseService {
         this.logger.error(`Monthly-close auto-draft failed for user ${user.id}: ${err.message}`, err.stack);
       }
     }
-    return { usersProcessed: (await this.activeUsers()).length, closesCreated };
+    return { usersProcessed: users.length, closesCreated };
+  }
+
+  /** Draft/refresh `month` for one user unless it's already confirmed — a confirmed
+   *  close is user-signed-off history; the auto-draft cron must never silently
+   *  clobber it (only the explicit recalculate/patch endpoints may touch it, and
+   *  patch applies the isEdited/editedAt audit stamp `draft()` does not). */
+  private async draftUnlessConfirmed(userId: string, month: string): Promise<boolean> {
+    const existing = await this.findRow(userId, month);
+    if (existing?.status === 'confirmed') return false;
+    await this.draft(userId, month);
+    return true;
   }
 
   private async runAutoDraftForUser(userId: string, targetMonth: string): Promise<number> {
@@ -564,8 +576,9 @@ export class MonthlyCloseService {
         : targetMonth;
       let month = backfillStart;
       while (monthDiff(targetMonth, month) >= 0) {
-        await this.draft(userId, month);
-        created += 1;
+        const wasMissing = !(await this.findRow(userId, month));
+        const drafted = await this.draftUnlessConfirmed(userId, month);
+        if (drafted && wasMissing) created += 1;
         await this.maybeNudgeFreshness(userId, month);
         month = addMonths(month, 1);
       }
@@ -573,8 +586,8 @@ export class MonthlyCloseService {
     }
 
     const existing = await this.findRow(userId, targetMonth);
-    await this.draft(userId, targetMonth);
-    if (!existing) created += 1;
+    const drafted = await this.draftUnlessConfirmed(userId, targetMonth);
+    if (drafted && !existing) created += 1;
     await this.maybeNudgeFreshness(userId, targetMonth);
     return created;
   }

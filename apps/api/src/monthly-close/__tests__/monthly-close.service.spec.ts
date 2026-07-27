@@ -119,6 +119,23 @@ describe('MonthlyCloseService', () => {
     });
   });
 
+  describe('auto-draft guards confirmed closes', () => {
+    it('does not overwrite a close that is already confirmed', async () => {
+      mockDb.select = vi.fn(() => makeChain([{ ...draftRow, status: 'confirmed' }]));
+      const drafted = await (service as any).draftUnlessConfirmed('user-1', '2026-06-01');
+      expect(drafted).toBe(false);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('drafts a close that does not exist yet', async () => {
+      mockDb.select = vi.fn(() => makeChain([]));
+      const drafted = await (service as any).draftUnlessConfirmed('user-1', '2026-06-01');
+      expect(drafted).toBe(true);
+      expect(mockDb.insert).toHaveBeenCalled();
+    });
+  });
+
   describe('freshness nudge cap (decision #3)', () => {
     it('skips the nudge when the close is complete', async () => {
       mockDb.select = vi.fn(() => makeChain([{ ...draftRow, freshness: { isComplete: true } }]));
