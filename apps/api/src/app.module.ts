@@ -29,6 +29,7 @@ import { AdvisorModule } from './advisor/advisor.module';
 import { MarketDataModule } from './market-data/market-data.module';
 import { RateWatchlistModule } from './rate-watchlist/rate-watchlist.module';
 import { SuitabilitySettingsModule } from './suitability-settings/suitability-settings.module';
+import { ManualAssetsModule } from './monthly-close/manual-assets.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { SuitabilitySettingsModule } from './suitability-settings/suitability-se
     MarketDataModule,
     RateWatchlistModule,
     SuitabilitySettingsModule,
+    ManualAssetsModule,
     HealthModule,
   ],
   providers: [

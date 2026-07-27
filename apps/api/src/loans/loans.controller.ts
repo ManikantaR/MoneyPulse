@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Delete,
   Param,
   Body,
@@ -13,8 +14,17 @@ import { LoansService } from './loans.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { createLoanSchema, updateLoanSchema } from '@moneypulse/shared';
-import type { AuthTokenPayload, CreateLoanInput, UpdateLoanInput } from '@moneypulse/shared';
+import {
+  createLoanSchema,
+  updateLoanSchema,
+  putLoanBalanceSnapshotSchema,
+} from '@moneypulse/shared';
+import type {
+  AuthTokenPayload,
+  CreateLoanInput,
+  UpdateLoanInput,
+  PutLoanBalanceSnapshotInput,
+} from '@moneypulse/shared';
 
 @ApiTags('Loans')
 @Controller('loans')
@@ -57,5 +67,22 @@ export class LoansController {
   @ApiOperation({ summary: 'Delete (soft) a tracked loan' })
   async remove(@Param('id') id: string, @CurrentUser() user: AuthTokenPayload) {
     return { data: await this.loansService.remove(id, user.sub) };
+  }
+
+  @Get(':id/balance-snapshots')
+  @ApiOperation({ summary: 'List explicit monthly balance snapshots for a loan' })
+  async listBalanceSnapshots(@Param('id') id: string, @CurrentUser() user: AuthTokenPayload) {
+    return { data: await this.loansService.listBalanceSnapshots(id, user.sub) };
+  }
+
+  @Put(':id/balance-snapshots/:month')
+  @ApiOperation({ summary: 'Upsert a manual-statement balance for one month' })
+  async upsertBalanceSnapshot(
+    @Param('id') id: string,
+    @Param('month') month: string,
+    @CurrentUser() user: AuthTokenPayload,
+    @Body(new ZodValidationPipe(putLoanBalanceSnapshotSchema)) body: PutLoanBalanceSnapshotInput,
+  ) {
+    return { data: await this.loansService.upsertBalanceSnapshot(id, user.sub, month, body) };
   }
 }
