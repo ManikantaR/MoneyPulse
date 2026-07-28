@@ -128,7 +128,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-[var(--card)] text-[var(--card-foreground)] border border-[var(--border)] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+        <div className="fixed top-[4.5rem] left-2 right-2 w-auto max-w-none sm:absolute sm:top-auto sm:left-auto sm:right-0 sm:mt-2 sm:w-80 sm:max-w-[calc(100vw-2rem)] bg-[var(--card)] text-[var(--card-foreground)] border border-[var(--border)] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
           <div className="p-3 border-b border-[var(--border)] flex items-center justify-between sticky top-0 bg-[var(--card)]">
             <h3 className="font-medium text-sm">Notifications</h3>
             {!!unread && unread > 0 && (
