@@ -39,7 +39,25 @@ export class StooqClient {
         return null;
       }
       const text = await res.text();
-      return parseStooqCsv(text);
+      // Stooq's endpoint can 200 with an HTML anti-bot/JS-challenge page instead of
+      // real CSV (e.g. a proof-of-work "verify your browser" interstitial) — that
+      // response is neither valid CSV nor Stooq's own "N/D" unknown-ticker body, and
+      // parseStooqCsv would otherwise swallow it as an indistinguishable silent null,
+      // hiding a total-outage condition behind the same code path as a routine
+      // unknown-ticker miss. Surface it loudly so an outage is visible in logs.
+      const trimmed = text.trimStart();
+      if (trimmed.startsWith('<') || /^\s*<!doctype/i.test(trimmed)) {
+        this.logger.error(
+          `Stooq ${ticker}: got a non-CSV (HTML) response — likely a bot-check/` +
+            `anti-scraping wall on Stooq's side rather than an unknown ticker`,
+        );
+        return null;
+      }
+      const point = parseStooqCsv(text);
+      if (!point) {
+        this.logger.warn(`Stooq ${ticker}: no price data (unknown ticker or empty feed)`);
+      }
+      return point;
     } catch (err: any) {
       this.logger.error(`Stooq ${ticker} fetch failed: ${err.message}`);
       return null;

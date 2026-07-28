@@ -43,11 +43,20 @@ export class SecurityPricesService {
     const refreshed: string[] = [];
     const failed: string[] = [];
 
+    this.logger.log(`Security price refresh starting for ${tickers.length} held ticker(s)`);
     for (const ticker of tickers) {
       try {
         const wrote = await this.refreshOne(ticker);
-        if (wrote) refreshed.push(ticker);
-        else failed.push(ticker); // both providers came back empty (outage / unknown ticker)
+        if (wrote) {
+          refreshed.push(ticker);
+        } else {
+          // Both providers came back empty (outage / unknown ticker / missing
+          // Alpha Vantage config) — StooqClient/AlphaVantageClient already log the
+          // specific reason per-provider; this line ties it back to the ticker so
+          // "which tickers failed and why" is visible from the aggregate log alone.
+          this.logger.warn(`security price refresh: no price obtained for ${ticker}`);
+          failed.push(ticker);
+        }
       } catch (err: any) {
         this.logger.error(`security price refresh failed for ${ticker}: ${err.message}`);
         failed.push(ticker);

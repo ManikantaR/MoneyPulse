@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { StooqClient, parseStooqCsv } from '../stooq.client';
 
 // Recorded fixture — a trimmed real-shaped Stooq CSV response for a synthetic
@@ -53,5 +54,22 @@ describe('StooqClient', () => {
     const client = new StooqClient();
     const point = await client.fetchLatestClose('VTI');
     expect(point).toBeNull();
+  });
+
+  it('returns null (and logs distinctly) on a 200 OK HTML anti-bot challenge page', async () => {
+    // Reproduces Stooq's current behavior for this endpoint: HTTP 200 with an HTML
+    // "verify your browser" proof-of-work interstitial instead of CSV, for every
+    // ticker — must not be silently treated the same as a legitimate empty/N-D body.
+    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        '<!DOCTYPE html><html><head></head><body><noscript>This site requires JavaScript' +
+        ' to verify your browser.</noscript><script>/* PoW challenge */</script></body></html>',
+    }) as any;
+    const client = new StooqClient();
+    const point = await client.fetchLatestClose('VTI');
+    expect(point).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('non-CSV'));
   });
 });
