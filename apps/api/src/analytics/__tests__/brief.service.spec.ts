@@ -130,16 +130,24 @@ describe('BriefService', () => {
     });
 
     it('includes budget pace section only when a budget is projected over 100%', async () => {
-      setYesterdayAndBudgetResponses(
-        { total: 0, count: 0, largest_amount: 0, largest_merchant: null },
-        [{ category_name: 'Dining', budget_cents: 10000, spent_cents: 9000 }],
-      );
-      const svc = makeService();
-      const result = await svc.buildBrief('user-1', 'America/New_York');
+      // Pin "today" to early in the month so the day-of-month/days-in-month
+      // pace projection is stable regardless of when this suite runs.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-10T12:00:00Z'));
+      try {
+        setYesterdayAndBudgetResponses(
+          { total: 0, count: 0, largest_amount: 0, largest_merchant: null },
+          [{ category_name: 'Dining', budget_cents: 10000, spent_cents: 9000 }],
+        );
+        const svc = makeService();
+        const result = await svc.buildBrief('user-1', 'America/New_York');
 
-      const pace = result.sections.find((s) => s.label.includes('Budget pace'));
-      expect(pace).toBeDefined();
-      expect(pace!.value).toContain('Dining');
+        const pace = result.sections.find((s) => s.label.includes('Budget pace'));
+        expect(pace).toBeDefined();
+        expect(pace!.value).toContain('Dining');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('omits budget pace section when no budget is over pace', async () => {
