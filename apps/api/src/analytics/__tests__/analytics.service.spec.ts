@@ -1,3 +1,4 @@
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { AnalyticsService } from '../analytics.service';
 
 const TEST_USER_ID = 'user-test-123';
@@ -944,6 +945,42 @@ describe('AnalyticsService', () => {
       const result = await service.subscriptionTotal(TEST_USER_ID);
       expect(result).toEqual({ monthlyTotalCents: 0, activeCount: 0, trend: [] });
       expect(mockDb.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('builds the trend query merchant-name filter as a real Postgres array, not a parenthesized list (#202)', async () => {
+      // Regression for #202: `= ANY(($2, $3, ...))` is a row/list expression, not an array
+      // literal, and Postgres rejects it with "op ANY/ALL (array) requires array on right
+      // side" once there's more than one element. A 1-2 merchant fixture wouldn't catch this
+      // (ANY((x)) degenerates and "accidentally" works), so use a realistic 12-merchant list.
+      const merchantNames = [
+        'aws', 'hulu', 'verizon', 'github inc', 'dominion energy', 'netflix',
+        'spotify', 'gym', 'insurance', 'comcast', 'planet fitness', 'adobe',
+      ];
+      mockDb.execute
+        .mockResolvedValueOnce({
+          rows: merchantNames.map((name) => ({
+            normalized_name: name,
+            expected_amount_cents: '1000',
+            frequency: 'monthly',
+          })),
+        })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await service.subscriptionTotal(TEST_USER_ID);
+
+      const trendQuery = mockDb.execute.mock.calls[1][0];
+      const { sql: sqlText, params } = new PgDialect().sqlToQuery(trendQuery);
+
+      // Must be a genuine array literal cast to text[], e.g. ANY(ARRAY[$2, $3, ...]::text[]),
+      // never a bare parenthesized list like ANY(($2, $3, ...)).
+      expect(sqlText).toMatch(/=\s*ANY\(ARRAY\[[^\]]*\]::text\[\]\)/);
+      expect(sqlText).not.toMatch(/=\s*ANY\(\(\$/);
+
+      // Every merchant name must actually be bound as a param (userId + 12 names).
+      expect(params).toHaveLength(1 + merchantNames.length);
+      for (const name of merchantNames) {
+        expect(params).toContain(name);
+      }
     });
   });
 });
