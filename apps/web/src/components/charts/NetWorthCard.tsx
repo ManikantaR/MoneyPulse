@@ -9,6 +9,7 @@ interface NetWorthCardProps {
   netWorth: number;
   onClickAssets?: () => void;
   onClickLiabilities?: () => void;
+  onClickInvestments?: () => void;
 }
 
 /** Large summary card showing net worth breakdown with trend indicator. */
@@ -19,6 +20,7 @@ export function NetWorthCard({
   netWorth,
   onClickAssets,
   onClickLiabilities,
+  onClickInvestments,
 }: NetWorthCardProps) {
   const isPositive = netWorth >= 0;
 
@@ -84,16 +86,25 @@ export function NetWorthCard({
           </p>
         </button>
 
-        {/* Investments — static */}
-        <div className="flex flex-col gap-1 rounded-xl p-2 -mx-2">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
-            <LineChart className="h-3.5 w-3.5" />
-            Investments
+        {/* Investments — clickable */}
+        <button
+          onClick={onClickInvestments}
+          disabled={!onClickInvestments}
+          className="group flex flex-col gap-1 rounded-xl p-2 -mx-2 text-left transition-colors enabled:hover:bg-[var(--muted)] disabled:cursor-default"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+              <LineChart className="h-3.5 w-3.5" />
+              Investments
+            </div>
+            {onClickInvestments && (
+              <ChevronRight className="h-3.5 w-3.5 text-[var(--muted-foreground)] opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
           </div>
           <p className="text-lg font-bold text-[var(--primary)] tabular-nums">
             {formatCents(investments)}
           </p>
-        </div>
+        </button>
       </div>
 
       {/* Bottom accent bar */}

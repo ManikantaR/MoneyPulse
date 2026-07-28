@@ -1,39 +1,78 @@
 'use client';
 
-import { X, Wallet, CreditCard, TrendingUp, ExternalLink } from 'lucide-react';
+import { X, Wallet, CreditCard, LineChart, TrendingUp, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatCents } from '@/lib/format';
-import type { AccountBalanceItem } from '@/lib/hooks/useAnalytics';
+import type { NetWorthBreakdown, NetWorthLineItem } from '@/lib/hooks/useAnalytics';
 
-const ASSET_TYPES = ['checking', 'savings', 'investment'];
-const LIABILITY_TYPES = ['credit_card'];
+export type DrilldownType = 'assets' | 'liabilities' | 'investments';
 
 interface NetWorthDrilldownProps {
-  type: 'assets' | 'liabilities';
-  accounts: AccountBalanceItem[];
+  type: DrilldownType;
+  breakdown: NetWorthBreakdown;
   onClose: () => void;
   from?: string;
   to?: string;
 }
 
-/** Slide-over panel showing per-account breakdown for assets or liabilities. */
-export function NetWorthDrilldown({ type, accounts, onClose, from, to }: NetWorthDrilldownProps) {
-  const router = useRouter();
-  const isAssets = type === 'assets';
-  const filtered = accounts.filter((a) =>
-    isAssets ? ASSET_TYPES.includes(a.accountType) : LIABILITY_TYPES.includes(a.accountType),
-  );
-  const total = filtered.reduce((s, a) => s + a.balanceCents, 0);
+const THEME: Record<DrilldownType, { label: string; icon: typeof Wallet; color: string }> = {
+  assets: { label: 'Total Assets', icon: Wallet, color: 'var(--secondary)' },
+  liabilities: { label: 'Total Liabilities', icon: CreditCard, color: 'var(--destructive)' },
+  investments: { label: 'Total Investments', icon: LineChart, color: 'var(--primary)' },
+};
 
-  function typeLabel(accountType: string) {
-    return accountType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+/** Returns the line items making up a given drill type, guaranteed (structurally, via the
+ *  shared `netWorthBreakdown()` backend query) to sum to the same total shown on the hero card. */
+function itemsFor(type: DrilldownType, breakdown: NetWorthBreakdown): NetWorthLineItem[] {
+  if (type === 'assets') {
+    return [
+      ...breakdown.assets.liquid,
+      ...breakdown.assets.investments,
+      ...breakdown.assets.manualAssets,
+    ];
   }
+  if (type === 'liabilities') {
+    return [...breakdown.liabilities.creditCards, ...breakdown.liabilities.loans];
+  }
+  return breakdown.assets.investments;
+}
 
-  function viewTransactions(accountId: string, nickname: string) {
-    const params = new URLSearchParams({ accountId, drill: `${nickname} transactions` });
+function typeLabel(accountType: string) {
+  return accountType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Slide-over panel showing per-line-item breakdown for assets, liabilities, or investments. */
+export function NetWorthDrilldown({ type, breakdown, onClose, from, to }: NetWorthDrilldownProps) {
+  const router = useRouter();
+  const items = itemsFor(type, breakdown);
+  const total = items.reduce((s, i) => s + i.balanceCents, 0);
+  const theme = THEME[type];
+  const Icon = theme.icon;
+
+  function viewDetails(item: NetWorthLineItem) {
+    if (item.source === 'loan') {
+      router.push('/loans');
+      return;
+    }
+    if (item.source === 'manual_asset') {
+      router.push('/health');
+      return;
+    }
+    if (item.source === 'investment_account') {
+      router.push('/investments');
+      return;
+    }
+    const params = new URLSearchParams({ accountId: item.id, drill: `${item.nickname} transactions` });
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     router.push(`/transactions?${params.toString()}`);
+  }
+
+  function detailLabel(item: NetWorthLineItem) {
+    if (item.source === 'loan') return 'View loan';
+    if (item.source === 'manual_asset') return 'View details';
+    if (item.source === 'investment_account') return 'View investments';
+    return 'View transactions';
   }
 
   return (
@@ -49,32 +88,20 @@ export function NetWorthDrilldown({ type, accounts, onClose, from, to }: NetWort
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={isAssets ? 'Assets Breakdown' : 'Liabilities Breakdown'}
+        aria-label={theme.label}
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col bg-[var(--card)] shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-[var(--border)] p-6">
           <div className="flex items-center gap-3">
-            <div
-              className={`rounded-xl p-2.5 ${
-                isAssets ? 'bg-[var(--secondary)]/10' : 'bg-[var(--destructive)]/10'
-              }`}
-            >
-              {isAssets ? (
-                <Wallet className="h-5 w-5 text-[var(--secondary)]" />
-              ) : (
-                <CreditCard className="h-5 w-5 text-[var(--destructive)]" />
-              )}
+            <div className="rounded-xl p-2.5" style={{ backgroundColor: `color-mix(in srgb, ${theme.color} 10%, transparent)` }}>
+              <Icon className="h-5 w-5" style={{ color: theme.color }} />
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
-                {isAssets ? 'Total Assets' : 'Total Liabilities'}
+                {theme.label}
               </p>
-              <p
-                className={`text-2xl font-extrabold tabular-nums ${
-                  isAssets ? 'text-[var(--secondary)]' : 'text-[var(--destructive)]'
-                }`}
-              >
+              <p className="text-2xl font-extrabold tabular-nums" style={{ color: theme.color }}>
                 {formatCents(total)}
               </p>
             </div>
@@ -88,46 +115,46 @@ export function NetWorthDrilldown({ type, accounts, onClose, from, to }: NetWort
           </button>
         </div>
 
-        {/* Account list */}
+        {/* Line item list */}
         <div className="flex-1 overflow-y-auto p-6 space-y-2.5">
-          {filtered.length === 0 ? (
+          {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <TrendingUp className="h-10 w-10 text-[var(--muted-foreground)] mb-3 opacity-40" />
               <p className="text-sm font-medium text-[var(--muted-foreground)]">
-                No {isAssets ? 'asset' : 'liability'} accounts found
+                No {type} found
               </p>
               <p className="text-xs text-[var(--muted-foreground)] mt-1 opacity-60">
                 Add accounts on the Accounts page
               </p>
             </div>
           ) : (
-            filtered
+            [...items]
               .sort((a, b) => Math.abs(b.balanceCents) - Math.abs(a.balanceCents))
-              .map((acc) => (
+              .map((item) => (
                 <div
-                  key={acc.accountId}
+                  key={`${item.source}-${item.id}`}
                   className="rounded-xl bg-[var(--surface-container-low)] px-4 py-3.5"
                 >
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">
-                      <p className="font-semibold text-sm truncate">{acc.nickname}</p>
+                      <p className="font-semibold text-sm truncate">{item.nickname}</p>
                       <p className="text-xs text-[var(--muted-foreground)] capitalize mt-0.5">
-                        {acc.institution} · {typeLabel(acc.accountType)}
+                        {item.institution ? `${item.institution} · ` : ''}
+                        {typeLabel(item.accountType)}
                       </p>
                     </div>
                     <p
-                      className={`shrink-0 font-bold tabular-nums text-sm ml-4 ${
-                        isAssets ? 'text-[var(--secondary)]' : 'text-[var(--destructive)]'
-                      }`}
+                      className="shrink-0 font-bold tabular-nums text-sm ml-4"
+                      style={{ color: theme.color }}
                     >
-                      {formatCents(acc.balanceCents)}
+                      {formatCents(item.balanceCents)}
                     </p>
                   </div>
                   <button
-                    onClick={() => viewTransactions(acc.accountId, acc.nickname)}
+                    onClick={() => viewDetails(item)}
                     className="mt-2 flex items-center gap-1 text-xs font-semibold text-[var(--primary)] hover:underline"
                   >
-                    View transactions <ExternalLink className="h-3 w-3" />
+                    {detailLabel(item)} <ExternalLink className="h-3 w-3" />
                   </button>
                 </div>
               ))
@@ -137,7 +164,7 @@ export function NetWorthDrilldown({ type, accounts, onClose, from, to }: NetWort
         {/* Footer */}
         <div className="border-t border-[var(--border)] px-6 py-4">
           <p className="text-xs text-[var(--muted-foreground)]">
-            Balances computed from imported transactions + starting balance.
+            Balances computed the same way as the Net Worth card above — this total always matches.
           </p>
         </div>
       </div>

@@ -27,6 +27,7 @@ import {
   useAccountBalances,
   useCreditUtilization,
   useNetWorth,
+  useNetWorthBreakdown,
   useTopMerchants,
   useCreditCardPayments,
   useSavingsRate,
@@ -56,7 +57,7 @@ export default function DashboardPage() {
   const trendTo = format(new Date(), 'yyyy-MM-dd');
 
   // Drilldown slide-over state
-  const [drilldown, setDrilldown] = useState<'assets' | 'liabilities' | null>(null);
+  const [drilldown, setDrilldown] = useState<'assets' | 'liabilities' | 'investments' | null>(null);
 
   /** Navigate to transactions page with pre-filled filters for drill-down. */
   const drillTo = useCallback(
@@ -75,6 +76,7 @@ export default function DashboardPage() {
   const { data: balances, isLoading: balLoading } = useAccountBalances(params);
   const { data: credit, isLoading: creditLoading } = useCreditUtilization(params);
   const { data: netWorthData, isLoading: nwLoading } = useNetWorth(params);
+  const { data: netWorthBreakdown } = useNetWorthBreakdown(params);
   const { data: merchants, isLoading: merchLoading } = useTopMerchants(params);
   const { data: ccPayments, isLoading: ccLoading } = useCreditCardPayments(params);
   const { data: upcomingBills } = useUpcomingBills();
@@ -148,6 +150,7 @@ export default function DashboardPage() {
           netWorth={nw.netWorth}
           onClickAssets={() => setDrilldown('assets')}
           onClickLiabilities={() => setDrilldown('liabilities')}
+          onClickInvestments={() => setDrilldown('investments')}
         />
       )}
 
@@ -385,11 +388,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Assets / Liabilities drilldown slide-over */}
-      {drilldown && balances?.data && (
+      {/* Assets / Liabilities / Investments drilldown slide-over */}
+      {drilldown && netWorthBreakdown?.data && (
         <NetWorthDrilldown
           type={drilldown}
-          accounts={balances.data}
+          breakdown={netWorthBreakdown.data}
           onClose={() => setDrilldown(null)}
           from={from}
           to={to}

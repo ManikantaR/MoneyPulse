@@ -178,6 +178,31 @@ export class AnalyticsController {
   }
 
   /**
+   * GET /analytics/net-worth-breakdown — Line-item detail behind each `net-worth` total,
+   * so the dashboard's drill-down panel can show exactly the accounts/assets/loans that
+   * sum to the hero card's assets/liabilities/investments figures (see #192).
+   * Scoped to the authenticated user or their household.
+   *
+   * @param query - Validated household filter parameter.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: NetWorthBreakdown }`
+   * @throws {UnauthorizedException} If the request is not authenticated.
+   */
+  @Get('net-worth-breakdown')
+  @ApiOperation({ summary: 'Net worth breakdown (line items)' })
+  async netWorthBreakdown(
+    @Query(new ZodValidationPipe(analyticsQuerySchema)) query: AnalyticsQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.analyticsService.netWorthBreakdown(
+      user.sub,
+      { household: query.household },
+      user.householdId,
+    );
+    return { data };
+  }
+
+  /**
    * GET /analytics/net-worth-deltas — 30/90/365-day net-worth deltas from stored snapshots.
    *
    * @param user - JWT token payload containing user identity.
