@@ -50,6 +50,7 @@ describe('MonthlyCloseService', () => {
           provide: InvestmentsService,
           useValue: {
             getPortfolioValue: vi.fn().mockResolvedValue({ totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false }),
+            getPortfolioValueAsOf: vi.fn().mockResolvedValue({ totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false }),
           },
         },
         { provide: LoansService, useValue: { getBalanceForMonth: vi.fn() } },

@@ -299,8 +299,11 @@ export class MonthlyCloseService {
     }
 
     // ── Investments: holdings x latest EOD close when holdings exist, else the
-    // manual investment_snapshots value for the month — never both (decision #2). ──
-    const portfolio = await this.investmentsService.getPortfolioValue(userId);
+    // manual investment_snapshots value for the month — never both (decision #2).
+    // Uses holdings/prices as they stood at that month's end (#189) — not today's
+    // portfolio value — so backfilled historical months aren't skewed by today's
+    // holdings/market prices. ──
+    const portfolio = await this.investmentsService.getPortfolioValueAsOf(userId, lastDay);
     let investmentAssetCents = regularInvestmentAssetCents;
     if (portfolio.holdings.length > 0) {
       investmentAssetCents += portfolio.totalCents;
