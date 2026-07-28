@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { AlphaVantageClient } from '../alphavantage.client';
 
 function makeConfig(overrides: Record<string, string> = {}) {
@@ -27,6 +28,12 @@ describe('AlphaVantageClient', () => {
     const point = await client.fetchLatestClose('VTSAX');
     expect(point).toBeNull();
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('warns loudly at construction time when unconfigured, not just per-call', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    new AlphaVantageClient(makeConfig());
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('ALPHAVANTAGE_API_KEY'));
   });
 
   it('parses the latest close from a recorded fixture', async () => {

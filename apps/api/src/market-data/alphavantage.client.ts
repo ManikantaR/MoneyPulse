@@ -19,6 +19,17 @@ export class AlphaVantageClient {
 
   constructor(private readonly config: ConfigService) {
     this.apiKey = this.config.get<string>('ALPHAVANTAGE_API_KEY') || undefined;
+    if (!this.apiKey) {
+      // Loud at boot, not just per-ticker: without this key, every ticker Stooq
+      // can't price (mutual-fund NAVs) — and, if Stooq itself is unreachable/blocked,
+      // *every* ticker — silently never gets a security_prices row, with no single
+      // log line ever calling out the missing config as the cause.
+      this.logger.warn(
+        'ALPHAVANTAGE_API_KEY is not configured — Alpha Vantage fallback is fully ' +
+          'disabled, so any ticker Stooq fails to price (mutual-fund NAVs, or all ' +
+          'tickers during a Stooq outage) will never get a security_prices row',
+      );
+    }
   }
 
   get isConfigured(): boolean {
