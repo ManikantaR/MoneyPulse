@@ -26,7 +26,7 @@ export function MobileMoreDrawer({ onClose }: MobileMoreDrawerProps) {
 
       {/* Sheet */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex flex-col rounded-t-2xl bg-[var(--card)] shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 z-50 md:hidden flex max-h-[85vh] flex-col overflow-y-auto rounded-t-2xl bg-[var(--card)] shadow-2xl"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         role="dialog"
         aria-label="More navigation"
