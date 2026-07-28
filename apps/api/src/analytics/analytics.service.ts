@@ -19,6 +19,14 @@ export interface LineItem {
   accountType: string;
   balanceCents: number;
   source: 'account' | 'investment_account' | 'manual_asset' | 'loan';
+  /**
+   * True when `balanceCents` may be incomplete/outdated: e.g. one or more
+   * holdings in this investment account had no matching `securityPrices` row
+   * (new ticker, delisted, or a price-feed gap) and the account's value was
+   * either backfilled from its latest manual snapshot or, absent a snapshot,
+   * computed from priced holdings only (see #184).
+   */
+  stale?: boolean;
 }
 
 /** Net-worth totals, expressed as the line items that sum to each of `netWorth()`'s figures. */
@@ -461,9 +469,10 @@ export class AnalyticsService {
           AND ${invUserScope}
       ),
       holdings_value AS (
-        SELECT ih.investment_account_id, SUM(
-          ih.share_count * COALESCE(sp.close_cents, 0)
-        ) AS value_cents
+        SELECT
+          ih.investment_account_id,
+          SUM(ih.share_count * COALESCE(sp.close_cents, 0)) AS value_cents,
+          COUNT(*) FILTER (WHERE sp.close_cents IS NULL) AS missing_price_count
         FROM ${schema.investmentHoldings} ih
         JOIN acct ON acct.id = ih.investment_account_id AND acct.has_holdings
         LEFT JOIN LATERAL (
@@ -474,6 +483,12 @@ export class AnalyticsService {
           LIMIT 1
         ) sp ON true
         GROUP BY ih.investment_account_id
+      ),
+      latest_snapshot AS (
+        SELECT DISTINCT ON (s.investment_account_id)
+          s.investment_account_id, s.balance_cents
+        FROM ${schema.investmentSnapshots} s
+        ORDER BY s.investment_account_id, s.date DESC, s.created_at DESC
       )
       SELECT
         acct.id AS investment_account_id,
@@ -481,17 +496,24 @@ export class AnalyticsService {
         acct.institution,
         acct.account_type,
         CASE
+          -- Fully priced holdings: use the priced total, nothing stale.
+          WHEN acct.has_holdings AND COALESCE(hv.missing_price_count, 0) = 0
+            THEN COALESCE(hv.value_cents, 0)
+          -- Holdings with at least one unpriced ticker: prefer the account's
+          -- latest manual snapshot over silently zeroing the unpriced shares.
+          WHEN acct.has_holdings AND snap.balance_cents IS NOT NULL
+            THEN snap.balance_cents
+          -- Holdings with missing prices and no snapshot to fall back on:
+          -- best-effort partial total from priced holdings only (flagged stale).
           WHEN acct.has_holdings THEN COALESCE(hv.value_cents, 0)
-          ELSE COALESCE((
-            SELECT s.balance_cents
-            FROM ${schema.investmentSnapshots} s
-            WHERE s.investment_account_id = acct.id
-            ORDER BY s.date DESC, s.created_at DESC
-            LIMIT 1
-          ), 0)
-        END AS balance_cents
+          ELSE COALESCE(snap.balance_cents, 0)
+        END AS balance_cents,
+        (
+          acct.has_holdings AND COALESCE(hv.missing_price_count, 0) > 0
+        ) AS stale
       FROM acct
       LEFT JOIN holdings_value hv ON hv.investment_account_id = acct.id
+      LEFT JOIN latest_snapshot snap ON snap.investment_account_id = acct.id
     `);
     const investmentAccountItems: LineItem[] = this.extractRows(investmentRows).map(
       (r: any) => ({
@@ -501,6 +523,7 @@ export class AnalyticsService {
         accountType: r.account_type,
         balanceCents: Number(r.balance_cents),
         source: 'investment_account' as const,
+        ...(r.stale ? { stale: true } : {}),
       }),
     );
 

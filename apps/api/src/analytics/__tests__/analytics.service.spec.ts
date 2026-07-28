@@ -521,6 +521,67 @@ describe('AnalyticsService', () => {
       );
       expect(nw.assets - nw.liabilities).toBe(nw.netWorth);
     });
+
+    it('flags a holdings-priced investment account stale and surfaces it in the breakdown (#184)', async () => {
+      // The investment_accounts query itself decides, per row, whether any holding was
+      // missing a securityPrices match; the service just has to trust and propagate that
+      // flag rather than silently treating the fallback/partial total as fully priced.
+      mockNetWorthQueries({
+        investment: [
+          {
+            investment_account_id: 'inv-1',
+            nickname: 'Brokerage',
+            institution: 'Vanguard',
+            account_type: 'brokerage',
+            balance_cents: '150000', // e.g. fell back to the account's latest manual snapshot
+            stale: true,
+          },
+        ],
+      });
+
+      const breakdown = await service.netWorthBreakdown(TEST_USER_ID, { household: false });
+
+      expect(breakdown.assets.investments).toHaveLength(1);
+      expect(breakdown.assets.investments[0]).toMatchObject({
+        id: 'inv-1',
+        balanceCents: 150000,
+        stale: true,
+      });
+    });
+
+    it('does not set stale on a fully-priced investment account row', async () => {
+      mockNetWorthQueries({
+        investment: [
+          {
+            investment_account_id: 'inv-1',
+            nickname: 'Brokerage',
+            institution: 'Vanguard',
+            account_type: 'brokerage',
+            balance_cents: '300000',
+            stale: false,
+          },
+        ],
+      });
+
+      const breakdown = await service.netWorthBreakdown(TEST_USER_ID, { household: false });
+
+      expect(breakdown.assets.investments[0].stale).toBeUndefined();
+    });
+
+    it('builds the investment-account query so an unpriced holding falls back to the account\'s ' +
+      'latest snapshot (or, absent one, the priced-holdings-only partial total) instead of ' +
+      'silently zeroing that holding\'s contribution (#184)', async () => {
+      mockNetWorthQueries({});
+      await service.netWorthBreakdown(TEST_USER_ID, { household: false });
+
+      // Call order: 1=accounts, 2=investment_accounts.
+      const queryText = toSqlText(mockDb.execute.mock.calls[1][0]);
+      expect(queryText).toMatch(/missing_price_count/);
+      expect(queryText).toMatch(/latest_snapshot/);
+      // Zero unpriced holdings must not always resolve to a bare 0 anymore: the CASE must
+      // consult the snapshot fallback before it can fall through to COALESCE(hv.value_cents, 0).
+      expect(queryText).toMatch(/snap\.balance_cents IS NOT NULL/);
+    });
   });
 
   describe('topMerchants', () => {
