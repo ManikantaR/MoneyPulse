@@ -165,13 +165,15 @@ export class AlertCronProcessor extends WorkerHost {
         this.logger.log(`Treasury watchlist auto-sync: ${syncResult.usersSynced} user(s) synced`);
 
         // Cash Manager event trigger leg 1 (manifest: "benchmark-rate-move(>=25bps)").
-        const benchmarkMoved = await this.cashManagerService.checkBenchmarkRateMove(
+        const benchmarkMove = await this.cashManagerService.checkBenchmarkRateMove(
           result.refreshed,
         );
-        if (benchmarkMoved) {
+        if (benchmarkMove.moved) {
           await this.alertsQueue.add('cash-manager-check', {}, { removeOnComplete: true });
+          await this.cashManagerService.notifyBenchmarkRateMove(benchmarkMove);
           this.logger.log(
-            'Benchmark rate move >=25bps detected — queued ad hoc cash-manager-check',
+            `Benchmark rate move >=25bps detected (${benchmarkMove.deltaBps}bps) — queued ` +
+              'ad hoc cash-manager-check and dispatched market_event notification',
           );
         }
         break;
