@@ -122,12 +122,7 @@ export default function HealthPage() {
             ? ((current.freshness as { missingManualAssets?: string[] }).missingManualAssets ?? [])
             : []}
         />
-        <LoanVerificationPanel
-          month={month}
-          unverifiedLoans={current?.freshness && typeof current.freshness === 'object'
-            ? ((current.freshness as { unverifiedLoans?: string[] }).unverifiedLoans ?? [])
-            : []}
-        />
+        <LoanVerificationPanel month={month} />
       </div>
     </div>
   );
