@@ -76,6 +76,22 @@ export function useConfirmClose() {
   });
 }
 
+export interface AiMonthlyReviewResult {
+  bullets: string[];
+  disclaimer: string;
+  isIncomplete: boolean;
+}
+
+/** 13.7 — AI monthly review: 3-5 bullets from the close's aggregate figures only. */
+export function useAiMonthlyReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (month: string) =>
+      api.post<{ data: AiMonthlyReviewResult }>(`/monthly-close/${month}/ai-review`, {}),
+    onSuccess: () => invalidateAll(queryClient),
+  });
+}
+
 export function useReopenClose() {
   const queryClient = useQueryClient();
   return useMutation({

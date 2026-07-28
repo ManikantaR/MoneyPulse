@@ -14,6 +14,7 @@ import { MonthlyCloseMonthCard } from '@/components/monthly-close/MonthlyCloseMo
 import { ManualAssetPanel } from '@/components/monthly-close/ManualAssetPanel';
 import { LoanVerificationPanel } from '@/components/monthly-close/LoanVerificationPanel';
 import { CoachOverlayPanel } from '@/components/monthly-close/CoachOverlayPanel';
+import { AiMonthlyReview } from '@/components/monthly-close/AiMonthlyReview';
 
 function currentMonth(): string {
   const now = new Date();
@@ -114,6 +115,8 @@ export default function HealthPage() {
       </div>
 
       <CoachOverlayPanel snapshot={current} />
+
+      <AiMonthlyReview month={month} hasClose={!!current} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ManualAssetPanel

@@ -39,6 +39,8 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   // get_earned_apy is intentionally excluded: its evidence cites individual interest
   // transactions (date/amount/description) — row-level data, same as get_transactions.
   'get_rate_watchlist', // user-entered advertised rates + auto-populated Treasury rows, no PII
+  'get_monthly_close', // frozen aggregate close totals/ratios/target-status/freshness, no row-level data
+  'get_financial_health', // ratio/target/trend rollup across recent closes, aggregate only
 ]);
 
 /** Anthropic tool definition shape (name + description + JSON schema). */

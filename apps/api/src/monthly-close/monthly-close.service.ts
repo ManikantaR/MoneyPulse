@@ -502,6 +502,20 @@ export class MonthlyCloseService {
     return rows[0];
   }
 
+  /** Persist the rendered AI monthly review text onto the snapshot (13.7). Does not
+   *  touch status/notes/edit-audit fields — this is a derived artifact, not a user edit. */
+  async saveAiReview(userId: string, month: string, aiReview: string) {
+    const snapshotMonth = toMonthStart(month);
+    const existing = await this.findRow(userId, snapshotMonth);
+    if (!existing) throw new NotFoundException('Monthly close not found');
+    const rows = await this.db
+      .update(schema.monthlyFinancialSnapshots)
+      .set({ aiReview, updatedAt: new Date() })
+      .where(eq(schema.monthlyFinancialSnapshots.id, existing.id))
+      .returning();
+    return rows[0];
+  }
+
   async reopen(userId: string, month: string) {
     const snapshotMonth = toMonthStart(month);
     const existing = await this.findRow(userId, snapshotMonth);
