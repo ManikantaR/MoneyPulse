@@ -30,6 +30,8 @@ import { registerGetSubscriptionTotal } from './tools/get-subscription-total.js'
 import { registerGetYoyComparison } from './tools/get-yoy-comparison.js';
 import { registerGetPortfolioValue } from './tools/get-portfolio-value.js';
 import { registerGetAllocation } from './tools/get-allocation.js';
+import { registerGetMonthlyClose } from './tools/get-monthly-close.js';
+import { registerGetFinancialHealth } from './tools/get-financial-health.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -67,6 +69,8 @@ registerGetSubscriptionTotal(server);
 registerGetYoyComparison(server);
 registerGetPortfolioValue(server);
 registerGetAllocation(server);
+registerGetMonthlyClose(server);
+registerGetFinancialHealth(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 

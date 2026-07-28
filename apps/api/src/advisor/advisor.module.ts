@@ -24,6 +24,6 @@ import { AdvisorReviewService } from './review/advisor-review.service';
     AdvisorReviewService,
   ],
   controllers: [AdvisorController],
-  exports: [AdvisorService, AdvisorDigestService, AdvisorReviewService],
+  exports: [AdvisorService, AdvisorDigestService, AdvisorReviewService, AdvisorSettingsService, LlmProviderFactory],
 })
 export class AdvisorModule {}

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { MonthlyCloseService } from './monthly-close.service';
+import { AiMonthlyReviewService } from './ai-monthly-review.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -11,7 +12,10 @@ import type { AuthTokenPayload, PatchMonthlyCloseInput } from '@moneypulse/share
 @Controller('monthly-close')
 @UseGuards(JwtAuthGuard)
 export class MonthlyCloseController {
-  constructor(private readonly monthlyCloseService: MonthlyCloseService) {}
+  constructor(
+    private readonly monthlyCloseService: MonthlyCloseService,
+    private readonly aiMonthlyReviewService: AiMonthlyReviewService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List recent monthly closes (6–12 month grid)' })
@@ -58,5 +62,11 @@ export class MonthlyCloseController {
   @ApiOperation({ summary: 'Reopen a confirmed close back to draft' })
   async reopen(@Param('month') month: string, @CurrentUser() user: AuthTokenPayload) {
     return { data: await this.monthlyCloseService.reopen(user.sub, month) };
+  }
+
+  @Post(':month/ai-review')
+  @ApiOperation({ summary: 'Generate (or regenerate) the AI monthly review for this close' })
+  async aiReview(@Param('month') month: string, @CurrentUser() user: AuthTokenPayload) {
+    return { data: await this.aiMonthlyReviewService.review(user.sub, month) };
   }
 }

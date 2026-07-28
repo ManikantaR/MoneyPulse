@@ -32,6 +32,8 @@ const ALL_TOOLS = [
   { name: 'get_earned_apy', description: 'w', inputSchema: { type: 'object' } }, // row-level, excluded
   { name: 'get_rate_watchlist', description: 'w', inputSchema: { type: 'object' } },
   { name: 'get_allocation', description: 'x', inputSchema: { type: 'object' } },
+  { name: 'get_monthly_close', description: 'y', inputSchema: { type: 'object' } },
+  { name: 'get_financial_health', description: 'z', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   {
