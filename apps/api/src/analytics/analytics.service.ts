@@ -27,6 +27,8 @@ export interface LineItem {
    * computed from priced holdings only (see #184).
    */
   stale?: boolean;
+  /** Only set for `source: 'manual_asset'` items — liquid | semi_liquid | illiquid. */
+  liquidityClass?: string;
 }
 
 /** Net-worth totals, expressed as the line items that sum to each of `netWorth()`'s figures. */
@@ -368,11 +370,28 @@ export class AnalyticsService {
     const assets = liquidCents + investmentCents + manualAssetCents;
     const liabilities = creditCardLiabilityCents + loanLiabilityCents;
 
+    // "Liquid Net Worth" (#198): excludes illiquid manual assets (e.g. a home) from the
+    // asset side, and excludes mortgage-type loans from the liability side — a mortgage
+    // is virtually always tied to the illiquid home it excludes, so netting one without
+    // the other would double-count/omit. Non-mortgage debt (auto, personal, student
+    // loans, credit cards) still counts against liquid net worth. When no illiquid
+    // manual asset or mortgage exists, this equals `netWorth` exactly (no behavior
+    // change for users who haven't entered a home yet).
+    const liquidManualAssetCents = sum(
+      breakdown.assets.manualAssets.filter((i) => i.liquidityClass !== 'illiquid'),
+    );
+    const nonMortgageLoanLiabilityCents = sum(
+      breakdown.liabilities.loans.filter((i) => i.accountType !== 'mortgage'),
+    );
+    const liquidAssets = liquidCents + investmentCents + liquidManualAssetCents;
+    const liquidLiabilities = creditCardLiabilityCents + nonMortgageLoanLiabilityCents;
+
     return {
       assets,
       liabilities,
       investments: investmentCents,
       netWorth: assets - liabilities,
+      liquidNetWorth: liquidAssets - liquidLiabilities,
     };
   }
 
@@ -529,7 +548,7 @@ export class AnalyticsService {
 
     // Manual assets (home/car/gold/other): latest carry-forward value per asset.
     const manualAssetRows = await this.db.execute(sql`
-      SELECT ma.id, ma.name, ma.asset_type, latest.value_cents
+      SELECT ma.id, ma.name, ma.asset_type, ma.liquidity_class, latest.value_cents
       FROM ${schema.manualAssets} ma
       LEFT JOIN LATERAL (
         SELECT value_cents
@@ -549,6 +568,7 @@ export class AnalyticsService {
         accountType: r.asset_type,
         balanceCents: Number(r.value_cents ?? 0),
         source: 'manual_asset' as const,
+        liquidityClass: r.liquidity_class,
       }),
     );
 

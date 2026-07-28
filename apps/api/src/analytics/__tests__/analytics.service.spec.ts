@@ -443,6 +443,69 @@ describe('AnalyticsService', () => {
       expect(result.liabilities).toBeLessThan(10000000);
     });
 
+    it('liquidNetWorth equals netWorth when no illiquid manual asset or mortgage exists (#198)', async () => {
+      mockNetWorthQueries({
+        acct: [acctRow({ account_type: 'checking', balance_cents: '500000' })],
+      });
+
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
+
+      expect(result.liquidNetWorth).toBe(result.netWorth);
+    });
+
+    it('liquidNetWorth excludes an illiquid home asset and its mortgage, but includes a semi_liquid asset and a non-mortgage loan (#198)', async () => {
+      mockNetWorthQueries({
+        acct: [acctRow({ account_type: 'checking', balance_cents: '500000' })],
+        manualAsset: [
+          {
+            id: 'ma-home',
+            name: 'Home',
+            asset_type: 'home',
+            liquidity_class: 'illiquid',
+            value_cents: '40000000',
+          },
+          {
+            id: 'ma-gold',
+            name: 'Gold',
+            asset_type: 'gold',
+            liquidity_class: 'semi_liquid',
+            value_cents: '100000',
+          },
+        ],
+        loans: [
+          {
+            id: 'loan-mortgage',
+            name: 'Mortgage',
+            loan_type: 'mortgage',
+            original_balance_cents: '30000000',
+            apr_bps: '400',
+            scheduled_payment_cents: '150000',
+            start_date: '2020-01-01',
+            manual_balance_cents: '29000000',
+            latest_source: 'manual_statement',
+          },
+          {
+            id: 'loan-auto',
+            name: 'Auto Loan',
+            loan_type: 'auto',
+            original_balance_cents: '2000000',
+            apr_bps: '500',
+            scheduled_payment_cents: '30000',
+            start_date: '2024-01-01',
+            manual_balance_cents: '1500000',
+            latest_source: 'manual_statement',
+          },
+        ],
+      });
+
+      const result = await service.netWorth(TEST_USER_ID, { household: false });
+
+      // Total: (500000 liquid + 40000000 home + 100000 gold) - (29000000 mortgage + 1500000 auto)
+      expect(result.netWorth).toBe(500000 + 40000000 + 100000 - 29000000 - 1500000);
+      // Liquid: home and mortgage both excluded; gold (semi_liquid) and the auto loan remain.
+      expect(result.liquidNetWorth).toBe(500000 + 100000 - 1500000);
+    });
+
     it('always equals the sum of netWorthBreakdown()\'s own line items (invariant, #192)', async () => {
       mockNetWorthQueries({
         acct: [

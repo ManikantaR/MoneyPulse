@@ -66,6 +66,8 @@ export interface NetWorthLineItem {
   /** True when this row's value may be incomplete/outdated (e.g. an unpriced
    *  holding was backfilled from a manual snapshot or a partial priced total). */
   stale?: boolean;
+  /** Only set for `source: 'manual_asset'` items — liquid | semi_liquid | illiquid. */
+  liquidityClass?: string;
 }
 
 /** Line-item detail behind each `net-worth` total — see `useNetWorth`. */
@@ -87,6 +89,8 @@ export interface NetWorthData {
   liabilities: number;
   investments: number;
   netWorth: number;
+  /** Excludes illiquid manual assets (e.g. a home) and mortgage-type loans — see #198. */
+  liquidNetWorth: number;
 }
 
 /** Top merchant row. */
