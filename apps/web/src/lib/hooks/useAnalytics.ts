@@ -63,6 +63,9 @@ export interface NetWorthLineItem {
   accountType: string;
   balanceCents: number;
   source: 'account' | 'investment_account' | 'manual_asset' | 'loan';
+  /** True when this row's value may be incomplete/outdated (e.g. an unpriced
+   *  holding was backfilled from a manual snapshot or a partial priced total). */
+  stale?: boolean;
 }
 
 /** Line-item detail behind each `net-worth` total — see `useNetWorth`. */

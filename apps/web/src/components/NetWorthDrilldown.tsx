@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Wallet, CreditCard, LineChart, TrendingUp, ExternalLink } from 'lucide-react';
+import { X, Wallet, CreditCard, LineChart, TrendingUp, ExternalLink, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatCents } from '@/lib/format';
 import type { NetWorthBreakdown, NetWorthLineItem } from '@/lib/hooks/useAnalytics';
@@ -137,7 +137,17 @@ export function NetWorthDrilldown({ type, breakdown, onClose, from, to }: NetWor
                 >
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">
-                      <p className="font-semibold text-sm truncate">{item.nickname}</p>
+                      <p className="font-semibold text-sm truncate flex items-center gap-1.5">
+                        {item.nickname}
+                        {item.stale ? (
+                          <span
+                            title="Value may be incomplete: one or more holdings had no current price and this total was backfilled from the latest manual snapshot."
+                            className="inline-flex shrink-0 text-[var(--warning,#b45309)]"
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                          </span>
+                        ) : null}
+                      </p>
                       <p className="text-xs text-[var(--muted-foreground)] capitalize mt-0.5">
                         {item.institution ? `${item.institution} · ` : ''}
                         {typeLabel(item.accountType)}
