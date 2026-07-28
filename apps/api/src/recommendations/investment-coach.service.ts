@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
+import { sqlArray } from '../db/sql-array';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RecommendationSuppressionService } from './recommendation-suppression.service';
 import { AnalyticsService } from '../analytics/analytics.service';
@@ -89,7 +90,7 @@ export class InvestmentCoachService {
     const balanceRows = await this.db.execute(sql`
       SELECT DISTINCT ON (account_id) account_id, balance_cents
       FROM ${schema.accountBalanceSnapshots}
-      WHERE account_id = ANY(${accountIds})
+      WHERE account_id = ANY(${sqlArray(accountIds, 'uuid')})
       ORDER BY account_id, snapshot_date DESC
     `);
     return (balanceRows.rows ?? balanceRows).reduce((sum: number, r: any) => sum + Number(r.balance_cents), 0);

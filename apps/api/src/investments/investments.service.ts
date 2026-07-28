@@ -7,6 +7,7 @@ import {
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { eq, and, isNull, desc, sql } from 'drizzle-orm';
+import { sqlArray } from '../db/sql-array';
 import type {
   CreateInvestmentAccountInput,
   UpdateInvestmentAccountInput,
@@ -228,11 +229,11 @@ export class InvestmentsService {
       return { totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false, staleDays };
     }
 
-    const tickers = Array.from(new Set(holdings.map((h: any) => h.ticker)));
+    const tickers = Array.from(new Set(holdings.map((h: any) => h.ticker))) as string[];
     const priceRows = await this.db.execute(sql`
       SELECT DISTINCT ON (ticker) ticker, price_date::text AS price_date, close_cents, source
       FROM ${schema.securityPrices}
-      WHERE ticker = ANY(${tickers})
+      WHERE ticker = ANY(${sqlArray(tickers, 'text')})
       ORDER BY ticker, price_date DESC
     `);
     const prices = (priceRows.rows ?? priceRows) as any[];
