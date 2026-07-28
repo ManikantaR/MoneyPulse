@@ -7,6 +7,8 @@ interface NetWorthCardProps {
   liabilities: number;
   investments: number;
   netWorth: number;
+  /** Excludes illiquid manual assets (e.g. a home) and mortgage-type loans — see #198. */
+  liquidNetWorth?: number;
   onClickAssets?: () => void;
   onClickLiabilities?: () => void;
   onClickInvestments?: () => void;
@@ -18,11 +20,16 @@ export function NetWorthCard({
   liabilities,
   investments,
   netWorth,
+  liquidNetWorth,
   onClickAssets,
   onClickLiabilities,
   onClickInvestments,
 }: NetWorthCardProps) {
   const isPositive = netWorth >= 0;
+  // "Liquid Net Worth" is a secondary/supporting figure (Monarch/Empower two-number
+  // pattern) — only worth surfacing once it actually diverges from the headline total,
+  // i.e. once an illiquid manual asset (a home) or a mortgage has been entered.
+  const showLiquid = liquidNetWorth !== undefined && liquidNetWorth !== netWorth;
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-[var(--surface-container-low)] p-6">
@@ -42,6 +49,15 @@ export function NetWorthCard({
         </span>
         {!isPositive && (
           <p className="mt-1 text-xs text-[var(--destructive)]">Negative net worth</p>
+        )}
+        {showLiquid && (
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            Liquid Net Worth:{' '}
+            <span className="font-semibold tabular-nums">
+              {liquidNetWorth! < 0 ? '-' : ''}
+              {formatCents(Math.abs(liquidNetWorth!))}
+            </span>
+          </p>
         )}
       </div>
 

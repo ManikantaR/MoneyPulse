@@ -148,6 +148,7 @@ export default function DashboardPage() {
           liabilities={nw.liabilities}
           investments={nw.investments}
           netWorth={nw.netWorth}
+          liquidNetWorth={nw.liquidNetWorth}
           onClickAssets={() => setDrilldown('assets')}
           onClickLiabilities={() => setDrilldown('liabilities')}
           onClickInvestments={() => setDrilldown('investments')}
