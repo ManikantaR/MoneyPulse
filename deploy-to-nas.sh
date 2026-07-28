@@ -2,11 +2,15 @@
 # deploy-to-nas.sh — Sync local MoneyPulse repo to NAS and rebuild containers
 #
 # Usage:
-#   ./deploy-to-nas.sh              # Rebuild & deploy API + Web
-#   ./deploy-to-nas.sh api          # Rebuild & deploy API only
-#   ./deploy-to-nas.sh web          # Rebuild & deploy Web only
-#   ./deploy-to-nas.sh sync-only    # Just sync code, no rebuild
-#   ./deploy-to-nas.sh db:migrate   # Sync + run Drizzle migrations on NAS DB
+#   ./deploy-to-nas.sh              # Rebuild & deploy API + Web, then run pending DB migrations
+#   ./deploy-to-nas.sh api          # Rebuild & deploy API only, then run pending DB migrations
+#   ./deploy-to-nas.sh web          # Rebuild & deploy Web only, then run pending DB migrations
+#   ./deploy-to-nas.sh sync-only    # Just sync code, no rebuild, no migrations
+#   ./deploy-to-nas.sh db:migrate   # Sync + rebuild API + run Drizzle migrations on NAS DB
+#
+# Migrations are run automatically (idempotent — Drizzle skips already-applied
+# migrations) so the DB schema never silently drifts from db/migrations after a
+# normal deploy. See https://github.com/ManikantaR/MoneyPulse/issues/191
 
 set -euo pipefail
 
@@ -164,10 +168,12 @@ case "$TARGET" in
     api)
         sync_code
         build_and_deploy api
+        run_migrations
         ;;
     web)
         sync_code
         build_and_deploy web
+        run_migrations
         ;;
     db:migrate)
         sync_code
@@ -177,6 +183,7 @@ case "$TARGET" in
     all)
         sync_code
         build_and_deploy api
+        run_migrations
         build_and_deploy web
         ;;
     *)
