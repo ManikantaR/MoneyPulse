@@ -246,8 +246,9 @@ export class InvestmentsService {
    * Portfolio market value as of a historical date: shares held on that date x the
    * most recent EOD close on or before that date, per holding, summed to a total.
    * Used by monthly-close backfill (#189) so a historical month's close reflects
-   * that month's actual holdings/prices instead of today's — getPortfolioValue
-   * (current-value) delegates to this with today's date.
+   * that month's actual holdings/prices instead of today's. `getPortfolioValue`
+   * (current-value, used elsewhere) is a separate method, not a delegation to
+   * this one — left untouched to avoid behavior changes outside the backfill path.
    */
   async getPortfolioValueAsOf(
     userId: string,
