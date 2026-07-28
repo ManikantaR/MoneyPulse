@@ -55,6 +55,29 @@ export interface CreditUtilizationItem {
   utilizationPercent: number;
 }
 
+/** A single contributing row behind a net-worth total (one account/asset/loan). */
+export interface NetWorthLineItem {
+  id: string;
+  nickname: string;
+  institution: string | null;
+  accountType: string;
+  balanceCents: number;
+  source: 'account' | 'investment_account' | 'manual_asset' | 'loan';
+}
+
+/** Line-item detail behind each `net-worth` total — see `useNetWorth`. */
+export interface NetWorthBreakdown {
+  assets: {
+    liquid: NetWorthLineItem[];
+    investments: NetWorthLineItem[];
+    manualAssets: NetWorthLineItem[];
+  };
+  liabilities: {
+    creditCards: NetWorthLineItem[];
+    loans: NetWorthLineItem[];
+  };
+}
+
 /** Net worth aggregation. */
 export interface NetWorthData {
   assets: number;
@@ -147,6 +170,15 @@ export function useNetWorth(params: AnalyticsParams = {}) {
     queryKey: ['analytics', 'net-worth', params],
     queryFn: () =>
       api.get<{ data: NetWorthData }>('/analytics/net-worth', { params }),
+  });
+}
+
+/** Fetch line-item detail behind the net-worth totals (for the drill-down panel). */
+export function useNetWorthBreakdown(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'net-worth-breakdown', params],
+    queryFn: () =>
+      api.get<{ data: NetWorthBreakdown }>('/analytics/net-worth-breakdown', { params }),
   });
 }
 

@@ -266,48 +266,52 @@ describe('AnalyticsService', () => {
   });
 
   describe('netWorth', () => {
-    /** netWorth() issues 4 sequential db.execute calls in this order:
-     *  1. accounts (liquid / regular-account investments / credit-card liabilities)
-     *  2. investment_accounts (holdings-x-price else snapshot)
-     *  3. manual_assets (carry-forward)
-     *  4. loans (manual-statement else amortized)
+    /** netWorth() is built entirely from netWorthBreakdown()'s line items (see #192), which
+     *  issues 4 sequential db.execute calls in this order:
+     *  1. accounts (one row per checking/savings/cash_sweep/brokerage/edu_529/credit_card account)
+     *  2. investment_accounts (one row per account: holdings-x-price else snapshot)
+     *  3. manual_assets (one row per asset, carry-forward value)
+     *  4. loans (one row per loan: manual-statement else amortized)
      */
     function mockNetWorthQueries(overrides: {
-      acct?: any;
-      investment?: any;
-      manualAsset?: any;
+      acct?: any[];
+      investment?: any[];
+      manualAsset?: any[];
       loans?: any[];
     }) {
       mockDb.execute
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              liquid_cents: '0',
-              regular_investment_cents: '0',
-              liabilities_cents: '0',
-              ...overrides.acct,
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              holdings_total_cents: '0',
-              snapshot_total_cents: '0',
-              ...overrides.investment,
-            },
-          ],
-        })
-        .mockResolvedValueOnce({
-          rows: [{ manual_asset_total_cents: '0', ...overrides.manualAsset }],
-        })
+        .mockResolvedValueOnce({ rows: overrides.acct ?? [] })
+        .mockResolvedValueOnce({ rows: overrides.investment ?? [] })
+        .mockResolvedValueOnce({ rows: overrides.manualAsset ?? [] })
         .mockResolvedValueOnce({ rows: overrides.loans ?? [] });
+    }
+
+    function acctRow(overrides: any) {
+      return {
+        account_id: 'acct-1',
+        nickname: 'Test Account',
+        institution: 'Test Bank',
+        account_type: 'checking',
+        balance_cents: '0',
+        ...overrides,
+      };
     }
 
     it('should calculate net worth with camelCase keys', async () => {
       mockNetWorthQueries({
-        acct: { liquid_cents: '800000', liabilities_cents: '150000' },
-        investment: { snapshot_total_cents: '200000' },
+        acct: [
+          acctRow({ account_type: 'checking', balance_cents: '800000' }),
+          acctRow({ account_id: 'acct-2', account_type: 'credit_card', balance_cents: '-150000' }),
+        ],
+        investment: [
+          {
+            investment_account_id: 'inv-1',
+            nickname: 'Brokerage',
+            institution: 'Vanguard',
+            account_type: 'brokerage',
+            balance_cents: '200000',
+          },
+        ],
       });
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
@@ -329,15 +333,12 @@ describe('AnalyticsService', () => {
     });
 
     it('should handle missing investment data', async () => {
-      mockDb.execute
-        .mockResolvedValueOnce({
-          rows: [
-            { liquid_cents: '500000', regular_investment_cents: '0', liabilities_cents: '100000' },
-          ],
-        })
-        .mockResolvedValueOnce({ rows: [{}] })
-        .mockResolvedValueOnce({ rows: [{}] })
-        .mockResolvedValueOnce({ rows: [] });
+      mockNetWorthQueries({
+        acct: [
+          acctRow({ account_type: 'checking', balance_cents: '500000' }),
+          acctRow({ account_id: 'acct-2', account_type: 'credit_card', balance_cents: '-100000' }),
+        ],
+      });
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
 
@@ -347,7 +348,10 @@ describe('AnalyticsService', () => {
 
     it('includes brokerage/edu_529 regular-account balances in investments, never double-counted', async () => {
       mockNetWorthQueries({
-        acct: { liquid_cents: '100000', regular_investment_cents: '50000' },
+        acct: [
+          acctRow({ account_type: 'checking', balance_cents: '100000' }),
+          acctRow({ account_id: 'acct-2', account_type: 'brokerage', balance_cents: '50000' }),
+        ],
       });
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
@@ -357,12 +361,19 @@ describe('AnalyticsService', () => {
     });
 
     it('uses holdings x price when holdings exist, ignoring any snapshot for that same total', async () => {
-      // Even if a snapshot total were non-zero, the service's holdings_total_cents
-      // and snapshot_total_cents come from mutually exclusive per-account SQL CTEs
-      // (an account contributes to exactly one), so summing both here is safe and
-      // reflects that no account is counted twice.
+      // The service's per-investment-account balance comes from a SQL CASE that picks
+      // holdings-value when holdings exist, else the latest snapshot — never both — so
+      // a single row's balance_cents already reflects that exclusivity.
       mockNetWorthQueries({
-        investment: { holdings_total_cents: '300000', snapshot_total_cents: '0' },
+        investment: [
+          {
+            investment_account_id: 'inv-1',
+            nickname: 'Brokerage',
+            institution: 'Vanguard',
+            account_type: 'brokerage',
+            balance_cents: '300000',
+          },
+        ],
       });
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
@@ -372,8 +383,8 @@ describe('AnalyticsService', () => {
 
     it('includes manual assets (home/car/gold/other) in total assets', async () => {
       mockNetWorthQueries({
-        acct: { liquid_cents: '100000' },
-        manualAsset: { manual_asset_total_cents: '400000' },
+        acct: [acctRow({ account_type: 'checking', balance_cents: '100000' })],
+        manualAsset: [{ id: 'ma-1', name: 'Home', asset_type: 'home', value_cents: '400000' }],
       });
 
       const result = await service.netWorth(TEST_USER_ID, { household: false });
@@ -384,9 +395,12 @@ describe('AnalyticsService', () => {
 
     it('subtracts loan liabilities: manual-statement balance wins over amortized calc', async () => {
       mockNetWorthQueries({
-        acct: { liquid_cents: '1000000' },
+        acct: [acctRow({ account_type: 'checking', balance_cents: '1000000' })],
         loans: [
           {
+            id: 'loan-1',
+            name: 'Mortgage',
+            loan_type: 'mortgage',
             original_balance_cents: '10000000',
             apr_bps: '400',
             scheduled_payment_cents: '50000',
@@ -405,9 +419,12 @@ describe('AnalyticsService', () => {
 
     it('falls back to amortized loan balance when no manual statement snapshot exists', async () => {
       mockNetWorthQueries({
-        acct: { liquid_cents: '1000000' },
+        acct: [acctRow({ account_type: 'checking', balance_cents: '1000000' })],
         loans: [
           {
+            id: 'loan-1',
+            name: 'Mortgage',
+            loan_type: 'mortgage',
             original_balance_cents: '10000000',
             apr_bps: '400',
             scheduled_payment_cents: '50000',
@@ -424,6 +441,85 @@ describe('AnalyticsService', () => {
       // less than the original balance (payments have been applied) but still positive.
       expect(result.liabilities).toBeGreaterThan(0);
       expect(result.liabilities).toBeLessThan(10000000);
+    });
+
+    it('always equals the sum of netWorthBreakdown()\'s own line items (invariant, #192)', async () => {
+      mockNetWorthQueries({
+        acct: [
+          acctRow({ account_type: 'checking', balance_cents: '800000' }),
+          acctRow({ account_id: 'acct-2', account_type: 'brokerage', balance_cents: '50000' }),
+          acctRow({ account_id: 'acct-3', account_type: 'credit_card', balance_cents: '-150000' }),
+        ],
+        investment: [
+          {
+            investment_account_id: 'inv-1',
+            nickname: 'Brokerage',
+            institution: 'Vanguard',
+            account_type: 'brokerage',
+            balance_cents: '200000',
+          },
+        ],
+        manualAsset: [{ id: 'ma-1', name: 'Home', asset_type: 'home', value_cents: '400000' }],
+        loans: [
+          {
+            id: 'loan-1',
+            name: 'Mortgage',
+            loan_type: 'mortgage',
+            original_balance_cents: '10000000',
+            apr_bps: '400',
+            scheduled_payment_cents: '50000',
+            start_date: '2020-01-01',
+            manual_balance_cents: '9500000',
+            latest_source: 'manual_statement',
+          },
+        ],
+      });
+      const nw = await service.netWorth(TEST_USER_ID, { household: false });
+
+      mockNetWorthQueries({
+        acct: [
+          acctRow({ account_type: 'checking', balance_cents: '800000' }),
+          acctRow({ account_id: 'acct-2', account_type: 'brokerage', balance_cents: '50000' }),
+          acctRow({ account_id: 'acct-3', account_type: 'credit_card', balance_cents: '-150000' }),
+        ],
+        investment: [
+          {
+            investment_account_id: 'inv-1',
+            nickname: 'Brokerage',
+            institution: 'Vanguard',
+            account_type: 'brokerage',
+            balance_cents: '200000',
+          },
+        ],
+        manualAsset: [{ id: 'ma-1', name: 'Home', asset_type: 'home', value_cents: '400000' }],
+        loans: [
+          {
+            id: 'loan-1',
+            name: 'Mortgage',
+            loan_type: 'mortgage',
+            original_balance_cents: '10000000',
+            apr_bps: '400',
+            scheduled_payment_cents: '50000',
+            start_date: '2020-01-01',
+            manual_balance_cents: '9500000',
+            latest_source: 'manual_statement',
+          },
+        ],
+      });
+      const breakdown = await service.netWorthBreakdown(TEST_USER_ID, { household: false });
+      const sum = (items: Array<{ balanceCents: number }>) =>
+        items.reduce((s, i) => s + i.balanceCents, 0);
+
+      expect(
+        sum(breakdown.assets.liquid) +
+          sum(breakdown.assets.investments) +
+          sum(breakdown.assets.manualAssets),
+      ).toBe(nw.assets);
+      expect(sum(breakdown.assets.investments)).toBe(nw.investments);
+      expect(sum(breakdown.liabilities.creditCards) + sum(breakdown.liabilities.loans)).toBe(
+        nw.liabilities,
+      );
+      expect(nw.assets - nw.liabilities).toBe(nw.netWorth);
     });
   });
 
