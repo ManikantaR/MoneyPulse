@@ -23,7 +23,7 @@ export function registerGetFinancialHealth(server: McpServer) {
       const userId = await getUserId();
       const rows = await query(
         `SELECT * FROM monthly_financial_snapshots
-         WHERE user_id = $1
+         WHERE monthly_financial_snapshots.user_id = $1
          ORDER BY snapshot_month DESC
          LIMIT $2`,
         [userId, params.months],

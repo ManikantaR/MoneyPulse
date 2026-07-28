@@ -27,13 +27,13 @@ export function registerGetMonthlyClose(server: McpServer) {
       const rows = params.month
         ? await query(
             `SELECT * FROM monthly_financial_snapshots
-             WHERE user_id = $1 AND snapshot_month = date_trunc('month', $2::date)
+             WHERE monthly_financial_snapshots.user_id = $1 AND snapshot_month = date_trunc('month', $2::date)
              LIMIT 1`,
             [userId, params.month.length === 7 ? `${params.month}-01` : params.month],
           )
         : await query(
             `SELECT * FROM monthly_financial_snapshots
-             WHERE user_id = $1
+             WHERE monthly_financial_snapshots.user_id = $1
              ORDER BY snapshot_month DESC
              LIMIT 1`,
             [userId],
