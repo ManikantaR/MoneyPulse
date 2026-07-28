@@ -120,9 +120,9 @@ describe('CashManagerService — benchmark-rate-move event trigger', () => {
     const db: any = { execute: vi.fn() };
     const svc = new CashManagerService(db, notifications as any, suppression as any);
 
-    const moved = await svc.checkBenchmarkRateMove(['gas_retail_regular']);
+    const result = await svc.checkBenchmarkRateMove(['gas_retail_regular']);
 
-    expect(moved).toBe(false);
+    expect(result.moved).toBe(false);
     expect(db.execute).not.toHaveBeenCalled();
   });
 
@@ -138,12 +138,12 @@ describe('CashManagerService — benchmark-rate-move event trigger', () => {
     };
     const svc = new CashManagerService(db, notifications as any, suppression as any);
 
-    const moved = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
+    const result = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
 
-    expect(moved).toBe(false);
+    expect(result.moved).toBe(false);
   });
 
-  it('returns true when the latest-vs-previous delta is >= 25bps', async () => {
+  it('returns moved=true with the delta/old/new values when the latest-vs-previous delta is >= 25bps', async () => {
     const db: any = {
       select: () => ({
         from: () => ({
@@ -161,9 +161,16 @@ describe('CashManagerService — benchmark-rate-move event trigger', () => {
     };
     const svc = new CashManagerService(db, notifications as any, suppression as any);
 
-    const moved = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
+    const result = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
 
-    expect(moved).toBe(true);
+    expect(result).toEqual({
+      moved: true,
+      metricKey: 'treasury_bill_13w',
+      deltaBps: 25,
+      previousValue: 4.5,
+      latestValue: 4.75,
+      latestPeriodDate: '2026-07-24',
+    });
   });
 
   it('returns false when the delta is below the 25bps threshold', async () => {
@@ -184,9 +191,77 @@ describe('CashManagerService — benchmark-rate-move event trigger', () => {
     };
     const svc = new CashManagerService(db, notifications as any, suppression as any);
 
-    const moved = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
+    const result = await svc.checkBenchmarkRateMove(['treasury_bill_13w']);
 
-    expect(moved).toBe(false);
+    expect(result.moved).toBe(false);
+  });
+});
+
+describe('CashManagerService — notifyBenchmarkRateMove (market_event)', () => {
+  const qualifyingMove = {
+    moved: true,
+    metricKey: 'treasury_bill_13w',
+    deltaBps: 32,
+    previousValue: 4.5,
+    latestValue: 4.82,
+    latestPeriodDate: '2026-07-24',
+  };
+  const subThresholdMove = {
+    moved: false,
+    metricKey: 'treasury_bill_13w',
+    deltaBps: 5,
+    previousValue: 4.5,
+    latestValue: 4.55,
+    latestPeriodDate: '2026-07-24',
+  };
+
+  function buildActiveUsersDb(userIds: string[]) {
+    return {
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => Promise.resolve(userIds.map((id) => ({ id })))),
+        })),
+      })),
+    };
+  }
+
+  it('calls notify with type market_event and the delta/old/new values when a qualifying move is detected', async () => {
+    const db: any = buildActiveUsersDb(['user-1']);
+    const notifications = {
+      findByMetadata: vi.fn().mockResolvedValue(false),
+      createAndDispatch: vi.fn().mockResolvedValue(undefined),
+    };
+    const suppression = { checkAndSuppress: vi.fn() };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    await svc.notifyBenchmarkRateMove(qualifyingMove as any);
+
+    expect(notifications.createAndDispatch).toHaveBeenCalledTimes(1);
+    const payload = notifications.createAndDispatch.mock.calls[0][0];
+    expect(payload.userId).toBe('user-1');
+    expect(payload.notificationType).toBe('market_event');
+    expect(payload.message).toContain('32bps');
+    expect(payload.message).toContain('4.50%');
+    expect(payload.message).toContain('4.82%');
+    expect(payload.data).toMatchObject({
+      deltaBps: 32,
+      previousValue: 4.5,
+      latestValue: 4.82,
+    });
+  });
+
+  it('does not call notify when the move is below the 25bps threshold', async () => {
+    const db: any = buildActiveUsersDb(['user-1']);
+    const notifications = {
+      findByMetadata: vi.fn().mockResolvedValue(false),
+      createAndDispatch: vi.fn().mockResolvedValue(undefined),
+    };
+    const suppression = { checkAndSuppress: vi.fn() };
+    const svc = new CashManagerService(db, notifications as any, suppression as any);
+
+    await svc.notifyBenchmarkRateMove(subThresholdMove as any);
+
+    expect(notifications.createAndDispatch).not.toHaveBeenCalled();
   });
 });
 

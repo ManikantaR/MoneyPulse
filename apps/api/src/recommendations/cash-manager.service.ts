@@ -29,6 +29,28 @@ const BENCHMARK_RATE_METRIC_KEY = 'treasury_bill_13w';
 const BENCHMARK_RATE_MOVE_THRESHOLD_BPS = 25;
 /** Manifest schedule: "liquid-balance-move(>=20%)". */
 const LIQUID_BALANCE_MOVE_THRESHOLD_PCT = 0.2;
+/** Human-readable label for `BENCHMARK_RATE_METRIC_KEY`, used in the `market_event`
+ * notification copy — the metric key itself is an internal identifier. */
+const BENCHMARK_RATE_METRIC_LABEL = '3-month Treasury bill yield';
+
+export interface BenchmarkRateMoveResult {
+  /** Whether the move cleared `BENCHMARK_RATE_MOVE_THRESHOLD_BPS`. */
+  moved: boolean;
+  metricKey: string;
+  deltaBps: number;
+  previousValue: number;
+  latestValue: number;
+  latestPeriodDate: string | null;
+}
+
+const NO_BENCHMARK_RATE_MOVE: BenchmarkRateMoveResult = {
+  moved: false,
+  metricKey: BENCHMARK_RATE_METRIC_KEY,
+  deltaBps: 0,
+  previousValue: 0,
+  latestValue: 0,
+  latestPeriodDate: null,
+};
 
 /**
  * 12.5 — Cash Manager agent. Gathers sanitized (no lastFour/account-number) inputs,
@@ -77,8 +99,8 @@ export class CashManagerService {
    * Compares the two most recent stored values for the benchmark series; a straightforward
    * latest-vs-previous comparison, no new detector framework.
    */
-  async checkBenchmarkRateMove(refreshedMetricKeys: string[]): Promise<boolean> {
-    if (!refreshedMetricKeys.includes(BENCHMARK_RATE_METRIC_KEY)) return false;
+  async checkBenchmarkRateMove(refreshedMetricKeys: string[]): Promise<BenchmarkRateMoveResult> {
+    if (!refreshedMetricKeys.includes(BENCHMARK_RATE_METRIC_KEY)) return NO_BENCHMARK_RATE_MOVE;
 
     const rows = await this.db
       .select({ value: schema.marketMetrics.value, periodDate: schema.marketMetrics.periodDate })
@@ -86,11 +108,67 @@ export class CashManagerService {
       .where(eq(schema.marketMetrics.metricKey, BENCHMARK_RATE_METRIC_KEY))
       .orderBy(desc(schema.marketMetrics.periodDate))
       .limit(2);
-    if (rows.length < 2) return false;
+    if (rows.length < 2) return NO_BENCHMARK_RATE_MOVE;
 
     const [latest, previous] = rows;
-    const deltaBps = Math.round(Math.abs(Number(latest.value) - Number(previous.value)) * 100);
-    return deltaBps >= BENCHMARK_RATE_MOVE_THRESHOLD_BPS;
+    const latestValue = Number(latest.value);
+    const previousValue = Number(previous.value);
+    const deltaBps = Math.round(Math.abs(latestValue - previousValue) * 100);
+    return {
+      moved: deltaBps >= BENCHMARK_RATE_MOVE_THRESHOLD_BPS,
+      metricKey: BENCHMARK_RATE_METRIC_KEY,
+      deltaBps,
+      previousValue,
+      latestValue,
+      latestPeriodDate: String(latest.periodDate),
+    };
+  }
+
+  /**
+   * Fires the `market_event` notification for a qualifying benchmark-rate move
+   * (manifest: "benchmark-rate-move(>=25bps)"), to every active user — this app is
+   * single-household, so no per-user targeting beyond the existing ad-hoc
+   * cash-manager-check job is needed. Additive to (never a replacement for) that
+   * ad-hoc job, which continues to drive the full cash-placement re-evaluation.
+   */
+  async notifyBenchmarkRateMove(move: BenchmarkRateMoveResult): Promise<void> {
+    if (!move.moved) return;
+
+    const direction = move.latestValue >= move.previousValue ? 'up' : 'down';
+    const message =
+      `${BENCHMARK_RATE_METRIC_LABEL} moved ${move.deltaBps}bps ${direction}: ` +
+      `${move.previousValue.toFixed(2)}% → ${move.latestValue.toFixed(2)}%`;
+    const dedupeKey = `market_event_benchmark_${move.metricKey}_${move.latestPeriodDate}`;
+
+    const users = await this.activeUsers();
+    for (const user of users) {
+      try {
+        if (await this.notificationsService.findByMetadata(user.id, dedupeKey)) continue;
+        await this.notificationsService.createAndDispatch({
+          userId: user.id,
+          type: 'benchmark_rate_move',
+          notificationType: 'market_event',
+          source: 'market',
+          severity: 'insight',
+          title: `${BENCHMARK_RATE_METRIC_LABEL} moved ${move.deltaBps}bps`,
+          message,
+          dedupeKey,
+          metadata: { dedupeKey },
+          data: {
+            metricKey: move.metricKey,
+            deltaBps: move.deltaBps,
+            previousValue: move.previousValue,
+            latestValue: move.latestValue,
+            latestPeriodDate: move.latestPeriodDate,
+          },
+        });
+      } catch (err: any) {
+        this.logger.error(
+          `Benchmark rate move notification failed for user ${user.id}: ${err.message}`,
+          err.stack,
+        );
+      }
+    }
   }
 
   /**
