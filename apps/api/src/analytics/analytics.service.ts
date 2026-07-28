@@ -1092,6 +1092,16 @@ export class AnalyticsService {
     const normalizedNames = bills.map((b: any) => b.normalized_name as string);
     let trend: Array<{ month: string; totalCents: number }> = [];
     if (normalizedNames.length > 0) {
+      // Build a real Postgres array literal (ARRAY[$1, $2, ...]::text[]) rather than
+      // interpolating the JS array directly into ANY(...) — the latter renders as a
+      // parenthesized list/row expression `($1, $2, ...)`, which Postgres accepts as
+      // ANY(...) only in the degenerate single-element case and rejects with
+      // "op ANY/ALL (array) requires array on right side" once there's more than one
+      // name (see #202).
+      const normalizedNamesArray = sql.join(
+        normalizedNames.map((name) => sql`${name}`),
+        sql.raw(', '),
+      );
       const trendRows = await this.db.execute(sql`
         SELECT
           to_char(date_trunc('month', t.date), 'YYYY-MM') AS month,
@@ -1101,7 +1111,7 @@ export class AnalyticsService {
           AND t.is_split_parent = false
           AND t.deleted_at IS NULL
           AND t.is_credit = false
-          AND t.normalized_merchant_name = ANY(${normalizedNames})
+          AND t.normalized_merchant_name = ANY(ARRAY[${normalizedNamesArray}]::text[])
           AND t.date >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
         GROUP BY date_trunc('month', t.date)
         ORDER BY month ASC
