@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { sql, and, eq } from 'drizzle-orm';
+import { sqlArray } from '../db/sql-array';
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'dormant';
 
@@ -189,8 +190,8 @@ export class AccountFreshnessService {
     const result = await this.db.execute(sql`
       SELECT DISTINCT account_id
       FROM ${schema.transactions}
-      WHERE ${schema.transactions.id} = ANY(${transactionIds})
-        AND ${schema.transactions.userId} = ANY(${userIds})
+      WHERE ${schema.transactions.id} = ANY(${sqlArray(transactionIds, 'uuid')})
+        AND ${schema.transactions.userId} = ANY(${sqlArray(userIds, 'uuid')})
         AND ${schema.transactions.deletedAt} IS NULL
     `);
 

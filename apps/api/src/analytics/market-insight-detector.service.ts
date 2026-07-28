@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import { sqlArray } from '../db/sql-array';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AccountFreshnessService } from './account-freshness.service';
 import { MarketDataService } from '../market-data/market-data.service';
@@ -175,7 +176,7 @@ export class MarketInsightDetectorService {
     const balanceRows = await this.db.execute(sql`
       SELECT DISTINCT ON (account_id) account_id, balance_cents
       FROM ${schema.accountBalanceSnapshots}
-      WHERE account_id = ANY(${relevantAccountIds})
+      WHERE account_id = ANY(${sqlArray(relevantAccountIds, 'uuid')})
       ORDER BY account_id, snapshot_date DESC
     `);
     const totalBalanceCents = (balanceRows.rows ?? balanceRows).reduce(

@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { sql } from 'drizzle-orm';
+import { sqlArray } from '../db/sql-array';
 import { NotificationsService } from './notifications.service';
 
 interface BudgetAlert {
@@ -66,7 +67,7 @@ export class AlertEngineService {
           )
       ) spent ON true
       WHERE b.deleted_at IS NULL
-        ${userIds?.length ? sql`AND b.user_id = ANY(${userIds})` : sql``}
+        ${userIds?.length ? sql`AND b.user_id = ANY(${sqlArray(userIds, 'uuid')})` : sql``}
     `);
 
     const alerts: BudgetAlert[] = [];

@@ -1,4 +1,5 @@
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { InvestmentsService } from '../investments.service';
 
 describe('InvestmentsService', () => {
@@ -222,6 +223,48 @@ describe('InvestmentsService', () => {
       const bbb = result.holdings.find((h: any) => h.ticker === 'BBB');
       expect(bbb.marketValueCents).toBeNull();
       expect(bbb.isStale).toBe(true);
+    });
+
+    it('builds the price-lookup ticker filter as a real Postgres array, not a parenthesized list (#206)', async () => {
+      // Regression for #206 (same root cause as #202): `= ANY(($2, $3, ...))` is a row/list
+      // expression, not an array literal, and Postgres rejects it with "op ANY/ALL (array)
+      // requires array on right side" once there's more than one element. A 1-2 ticker
+      // fixture wouldn't catch this (ANY((x)) degenerates and "accidentally" works), so use
+      // the realistic 14-ticker production portfolio that originally triggered this bug.
+      const recentDate = new Date().toISOString().slice(0, 10);
+      const tickers = [
+        'CSGP', 'AMZN', 'COST', 'CRWD', 'CVS', 'DIS', 'DOCN',
+        'DOCU', 'MSFT', 'TTD', 'WIX', 'WMT', 'VMFXX', 'VUSXX',
+      ];
+      mockDb.execute
+        // getCurrentHoldings query
+        .mockResolvedValueOnce({
+          rows: tickers.map((ticker) => ({
+            investment_account_id: accountId,
+            ticker,
+            share_count: '1',
+            as_of: recentDate,
+            notes: null,
+          })),
+        })
+        // security_prices query
+        .mockResolvedValueOnce({ rows: [] });
+
+      await service.getPortfolioValue(userId);
+
+      const priceQuery = mockDb.execute.mock.calls[1][0];
+      const { sql: sqlText, params } = new PgDialect().sqlToQuery(priceQuery);
+
+      // Must be a genuine array literal (each element cast to ::text, wrapped in a real
+      // ARRAY[...] constructor), never a bare parenthesized list like ANY(($1, ...)).
+      expect(sqlText).toMatch(/=\s*ANY\(ARRAY\[(\$\d+::text,?\s*)+\]\)/);
+      expect(sqlText).not.toMatch(/=\s*ANY\(\(\$/);
+
+      // Every ticker must actually be bound as a param.
+      expect(params).toHaveLength(tickers.length);
+      for (const ticker of tickers) {
+        expect(params).toContain(ticker);
+      }
     });
   });
 

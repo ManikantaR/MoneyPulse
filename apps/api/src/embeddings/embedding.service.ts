@@ -1,6 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../db/db.module';
+import { sqlArray } from '../db/sql-array';
 import { OllamaEmbeddingService, EMBEDDING_MODEL } from './ollama-embedding.service';
 
 export interface SimilarTransactionRow {
@@ -67,7 +68,7 @@ export class EmbeddingService {
              c.name AS "categoryName"
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.id
-      WHERE t.id = ANY(${transactionIds})
+      WHERE t.id = ANY(${sqlArray(transactionIds, 'uuid')})
         AND t.deleted_at IS NULL
     `);
 

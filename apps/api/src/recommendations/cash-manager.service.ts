@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
+import { sqlArray } from '../db/sql-array';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RecommendationSuppressionService } from './recommendation-suppression.service';
 import {
@@ -174,7 +175,7 @@ export class CashManagerService {
     const interestRows = await this.db.execute(sql`
       SELECT COALESCE(SUM(amount_cents), 0)::bigint AS total_cents
       FROM ${schema.transactions} t
-      WHERE t.account_id = ANY(${accountIds})
+      WHERE t.account_id = ANY(${sqlArray(accountIds, 'uuid')})
         AND t.user_id = ${userId}
         AND t.deleted_at IS NULL
         AND t.is_split_parent = false
@@ -187,7 +188,7 @@ export class CashManagerService {
     const snapshotRows = await this.db.execute(sql`
       SELECT AVG(balance_cents)::numeric AS avg_cents
       FROM ${schema.accountBalanceSnapshots}
-      WHERE account_id = ANY(${accountIds}) AND snapshot_date >= NOW() - INTERVAL '12 months'
+      WHERE account_id = ANY(${sqlArray(accountIds, 'uuid')}) AND snapshot_date >= NOW() - INTERVAL '12 months'
     `);
     const avgBalanceCents = Number((snapshotRows.rows ?? snapshotRows)[0]?.avg_cents ?? 0);
 
@@ -258,7 +259,7 @@ export class CashManagerService {
         ? await this.db.execute(sql`
       SELECT DISTINCT ON (account_id) account_id, balance_cents
       FROM ${schema.accountBalanceSnapshots}
-      WHERE account_id = ANY(${accountIds})
+      WHERE account_id = ANY(${sqlArray(accountIds, 'uuid')})
       ORDER BY account_id, snapshot_date DESC
     `)
         : { rows: [] };
