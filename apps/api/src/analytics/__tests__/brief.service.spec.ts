@@ -38,7 +38,34 @@ describe('computeSafeToSpend', () => {
 
   it('returns zero for an empty series', () => {
     const result = computeSafeToSpend({ netWorthSeries: [] }, 14);
-    expect(result).toEqual({ safeToSpendCents: 0, minProjectedCents: 0, minDate: null });
+    expect(result).toEqual({
+      safeToSpendCents: 0,
+      minProjectedCents: 0,
+      minDate: null,
+      goalContributionsCents: 0,
+    });
+  });
+
+  it('subtracts goal contributions from the minimum projected balance', () => {
+    const forecast = {
+      netWorthSeries: [
+        { date: '2026-07-20', projectedCents: 500_00 },
+        { date: '2026-07-21', projectedCents: 300_00 },
+      ],
+    };
+    const result = computeSafeToSpend(forecast, 30, 100_00);
+    expect(result.minProjectedCents).toBe(300_00);
+    expect(result.goalContributionsCents).toBe(100_00);
+    expect(result.safeToSpendCents).toBe(200_00);
+  });
+
+  it('clamps to zero when goal contributions exceed the minimum projected balance', () => {
+    const forecast = {
+      netWorthSeries: [{ date: '2026-07-20', projectedCents: 300_00 }],
+    };
+    const result = computeSafeToSpend(forecast, 30, 500_00);
+    expect(result.safeToSpendCents).toBe(0);
+    expect(result.minProjectedCents).toBe(300_00);
   });
 });
 

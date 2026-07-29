@@ -32,6 +32,7 @@ import { registerGetPortfolioValue } from './tools/get-portfolio-value.js';
 import { registerGetAllocation } from './tools/get-allocation.js';
 import { registerGetMonthlyClose } from './tools/get-monthly-close.js';
 import { registerGetFinancialHealth } from './tools/get-financial-health.js';
+import { registerGetSafeToSpend } from './tools/get-safe-to-spend.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -71,6 +72,7 @@ registerGetPortfolioValue(server);
 registerGetAllocation(server);
 registerGetMonthlyClose(server);
 registerGetFinancialHealth(server);
+registerGetSafeToSpend(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 
