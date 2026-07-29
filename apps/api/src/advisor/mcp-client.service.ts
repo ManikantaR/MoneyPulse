@@ -41,6 +41,7 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_rate_watchlist', // user-entered advertised rates + auto-populated Treasury rows, no PII
   'get_monthly_close', // frozen aggregate close totals/ratios/target-status/freshness, no row-level data
   'get_financial_health', // ratio/target/trend rollup across recent closes, aggregate only
+  'get_car_affordability', // user-entered TCO inputs + gross income figure + public gas price, no row-level data
 ]);
 
 /** Anthropic tool definition shape (name + description + JSON schema). */

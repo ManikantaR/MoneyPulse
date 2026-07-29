@@ -34,6 +34,7 @@ import { registerGetMonthlyClose } from './tools/get-monthly-close.js';
 import { registerGetFinancialHealth } from './tools/get-financial-health.js';
 import { registerGetSafeToSpend } from './tools/get-safe-to-spend.js';
 import { registerGetCollegePlan } from './tools/get-college-plan.js';
+import { registerGetCarAffordability } from './tools/get-car-affordability.js';
 import { close } from './db.js';
 import http from 'node:http';
 
@@ -75,6 +76,7 @@ registerGetMonthlyClose(server);
 registerGetFinancialHealth(server);
 registerGetSafeToSpend(server);
 registerGetCollegePlan(server);
+registerGetCarAffordability(server);
 
 const mode = process.argv.includes('--sse') ? 'sse' : 'stdio';
 
