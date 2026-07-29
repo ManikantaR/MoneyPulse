@@ -24,6 +24,8 @@ import { SyncModule } from './sync/sync.module';
 import { BillsModule } from './bills/bills.module';
 import { LoansModule } from './loans/loans.module';
 import { PaycheckProfilesModule } from './paycheck-profiles/paycheck-profiles.module';
+import { CarAffordabilityModule } from './car-affordability/car-affordability.module';
+import { CollegePlannerModule } from './college-planner/college-planner.module';
 import { InvestmentsModule } from './investments/investments.module';
 import { AdvisorModule } from './advisor/advisor.module';
 import { MarketDataModule } from './market-data/market-data.module';
@@ -76,6 +78,8 @@ import { MonthlyCloseModule } from './monthly-close/monthly-close.module';
     BillsModule,
     LoansModule,
     PaycheckProfilesModule,
+    CarAffordabilityModule,
+    CollegePlannerModule,
     InvestmentsModule,
     AdvisorModule,
     MarketDataModule,

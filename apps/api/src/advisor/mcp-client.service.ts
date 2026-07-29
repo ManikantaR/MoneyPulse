@@ -42,6 +42,8 @@ export const AGGREGATE_TOOL_ALLOWLIST = new Set([
   'get_monthly_close', // frozen aggregate close totals/ratios/target-status/freshness, no row-level data
   'get_financial_health', // ratio/target/trend rollup across recent closes, aggregate only
   'get_car_affordability', // user-entered TCO inputs + gross income figure + public gas price, no row-level data
+  'get_safe_to_spend', // min projected combined liquid balance over 30/60/90d net of bills, aggregate only
+  'get_college_plan', // pure computation from user-entered college-cost/savings inputs, no DB reads
 ]);
 
 /** Anthropic tool definition shape (name + description + JSON schema). */

@@ -52,7 +52,8 @@ Rules:
 - When the user follows up with just a period or category ("how about June", "and gas?"), reuse the intent from the previous turn.
 - You receive aggregated data only (category totals, balances, budgets, recurring merchants). You cannot see individual raw transactions or account numbers — don't claim to.
 - Keep answers concise and specific to the user's numbers. Lead with the answer.
-- For any suggestion about products, rates, or big decisions, present options with trade-offs and note this is informational, not personalized financial advice. Do not give reckless or absolute directives.`;
+- For any suggestion about products, rates, or big decisions, present options with trade-offs and note this is informational, not personalized financial advice. Do not give reckless or absolute directives.
+- For planning questions — "can I afford this car", "am I on track for college", "how much can I safely spend" — use get_car_affordability, get_college_plan, or get_safe_to_spend respectively. These tools require the user's own inputs (e.g. vehicle price, college cost, horizon); ask for any missing required input rather than guessing a figure. Always restate the tool's assumptions (rates, horizon, income) and show the math it returned — do not summarize away the numbers.`;
 
 /** Build the system prompt with the current date so relative periods resolve correctly. */
 function buildSystemPrompt(): string {

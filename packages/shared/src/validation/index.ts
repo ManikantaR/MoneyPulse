@@ -275,6 +275,13 @@ export const forecastQuerySchema = z.object({
   }).default(90),
 });
 
+export const safeToSpendQuerySchema = z.object({
+  horizonDays: z.coerce.number().int().refine((v) => [30, 60, 90].includes(v), {
+    message: 'horizonDays must be 30, 60, or 90',
+  }).default(30),
+  goalContributionsCents: z.coerce.number().int().min(0).default(0),
+});
+
 // Export inferred types
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -302,6 +309,7 @@ export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 export type SpendingTrendQuery = z.infer<typeof spendingTrendQuerySchema>;
 export type TopMerchantsQuery = z.infer<typeof topMerchantsQuerySchema>;
 export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
+export type SafeToSpendQuery = z.infer<typeof safeToSpendQuerySchema>;
 export type SavingsRateQuery = z.infer<typeof savingsRateQuerySchema>;
 export type BudgetPlanQuery = z.infer<typeof budgetPlanQuerySchema>;
 
