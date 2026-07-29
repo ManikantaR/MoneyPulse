@@ -9,6 +9,7 @@ import {
   useReconcileAccount,
   useUpdateAccount,
 } from '@/lib/hooks/useAccounts';
+import { useCardWorthIt } from '@/lib/hooks/useAnalytics';
 import { formatCents } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { BankLogo } from '@/components/BankLogo';
@@ -20,6 +21,10 @@ const INTEREST_BEARING_TYPES: AccountType[] = ['savings', 'cash_sweep', 'brokera
 /** Accounts page — view, create, and manage bank accounts. */
 export default function AccountsPage() {
   const { data: accountsData, isLoading } = useAccounts();
+  const { data: cardWorthItData } = useCardWorthIt();
+  const cardWorthItByAccount = new Map(
+    (cardWorthItData?.data ?? []).map((row) => [row.accountId, row]),
+  );
   const createAccount = useCreateAccount();
   const deleteAccount = useDeleteAccount();
   const reconcileAccount = useReconcileAccount();
@@ -33,6 +38,7 @@ export default function AccountsPage() {
     nickname: '',
     accountType: 'checking' as AccountType,
     interestRatePercent: '',
+    annualFeeCents: null as number | null,
   });
   const [form, setForm] = useState({
     institution: 'boa' as Institution,
@@ -42,6 +48,7 @@ export default function AccountsPage() {
     startingBalanceCents: 0,
     creditLimitCents: null as number | null,
     interestRatePercent: '',
+    annualFeeCents: null as number | null,
   });
 
   const accounts = accountsData?.data ?? [];
@@ -70,6 +77,10 @@ export default function AccountsPage() {
         isInterestBearing && form.interestRatePercent.trim() !== ''
           ? Math.round(parseFloat(form.interestRatePercent) * 100)
           : null,
+      annualFeeCents:
+        form.accountType === 'credit_card' && form.annualFeeCents !== null
+          ? Math.round(form.annualFeeCents * 100)
+          : null,
     });
     setShowForm(false);
     setForm({
@@ -80,6 +91,7 @@ export default function AccountsPage() {
       startingBalanceCents: 0,
       creditLimitCents: null,
       interestRatePercent: '',
+      annualFeeCents: null,
     });
   }
 
@@ -91,10 +103,12 @@ export default function AccountsPage() {
       accountType: account.accountType,
       interestRatePercent:
         account.interestRateBps != null ? (account.interestRateBps / 100).toString() : '',
+      annualFeeCents:
+        account.annualFeeCents != null ? account.annualFeeCents / 100 : null,
     });
   }
 
-  /** Handle form submission to update an existing account's nickname/type/interest rate. */
+  /** Handle form submission to update an existing account's nickname/type/interest rate/annual fee. */
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editTarget) return;
@@ -103,11 +117,16 @@ export default function AccountsPage() {
       isInterestBearing && editForm.interestRatePercent.trim() !== ''
         ? Math.round(parseFloat(editForm.interestRatePercent) * 100)
         : null;
+    const annualFeeCents =
+      editForm.accountType === 'credit_card' && editForm.annualFeeCents !== null
+        ? Math.round(editForm.annualFeeCents * 100)
+        : null;
     await updateAccount.mutateAsync({
       id: editTarget.id,
       nickname: editForm.nickname,
       accountType: editForm.accountType,
       interestRateBps,
+      annualFeeCents,
     });
     setEditTarget(null);
   }
@@ -211,6 +230,22 @@ export default function AccountsPage() {
                   onChange={(e) =>
                     setForm({ ...form, creditLimitCents: e.target.value ? Number(e.target.value) : null })
                   }
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                />
+              </div>
+            )}
+            {form.accountType === 'credit_card' && (
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold">Annual Fee ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.annualFeeCents ?? ''}
+                  onChange={(e) =>
+                    setForm({ ...form, annualFeeCents: e.target.value ? Number(e.target.value) : null })
+                  }
+                  placeholder="e.g. 695 for Amex Platinum"
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
                 />
               </div>
@@ -339,6 +374,32 @@ export default function AccountsPage() {
                     APY: {(account.interestRateBps / 100).toFixed(2)}%
                   </p>
                 )}
+                {account.annualFeeCents != null && (
+                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                    Annual fee: {formatCents(account.annualFeeCents)}
+                  </p>
+                )}
+                {(() => {
+                  const worthIt = cardWorthItByAccount.get(account.id);
+                  if (!worthIt) return null;
+                  return (
+                    <div
+                      className={cn(
+                        'mt-3 rounded-xl px-3 py-2 text-xs font-semibold',
+                        worthIt.worthIt
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+                      )}
+                    >
+                      {worthIt.worthIt ? 'Worth it: ' : 'Not worth it: '}
+                      {formatCents(worthIt.statementCreditsCents)} in statement credits (trailing 12mo)
+                      {' vs. '}
+                      {formatCents(worthIt.annualFeeCents)} annual fee (
+                      {worthIt.netCents >= 0 ? '+' : '-'}
+                      {formatCents(Math.abs(worthIt.netCents))})
+                    </div>
+                  );
+                })()}
                 {/* Bottom accent bar */}
                 <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-[var(--primary)]/50 to-transparent" />
               </div>
@@ -466,6 +527,25 @@ export default function AccountsPage() {
                       setEditForm({ ...editForm, interestRatePercent: e.target.value })
                     }
                     placeholder="e.g. 4.50"
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
+                  />
+                </div>
+              )}
+              {editForm.accountType === 'credit_card' && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold">Annual Fee ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editForm.annualFeeCents ?? ''}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        annualFeeCents: e.target.value ? Number(e.target.value) : null,
+                      })
+                    }
+                    placeholder="e.g. 695 for Amex Platinum"
                     className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2.5 text-sm focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/30 transition-all"
                   />
                 </div>

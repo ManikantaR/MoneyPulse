@@ -238,6 +238,8 @@ export const accounts = pgTable('accounts', {
   creditLimitCents: integer('credit_limit_cents'),
   /** Basis points (e.g. 450 = 4.50% APY). Only meaningful for interest-bearing types (savings, cash_sweep, brokerage). */
   interestRateBps: integer('interest_rate_bps'),
+  /** Annual fee charged by this card, in cents. Only meaningful for account_type = 'credit_card'; drives the "is this card worth it" calculator (#142). */
+  annualFeeCents: integer('annual_fee_cents'),
   csvFormatConfig: jsonb('csv_format_config'),
   expectedImportCadenceDays: integer('expected_import_cadence_days'),
   isDormant: boolean('is_dormant').notNull().default(false),

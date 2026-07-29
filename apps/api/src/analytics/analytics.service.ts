@@ -330,6 +330,73 @@ export class AnalyticsService {
   }
 
   /**
+   * "Is this card worth it?" calculator (#142, follow-up to #115/#141): for each
+   * premium credit card that has an `annualFeeCents` recorded, compares the
+   * trailing-12-months statement credits received on that card against the
+   * card's annual fee.
+   *
+   * Statement credits are identified the same way analytics.service.ts's
+   * income_cents aggregates and the income drill-down (#141) do: is_credit = true
+   * rows on an account_type = 'credit_card' account are a refund of prior spend,
+   * not income — here we sum exactly those rows over the trailing 12 months.
+   * Scoped to the authenticated user or their household members.
+   *
+   * @param {string} userId - The authenticated user's ID.
+   * @param {Pick<AnalyticsQuery, 'household'>} query - Household flag for scoping.
+   * @param {string | null} [householdId] - Optional household ID for multi-user scoping.
+   * @returns {Promise<Array<{ accountId; nickname; annualFeeCents; statementCreditsCents; netCents; worthIt }>>}
+   *   One entry per credit-card account that has an annual fee recorded.
+   * @throws {Error} If the database query fails.
+   */
+  async cardWorthIt(
+    userId: string,
+    query: Pick<AnalyticsQuery, 'household'>,
+    householdId?: string | null,
+  ) {
+    const userScope = householdId && query.household
+      ? sql`a.user_id IN (SELECT id FROM ${schema.users} WHERE household_id = ${householdId})`
+      : sql`a.user_id = ${userId}`;
+
+    const result = await this.db.execute(sql`
+      SELECT
+        a.id AS account_id,
+        a.nickname,
+        a.annual_fee_cents,
+        COALESCE(SUM(
+          CASE
+            WHEN t.is_credit = true
+              AND t.deleted_at IS NULL
+              AND t.is_split_parent = false
+              AND t.date >= NOW() - INTERVAL '12 months'
+            THEN t.amount_cents
+            ELSE 0
+          END
+        ), 0) AS statement_credits_cents
+      FROM ${schema.accounts} a
+      LEFT JOIN ${schema.transactions} t ON a.id = t.account_id
+      WHERE a.account_type = 'credit_card'
+        AND a.deleted_at IS NULL
+        AND a.annual_fee_cents IS NOT NULL
+        AND ${userScope}
+      GROUP BY a.id, a.nickname, a.annual_fee_cents
+    `);
+
+    return this.extractRows(result).map((r: any) => {
+      const annualFeeCents = Number(r.annual_fee_cents);
+      const statementCreditsCents = Number(r.statement_credits_cents);
+      const netCents = statementCreditsCents - annualFeeCents;
+      return {
+        accountId: r.account_id,
+        nickname: r.nickname,
+        annualFeeCents,
+        statementCreditsCents,
+        netCents,
+        worthIt: netCents >= 0,
+      };
+    });
+  }
+
+  /**
    * Returns a full net worth snapshot across every asset/liability source the app
    * tracks (see Phase 13 epic #158 decisions):
    *  - Liquid = checking + savings + cash_sweep regular accounts (starting balance

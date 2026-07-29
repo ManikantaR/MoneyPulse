@@ -225,6 +225,13 @@
       "when": 1784560900000,
       "tag": "0031_monthly_close",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784561000000,
+      "tag": "0032_account_annual_fee",
+      "breakpoints": true
     }
   ]
 }

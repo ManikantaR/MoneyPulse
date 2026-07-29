@@ -54,6 +54,7 @@ export class AccountsService {
         startingBalanceCents: input.startingBalanceCents,
         creditLimitCents: input.creditLimitCents ?? null,
         interestRateBps: input.interestRateBps ?? null,
+        annualFeeCents: input.annualFeeCents ?? null,
       })
       .returning();
 
