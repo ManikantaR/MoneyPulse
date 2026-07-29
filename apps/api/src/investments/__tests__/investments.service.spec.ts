@@ -268,6 +268,57 @@ describe('InvestmentsService', () => {
     });
   });
 
+  describe('getPortfolioValueAsOf (#189)', () => {
+    it('returns zero total with no holdings as of that date', async () => {
+      mockDb.execute.mockResolvedValue({ rows: [] });
+      const result = await service.getPortfolioValueAsOf(userId, '2025-06-30');
+      expect(result).toEqual({
+        totalCents: 0,
+        holdings: [],
+        staleFound: false,
+        missingPriceFound: false,
+        staleDays: 90,
+      });
+    });
+
+    it('values holdings using the as-of holding row and price on or before that date, not today\'s', async () => {
+      const asOfDate = '2025-06-30';
+      mockDb.execute
+        // getHoldingsAsOf query — shares as declared as of the historical month-end
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              investment_account_id: accountId,
+              ticker: 'AAA',
+              share_count: '10',
+              as_of: '2025-06-01',
+              notes: null,
+            },
+          ],
+        })
+        // security_prices query — historical close as of that date, not a later/current one
+        .mockResolvedValueOnce({
+          rows: [{ ticker: 'AAA', price_date: '2025-06-27', close_cents: 500, source: 'test' }],
+        });
+
+      const result = await service.getPortfolioValueAsOf(userId, asOfDate);
+
+      expect(result.totalCents).toBe(10 * 500);
+      expect(result.holdings[0].priceDate).toBe('2025-06-27');
+
+      // Both queries must be bounded by asOfDate rather than "latest overall".
+      const holdingsQuery = mockDb.execute.mock.calls[0][0];
+      const { sql: holdingsSql, params: holdingsParams } = new PgDialect().sqlToQuery(holdingsQuery);
+      expect(holdingsSql).toMatch(/as_of\s*<=/);
+      expect(holdingsParams).toContain(asOfDate);
+
+      const priceQuery = mockDb.execute.mock.calls[1][0];
+      const { sql: priceSql, params: priceParams } = new PgDialect().sqlToQuery(priceQuery);
+      expect(priceSql).toMatch(/price_date\s*<=/);
+      expect(priceParams).toContain(asOfDate);
+    });
+  });
+
   describe('getAllocation', () => {
     it('computes percent of total value per ticker, excluding unpriced holdings', async () => {
       const recentDate = new Date().toISOString().slice(0, 10);

@@ -216,6 +216,101 @@ export class InvestmentsService {
   }
 
   /**
+   * All tickers with their latest declared share count/as-of date across a user's
+   * accounts, as they stood on a given historical date (one row per ticker per
+   * account) — the "as of" counterpart to getCurrentHoldings, using each holding
+   * row's own as_of instead of "latest overall" so a month's close reflects the
+   * shares actually held that month, not shares added/removed later.
+   */
+  async getHoldingsAsOf(userId: string, asOfDate: string) {
+    const rows = await this.db.execute(sql`
+      SELECT DISTINCT ON (h.investment_account_id, h.ticker)
+        h.id, h.investment_account_id, h.ticker, h.share_count, h.as_of, h.notes
+      FROM ${schema.investmentHoldings} h
+      JOIN ${schema.investmentAccounts} ia ON ia.id = h.investment_account_id
+      WHERE ia.user_id = ${userId} AND ia.deleted_at IS NULL
+        AND h.as_of <= ${asOfDate}
+      ORDER BY h.investment_account_id, h.ticker, h.as_of DESC, h.created_at DESC
+    `);
+    return (rows.rows ?? rows).map((r: any) => ({
+      id: r.id,
+      investmentAccountId: r.investment_account_id,
+      ticker: r.ticker,
+      shareCount: r.share_count,
+      asOf: String(r.as_of).slice(0, 10),
+      notes: r.notes ?? null,
+    }));
+  }
+
+  /**
+   * Portfolio market value as of a historical date: shares held on that date x the
+   * most recent EOD close on or before that date, per holding, summed to a total.
+   * Used by monthly-close backfill (#189) so a historical month's close reflects
+   * that month's actual holdings/prices instead of today's. `getPortfolioValue`
+   * (current-value, used elsewhere) is a separate method, not a delegation to
+   * this one — left untouched to avoid behavior changes outside the backfill path.
+   */
+  async getPortfolioValueAsOf(
+    userId: string,
+    asOfDate: string,
+    staleDays = DEFAULT_HOLDINGS_STALE_DAYS,
+  ) {
+    const holdings = await this.getHoldingsAsOf(userId, asOfDate);
+    if (holdings.length === 0) {
+      return { totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false, staleDays };
+    }
+
+    const tickers = Array.from(new Set(holdings.map((h: any) => h.ticker))) as string[];
+    const priceRows = await this.db.execute(sql`
+      SELECT DISTINCT ON (ticker) ticker, price_date::text AS price_date, close_cents, source
+      FROM ${schema.securityPrices}
+      WHERE ticker = ANY(${sqlArray(tickers, 'text')})
+        AND price_date <= ${asOfDate}
+      ORDER BY ticker, price_date DESC
+    `);
+    const prices = (priceRows.rows ?? priceRows) as any[];
+    const priceByTicker = new Map(prices.map((p) => [p.ticker, p]));
+
+    const asOfTime = new Date(asOfDate).getTime();
+    let totalCents = 0;
+    let staleFound = false;
+    let missingPriceFound = false;
+
+    const result = holdings.map((h: any) => {
+      const isStale = asOfTime - new Date(h.asOf).getTime() > staleDays * 24 * 3600_000;
+      if (isStale) staleFound = true;
+      const price = priceByTicker.get(h.ticker);
+      if (!price) {
+        missingPriceFound = true;
+        return {
+          investmentAccountId: h.investmentAccountId,
+          ticker: h.ticker,
+          shareCount: h.shareCount,
+          asOf: h.asOf,
+          isStale,
+          priceDate: null,
+          closeCents: null,
+          marketValueCents: null,
+        };
+      }
+      const marketValueCents = Math.round(Number(h.shareCount) * Number(price.close_cents));
+      totalCents += marketValueCents;
+      return {
+        investmentAccountId: h.investmentAccountId,
+        ticker: h.ticker,
+        shareCount: h.shareCount,
+        asOf: h.asOf,
+        isStale,
+        priceDate: String(price.price_date).slice(0, 10),
+        closeCents: Number(price.close_cents),
+        marketValueCents,
+      };
+    });
+
+    return { totalCents, holdings: result, staleFound, missingPriceFound, staleDays };
+  }
+
+  /**
    * Portfolio market value: shares x latest EOD close, per holding, summed to a
    * total. Mirrors the `get_portfolio_value` MCP tool's computation (same
    * "latest holding per ticker per account" + "latest price per ticker" joins),
