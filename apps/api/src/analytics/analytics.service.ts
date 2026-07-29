@@ -339,6 +339,10 @@ export class AnalyticsService {
    * income_cents aggregates and the income drill-down (#141) do: is_credit = true
    * rows on an account_type = 'credit_card' account are a refund of prior spend,
    * not income — here we sum exactly those rows over the trailing 12 months.
+   * Excludes transfer-category rows (e.g. "AUTOPAY PAYMENT" bill payments), which
+   * are also is_credit = true on the card account but are debt payoff, not a
+   * merchant refund — without this a card's own autopay would be counted as a
+   * statement credit and dwarf the real ones, making every card "worth it".
    * Scoped to the authenticated user or their household members.
    *
    * @param {string} userId - The authenticated user's ID.
@@ -368,12 +372,14 @@ export class AnalyticsService {
               AND t.deleted_at IS NULL
               AND t.is_split_parent = false
               AND t.date >= NOW() - INTERVAL '12 months'
+              AND (cat.is_transfer IS NULL OR cat.is_transfer = false)
             THEN t.amount_cents
             ELSE 0
           END
         ), 0) AS statement_credits_cents
       FROM ${schema.accounts} a
       LEFT JOIN ${schema.transactions} t ON a.id = t.account_id
+      LEFT JOIN ${schema.categories} cat ON cat.id = t.category_id
       WHERE a.account_type = 'credit_card'
         AND a.deleted_at IS NULL
         AND a.annual_fee_cents IS NOT NULL

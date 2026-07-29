@@ -323,6 +323,19 @@ describe('AnalyticsService', () => {
       const result = await service.cardWorthIt(TEST_USER_ID, { household: false });
       expect(result).toEqual([]);
     });
+
+    it('excludes transfer-category rows (e.g. AUTOPAY bill payments) from statement credits', async () => {
+      // A card's own autopay payment is is_credit=true on the card account just
+      // like a real statement credit, but it's tagged with a transfer category
+      // (is_transfer=true) — without excluding those, a $5,000 bill payment would
+      // be counted as a "statement credit" and dwarf the real ones.
+      mockDb.execute.mockResolvedValue({ rows: [] });
+      await service.cardWorthIt(TEST_USER_ID, { household: false });
+
+      const query = mockDb.execute.mock.calls[0][0];
+      const { sql: sqlText } = new PgDialect().sqlToQuery(query);
+      expect(sqlText).toMatch(/is_transfer/);
+    });
   });
 
   describe('netWorth', () => {
