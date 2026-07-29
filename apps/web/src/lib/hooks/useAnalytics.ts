@@ -55,6 +55,16 @@ export interface CreditUtilizationItem {
   utilizationPercent: number;
 }
 
+/** "Is this card worth it?" row — trailing-12mo statement credits vs. annual fee. */
+export interface CardWorthItItem {
+  accountId: string;
+  nickname: string;
+  annualFeeCents: number;
+  statementCreditsCents: number;
+  netCents: number;
+  worthIt: boolean;
+}
+
 /** A single contributing row behind a net-worth total (one account/asset/loan). */
 export interface NetWorthLineItem {
   id: string;
@@ -168,6 +178,15 @@ export function useCreditUtilization(params: AnalyticsParams = {}) {
     queryKey: ['analytics', 'credit-utilization', params],
     queryFn: () =>
       api.get<{ data: CreditUtilizationItem[] }>('/analytics/credit-utilization', { params }),
+  });
+}
+
+/** Fetch "is this card worth it" data: statement credits vs. annual fee, per card. */
+export function useCardWorthIt(params: AnalyticsParams = {}) {
+  return useQuery({
+    queryKey: ['analytics', 'card-worth-it', params],
+    queryFn: () =>
+      api.get<{ data: CardWorthItItem[] }>('/analytics/card-worth-it', { params }),
   });
 }
 

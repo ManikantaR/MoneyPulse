@@ -155,6 +155,31 @@ export class AnalyticsController {
   }
 
   /**
+   * GET /analytics/card-worth-it — "Is this card worth it?" calculator (#142):
+   * for each credit card with an annual fee recorded, compares trailing-12-month
+   * statement credits received against the card's annual fee.
+   * Scoped to the authenticated user or their household.
+   *
+   * @param query - Validated household filter parameter.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: Array<{ accountId, nickname, annualFeeCents, statementCreditsCents, netCents, worthIt }> }`
+   * @throws {UnauthorizedException} If the request is not authenticated.
+   */
+  @Get('card-worth-it')
+  @ApiOperation({ summary: 'Premium credit card annual-fee worth-it calculator' })
+  async cardWorthIt(
+    @Query(new ZodValidationPipe(analyticsQuerySchema)) query: AnalyticsQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const data = await this.analyticsService.cardWorthIt(
+      user.sub,
+      { household: query.household },
+      user.householdId,
+    );
+    return { data };
+  }
+
+  /**
    * GET /analytics/net-worth — Net worth snapshot: assets + investments - liabilities.
    * Scoped to the authenticated user or their household.
    *

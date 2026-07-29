@@ -80,6 +80,8 @@ export interface Account {
   creditLimitCents: number | null;
   /** Basis points (e.g. 450 = 4.50% APY). Only meaningful for interest-bearing types. */
   interestRateBps: number | null;
+  /** Annual fee in cents. Only meaningful for accountType = 'credit_card'. */
+  annualFeeCents: number | null;
   createdAt: string;
   updatedAt: string;
 }

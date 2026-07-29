@@ -266,6 +266,78 @@ describe('AnalyticsService', () => {
     });
   });
 
+  describe('cardWorthIt', () => {
+    it('flags a card as worth it when statement credits exceed the annual fee', async () => {
+      const mockRows = [
+        {
+          account_id: 'acc-amex-gold',
+          nickname: 'Amex Gold',
+          annual_fee_cents: '25000',
+          statement_credits_cents: '30000',
+        },
+      ];
+      mockDb.execute.mockResolvedValue({ rows: mockRows });
+
+      const result = await service.cardWorthIt(TEST_USER_ID, { household: false });
+
+      expect(result).toEqual([
+        {
+          accountId: 'acc-amex-gold',
+          nickname: 'Amex Gold',
+          annualFeeCents: 25000,
+          statementCreditsCents: 30000,
+          netCents: 5000,
+          worthIt: true,
+        },
+      ]);
+    });
+
+    it('flags a card as not worth it when statement credits fall short of the annual fee', async () => {
+      const mockRows = [
+        {
+          account_id: 'acc-amex-plat',
+          nickname: 'Amex Platinum',
+          annual_fee_cents: '69500',
+          statement_credits_cents: '40000',
+        },
+      ];
+      mockDb.execute.mockResolvedValue({ rows: mockRows });
+
+      const result = await service.cardWorthIt(TEST_USER_ID, { household: false });
+
+      expect(result).toEqual([
+        {
+          accountId: 'acc-amex-plat',
+          nickname: 'Amex Platinum',
+          annualFeeCents: 69500,
+          statementCreditsCents: 40000,
+          netCents: -29500,
+          worthIt: false,
+        },
+      ]);
+    });
+
+    it('should return empty when no cards have an annual fee recorded', async () => {
+      mockDb.execute.mockResolvedValue({ rows: [] });
+
+      const result = await service.cardWorthIt(TEST_USER_ID, { household: false });
+      expect(result).toEqual([]);
+    });
+
+    it('excludes transfer-category rows (e.g. AUTOPAY bill payments) from statement credits', async () => {
+      // A card's own autopay payment is is_credit=true on the card account just
+      // like a real statement credit, but it's tagged with a transfer category
+      // (is_transfer=true) — without excluding those, a $5,000 bill payment would
+      // be counted as a "statement credit" and dwarf the real ones.
+      mockDb.execute.mockResolvedValue({ rows: [] });
+      await service.cardWorthIt(TEST_USER_ID, { household: false });
+
+      const query = mockDb.execute.mock.calls[0][0];
+      const { sql: sqlText } = new PgDialect().sqlToQuery(query);
+      expect(sqlText).toMatch(/is_transfer/);
+    });
+  });
+
   describe('netWorth', () => {
     /** netWorth() is built entirely from netWorthBreakdown()'s line items (see #192), which
      *  issues 4 sequential db.execute calls in this order:

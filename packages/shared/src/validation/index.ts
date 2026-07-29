@@ -56,6 +56,8 @@ export const createAccountSchema = z.object({
   creditLimitCents: z.int().nullable().optional(),
   /** Basis points (e.g. 450 = 4.50% APY). Only meaningful for interest-bearing types. */
   interestRateBps: z.int().min(0).max(100000).nullable().optional(),
+  /** Annual fee in cents. Only meaningful for accountType = 'credit_card'. */
+  annualFeeCents: z.int().min(0).nullable().optional(),
 });
 
 export const updateAccountSchema = createAccountSchema.partial();
