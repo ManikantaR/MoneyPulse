@@ -158,8 +158,12 @@ export function registerGetSafeToSpend(server: McpServer) {
       const avgDailyNet = Number(netRows[0]?.net_90d ?? 0) / 90;
 
       // 4) Day-by-day projection; track the minimum (the "floor" over the horizon).
-      let balance = startCents;
-      let minCents = startCents;
+      // A bill due exactly today must hit the floor immediately — the loop below
+      // only walks d=1..horizonDays, so without this a same-day bill would be
+      // counted in billTotalCents but never actually subtracted from the floor.
+      let balance = startCents - (billDeductions.get(toDateStr(today)) ?? 0);
+      balance = Math.round(balance);
+      let minCents = balance;
       let minDate = toDateStr(today);
       for (let d = 1; d <= horizonDays; d++) {
         const date = new Date(today);

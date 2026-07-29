@@ -80,6 +80,34 @@ describe('get_safe_to_spend', () => {
     expect(text).toContain('shortfall, not a safe-to-spend amount');
   });
 
+  it('deducts a bill due exactly today from the projected floor, not just the informational total', async () => {
+    // A bill due *today* must hit the floor immediately — the day-by-day loop only
+    // walks tomorrow through the horizon, so without an explicit same-day deduction
+    // it would show up in "Bills due" but never actually lower "Minimum projected
+    // balance", overstating safe-to-spend on the one day it matters most.
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM accounts a')) return [{ liquid_cents: '100000' }];
+      if (sql.includes('FROM recurring_bills')) {
+        return [
+          { expected_amount_cents: '30000', frequency: 'monthly', next_expected_date: todayStr },
+        ];
+      }
+      if (sql.includes('net_90d')) return [{ net_90d: '0' }];
+      return [];
+    });
+
+    const call = makeServer();
+    const result = await call({ horizonDays: 30, goalContributionsCents: 0 });
+    const text = result.content[0].text;
+
+    expect(text).toContain('Bills due in next 30d: $300.00');
+    expect(text).toContain('Minimum projected balance over 30d: $700.00');
+    expect(text).toContain('Safe to spend (30d horizon): $700.00');
+  });
+
   it('computes over a 30-day horizon with zero goal contributions', async () => {
     // Note: the test harness invokes the tool's handler directly, bypassing the
     // real MCP SDK's zod default-application, so horizonDays/goalContributionsCents
