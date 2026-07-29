@@ -16,13 +16,17 @@ export interface SafeToSpendResult {
   safeToSpendCents: number;
   minProjectedCents: number;
   minDate: string | null;
+  goalContributionsCents: number;
 }
 
 /**
  * Derives "safe to spend today" from a cash-flow forecast: the lowest projected
  * combined balance within the horizon, which is already net of every known
- * recurring bill (see `ForecastService.forecast`'s `netWorthSeries`). Clamped at
- * zero — a negative floor isn't "safe to spend", it's a shortfall.
+ * recurring bill (see `ForecastService.forecast`'s `netWorthSeries`). Optionally
+ * subtracts money already earmarked toward active goals (`goalContributionsCents`)
+ * per #40's formula: `balance + scheduled inflows − (remaining bills + goal
+ * contributions)`. Clamped at zero — a negative floor isn't "safe to spend", it's
+ * a shortfall.
  *
  * Kept as ONE standalone exported function so #40's goal planner can reuse the
  * exact same math without depending on BriefService's delivery/formatting concerns.
@@ -30,10 +34,11 @@ export interface SafeToSpendResult {
 export function computeSafeToSpend(
   forecast: Pick<ForecastResult, 'netWorthSeries'>,
   horizonDays = 14,
+  goalContributionsCents = 0,
 ): SafeToSpendResult {
   const window = forecast.netWorthSeries.slice(0, horizonDays);
   if (window.length === 0) {
-    return { safeToSpendCents: 0, minProjectedCents: 0, minDate: null };
+    return { safeToSpendCents: 0, minProjectedCents: 0, minDate: null, goalContributionsCents };
   }
 
   let min = window[0];
@@ -42,9 +47,10 @@ export function computeSafeToSpend(
   }
 
   return {
-    safeToSpendCents: Math.max(0, min.projectedCents),
+    safeToSpendCents: Math.max(0, min.projectedCents - goalContributionsCents),
     minProjectedCents: min.projectedCents,
     minDate: min.date,
+    goalContributionsCents,
   };
 }
 
