@@ -56,6 +56,28 @@ export function totalLoanInterestCents(
   return Math.max(0, monthly * termMonths - principalCents);
 }
 
+/**
+ * Remaining principal balance after `monthsElapsed` payments on a standard
+ * amortizing loan, in cents. Zero once the loan term has fully elapsed.
+ */
+export function remainingLoanBalanceCents(
+  principalCents: number,
+  aprBps: number,
+  termMonths: number,
+  monthsElapsed: number,
+): number {
+  if (principalCents <= 0 || termMonths <= 0) return 0;
+  const n = Math.max(0, Math.min(monthsElapsed, termMonths));
+  if (n === 0) return principalCents;
+  if (n >= termMonths) return 0;
+  const monthlyRate = aprBps / 10000 / 12;
+  const payment = amortizedMonthlyPaymentCents(principalCents, aprBps, termMonths);
+  if (monthlyRate === 0) return Math.max(0, principalCents - payment * n);
+  const balance = principalCents * Math.pow(1 + monthlyRate, n) -
+    (payment * (Math.pow(1 + monthlyRate, n) - 1)) / monthlyRate;
+  return Math.max(0, Math.round(balance));
+}
+
 // ── 1. The 20/4/10 rule ───────────────────────────────────────────────
 
 export interface Rule204010Input {
@@ -280,11 +302,26 @@ export function compareBuyVsLease(
     ownershipMonths,
     comparisonMonths,
   );
+  // If the comparison term ends before the loan is paid off, the buyer's actual
+  // equity is resale value MINUS what's still owed — crediting the full resale
+  // value here would understate buy's true cost whenever a shorter lease term is
+  // compared against a longer loan (a common real scenario, e.g. a 3yr lease vs.
+  // a 5yr loan).
+  const remainingBalanceAtComparisonEnd = remainingLoanBalanceCents(
+    principalCents,
+    tcoInput.loanAprBps,
+    tcoInput.loanTermMonths,
+    comparisonMonths,
+  );
+  const buyEquityAtComparisonEnd = Math.max(
+    0,
+    resaleAtComparisonEnd - remainingBalanceAtComparisonEnd,
+  );
 
   const buyTotalCostCents =
     tcoInput.downPaymentCents +
     monthlyLoanPaymentCents * monthsFinanced -
-    resaleAtComparisonEnd;
+    buyEquityAtComparisonEnd;
 
   const leaseTotalCostCents =
     lease.dueAtSigningCents + lease.monthlyPaymentCents * comparisonMonths;

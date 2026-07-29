@@ -4,6 +4,7 @@ import {
   calculateTco,
   compareBuyVsLease,
   evaluateRule204010,
+  remainingLoanBalanceCents,
   toMonthlyCents,
   totalLoanInterestCents,
   CarAffordabilityInput,
@@ -221,10 +222,27 @@ describe('compareBuyVsLease', () => {
       termMonths: 24, // half of the 48-month ownership window
     });
     // Depreciation over 4yr = $30,000 - $12,000 = $18,000; half that at 24mo = $9,000
-    // → resale credit at 24mo = $30,000 - $9,000 = $21,000.
+    // → resale value at 24mo = $30,000 - $9,000 = $21,000. But the loan isn't paid
+    // off at 24 of 48 months — buy's actual equity is resale MINUS the remaining
+    // loan balance at that point, not the full resale value.
+    const monthlyPayment = amortizedMonthlyPaymentCents(2_400_000, 600, 48);
+    const remainingBalance = remainingLoanBalanceCents(2_400_000, 600, 48, 24);
+    const equity = Math.max(0, 2_100_000 - remainingBalance);
+    expect(result.buyTotalCostCents).toBe(600_000 + monthlyPayment * 24 - equity);
+  });
+
+  it('credits full resale value as equity once the loan is fully paid off by the comparison end', () => {
+    // Comparison term (48mo) equals the loan term, so remaining balance is zero
+    // and buy's equity should equal the full resale value — matches the old
+    // (pre-fix) behavior exactly in the fully-paid-off case.
+    const result = compareBuyVsLease(tcoTerms, {
+      monthlyPaymentCents: 0,
+      dueAtSigningCents: 0,
+      termMonths: 48,
+    });
     const monthlyPayment = amortizedMonthlyPaymentCents(2_400_000, 600, 48);
     expect(result.buyTotalCostCents).toBe(
-      600_000 + monthlyPayment * 24 - 2_100_000,
+      600_000 + monthlyPayment * 48 - 1_200_000,
     );
   });
 });

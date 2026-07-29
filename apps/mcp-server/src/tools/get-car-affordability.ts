@@ -101,10 +101,13 @@ export function registerGetCarAffordability(server: McpServer) {
         };
       }
 
-      const hasLease =
-        params.lease_monthly_payment_dollars != null &&
-        params.lease_due_at_signing_dollars != null &&
-        params.lease_term_months != null;
+      const leaseFieldsGiven = [
+        params.lease_monthly_payment_dollars,
+        params.lease_due_at_signing_dollars,
+        params.lease_term_months,
+      ].filter((v) => v != null).length;
+      const hasLease = leaseFieldsGiven === 3;
+      const partialLease = leaseFieldsGiven > 0 && leaseFieldsGiven < 3;
 
       const result = calculateCarAffordability({
         priceCents: toCents(params.price_dollars),
@@ -178,6 +181,11 @@ export function registerGetCarAffordability(server: McpServer) {
         lines.push(`  Lease total cash cost: ${dollars(buyVsLease.leaseTotalCostCents)}`);
         lines.push(
           `  ${buyVsLease.cheaperOption === 'tie' ? 'Buying and leasing cost the same' : `${buyVsLease.cheaperOption === 'buy' ? 'Buying' : 'Leasing'} is cheaper by ${dollars(Math.abs(buyVsLease.costDifferenceCents))}`}`,
+        );
+      } else if (partialLease) {
+        lines.push('');
+        lines.push(
+          'Buy vs. lease comparison skipped: lease_monthly_payment_dollars, lease_due_at_signing_dollars, and lease_term_months must all be provided together.',
         );
       }
 
