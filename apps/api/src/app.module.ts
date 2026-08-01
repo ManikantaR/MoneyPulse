@@ -33,6 +33,7 @@ import { RateWatchlistModule } from './rate-watchlist/rate-watchlist.module';
 import { SuitabilitySettingsModule } from './suitability-settings/suitability-settings.module';
 import { ManualAssetsModule } from './monthly-close/manual-assets.module';
 import { MonthlyCloseModule } from './monthly-close/monthly-close.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -87,6 +88,7 @@ import { MonthlyCloseModule } from './monthly-close/monthly-close.module';
     SuitabilitySettingsModule,
     ManualAssetsModule,
     MonthlyCloseModule,
+    SettingsModule,
     HealthModule,
   ],
   providers: [
