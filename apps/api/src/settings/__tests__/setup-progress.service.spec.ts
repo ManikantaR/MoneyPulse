@@ -143,4 +143,34 @@ describe('SetupProgressService', () => {
     const ccFeesStep2 = result2.steps.find((s) => s.id === 'cc_fees');
     expect(ccFeesStep2?.done).toBe(true);
   });
+
+  describe('dismissedAt (#229, sub-issue 2/4)', () => {
+    it('is null when the user has never dismissed the tracker', async () => {
+      service = await build(mockDbWith(emptyRows()));
+      const result = await service.getSetupProgress(TEST_USER_ID);
+
+      expect(result.dismissedAt).toBeNull();
+    });
+
+    it('reflects the stored setupTrackerDismissedAt timestamp as an ISO string', async () => {
+      const rows = emptyRows();
+      const dismissedAt = new Date('2026-01-01T00:00:00.000Z');
+      rows[3] = [{ setupTrackerDismissedAt: dismissedAt }]; // userSettings
+
+      service = await build(mockDbWith(rows));
+      const result = await service.getSetupProgress(TEST_USER_ID);
+
+      expect(result.dismissedAt).toBe(dismissedAt.toISOString());
+    });
+
+    it('is null once the dismissal has been cleared (setupTrackerDismissedAt: null)', async () => {
+      const rows = emptyRows();
+      rows[3] = [{ setupTrackerDismissedAt: null }]; // userSettings
+
+      service = await build(mockDbWith(rows));
+      const result = await service.getSetupProgress(TEST_USER_ID);
+
+      expect(result.dismissedAt).toBeNull();
+    });
+  });
 });

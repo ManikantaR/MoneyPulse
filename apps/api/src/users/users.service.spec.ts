@@ -107,4 +107,38 @@ describe('UsersService', () => {
       );
     });
   });
+
+  describe('updateSettings — setup tracker dismissal (#229)', () => {
+    it('translates setupTrackerDismissed: true into a stored timestamp', async () => {
+      mockDb.where.mockReturnThis();
+
+      await service.updateSettings('user-1', { setupTrackerDismissed: true });
+
+      expect(mockDb.set).toHaveBeenCalledWith(
+        expect.objectContaining({ setupTrackerDismissedAt: expect.any(Date) }),
+      );
+      const setArg = mockDb.set.mock.calls.at(-1)?.[0];
+      expect(setArg).not.toHaveProperty('setupTrackerDismissed');
+    });
+
+    it('translates setupTrackerDismissed: false into null, clearing the dismissal', async () => {
+      mockDb.where.mockReturnThis();
+
+      await service.updateSettings('user-1', { setupTrackerDismissed: false });
+
+      expect(mockDb.set).toHaveBeenCalledWith(
+        expect.objectContaining({ setupTrackerDismissedAt: null }),
+      );
+    });
+
+    it('leaves setupTrackerDismissedAt untouched when the field is absent', async () => {
+      mockDb.where.mockReturnThis();
+
+      await service.updateSettings('user-1', { timezone: 'America/Chicago' });
+
+      const setArg = mockDb.set.mock.calls.at(-1)?.[0];
+      expect(setArg).not.toHaveProperty('setupTrackerDismissedAt');
+      expect(setArg).not.toHaveProperty('setupTrackerDismissed');
+    });
+  });
 });

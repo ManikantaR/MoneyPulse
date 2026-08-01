@@ -239,6 +239,13 @@
       "when": 1784561100000,
       "tag": "0033_notification_type_digest_advisor_coach",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784561200000,
+      "tag": "0034_setup_tracker_dismissed_at",
+      "breakpoints": true
     }
   ]
 }

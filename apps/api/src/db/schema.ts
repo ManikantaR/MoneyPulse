@@ -227,6 +227,11 @@ export const userSettings = pgTable('user_settings', {
   proactiveAdvisorEnabled: boolean('proactive_advisor_enabled')
     .notNull()
     .default(false),
+  /** #229 setup-completeness tracker (sub-issue 2/4) — set when the user dismisses the
+   *  setup-progress widget; null means "not dismissed" / "show it". The web card
+   *  re-surfaces the tracker once `percent`/`completed` has moved on since this was set,
+   *  so dismissal means "hide until something changes", not "hide forever". */
+  setupTrackerDismissedAt: timestamp('setup_tracker_dismissed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

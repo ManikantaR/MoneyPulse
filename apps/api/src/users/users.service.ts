@@ -124,6 +124,13 @@ export class UsersService {
     const encrypted: any = { ...data, updatedAt: new Date() };
     if (data.haWebhookUrl) encrypted.haWebhookUrl = encryptField(data.haWebhookUrl);
     if (data.notificationEmail) encrypted.notificationEmail = encryptField(data.notificationEmail);
+    // #229: `setupTrackerDismissed` is a boolean over the wire but persists as a
+    // timestamp (or null to clear/re-surface) so we translate it here rather than
+    // storing a raw client-supplied timestamp.
+    if ('setupTrackerDismissed' in data) {
+      encrypted.setupTrackerDismissedAt = data.setupTrackerDismissed ? new Date() : null;
+      delete encrypted.setupTrackerDismissed;
+    }
     const rows = await this.db
       .update(schema.userSettings)
       .set(encrypted)
