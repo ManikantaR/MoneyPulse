@@ -42,7 +42,7 @@ function baseInput(
     emergencyFundMonths: 3,
     hasHighInterestDebt: false,
     employerMatch: { available: false, captured: null },
-    freshness: { missingManualAssets: [], staleAccounts: [], unverifiedLoans: [] },
+    freshness: { missingManualAssets: [], staleAccounts: [], unverifiedLoans: [], missingInvestmentPrices: [] },
     ...overrides,
   };
 }
@@ -108,6 +108,7 @@ describe('calculateMonthlyClose', () => {
         missingManualAssets: [],
         staleAccounts: ['acct-checking'],
         unverifiedLoans: [],
+        missingInvestmentPrices: [],
       },
     });
 
@@ -284,10 +285,26 @@ describe('calculateMonthlyClose', () => {
           missingManualAssets: ['home'],
           staleAccounts: [],
           unverifiedLoans: [],
+          missingInvestmentPrices: [],
         },
       }),
     );
     expect(incomplete.freshness.isComplete).toBe(false);
+  });
+
+  it('marks freshness incomplete when holdings exist but a price is missing for the month (#213)', () => {
+    const incomplete = calculateMonthlyClose(
+      baseInput({
+        freshness: {
+          missingManualAssets: [],
+          staleAccounts: [],
+          unverifiedLoans: [],
+          missingInvestmentPrices: ['VTI'],
+        },
+      }),
+    );
+    expect(incomplete.freshness.isComplete).toBe(false);
+    expect(incomplete.freshness.missingInvestmentPrices).toEqual(['VTI']);
   });
 
   // ── FOO next-dollar priority ordering ────────────────────────

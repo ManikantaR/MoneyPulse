@@ -64,6 +64,10 @@ export interface MonthlyCloseFreshnessInput {
   missingManualAssets: string[];
   staleAccounts: string[];
   unverifiedLoans: string[];
+  /** Tickers held this month with no security_prices row on or before month-end
+   *  (issue #213): investmentAssetCents undercounts these holdings' value, so the
+   *  month is flagged incomplete rather than silently persisting a low total. */
+  missingInvestmentPrices: string[];
 }
 
 export interface MonthlyCloseCalculatorInput {
@@ -348,7 +352,8 @@ export function calculateMonthlyClose(
   const isComplete =
     input.freshness.missingManualAssets.length === 0 &&
     input.freshness.staleAccounts.length === 0 &&
-    input.freshness.unverifiedLoans.length === 0;
+    input.freshness.unverifiedLoans.length === 0 &&
+    input.freshness.missingInvestmentPrices.length === 0;
 
   return {
     month: input.month,

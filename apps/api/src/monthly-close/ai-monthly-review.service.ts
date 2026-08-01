@@ -164,6 +164,7 @@ export class AiMonthlyReviewService {
         ...(freshness.missingManualAssets ?? []),
         ...(freshness.staleAccounts ?? []),
         ...(freshness.unverifiedLoans ?? []),
+        ...(freshness.missingInvestmentPrices ?? []),
       ];
       bullets.push(
         `[${INCOMPLETE_CLOSE_CAVEAT_MARKER}] This close is missing or has stale data (${gaps.length} item(s)) — the figures below are provisional until it's completed.`,

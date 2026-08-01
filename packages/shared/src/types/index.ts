@@ -628,6 +628,7 @@ export interface MonthlyCloseSummary {
     missingManualAssets: string[];
     staleAccounts: string[];
     unverifiedLoans: string[];
+    missingInvestmentPrices: string[];
   };
   notes: string | null;
   aiReview: string | null;
