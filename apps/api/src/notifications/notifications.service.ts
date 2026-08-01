@@ -326,8 +326,14 @@ export class NotificationsService {
       return notification;
     }
 
-    // Dispatch through preference-aware channels (best-effort, never blocks domain write)
-    void this.dispatch(notification.id, input.userId, input.notificationType ?? 'system_alert', {
+    // Dispatch through preference-aware channels (best-effort, never blocks domain write).
+    // Default the preference lookup key to the notification's own `type` (rather than a
+    // fixed 'system_alert') so each dispatched type routes through its own per-type
+    // preference (mode + channels) — see #223: previously every type without an explicit
+    // `notificationType` override silently collapsed onto the generic system_alert
+    // preference (in-app only), so digests/advisor/coach notifications never reached
+    // Telegram/HA even once their type existed in the DB enum.
+    void this.dispatch(notification.id, input.userId, input.notificationType ?? input.type, {
       title: input.title,
       message: input.message,
       voiceSummary: input.voiceSummary,

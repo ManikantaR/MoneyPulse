@@ -232,6 +232,13 @@
       "when": 1784561000000,
       "tag": "0032_account_annual_fee",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1784561100000,
+      "tag": "0033_notification_type_digest_advisor_coach",
+      "breakpoints": true
     }
   ]
 }

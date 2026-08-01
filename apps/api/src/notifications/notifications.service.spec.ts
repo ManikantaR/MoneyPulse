@@ -337,6 +337,45 @@ describe('NotificationsService', () => {
       // already the once-a-day batched delivery, not a candidate for further batching.
       expect(mockTelegramPush.sendToUser).toHaveBeenCalled();
     });
+
+    // #223: digest/advisor/coach notifications must route through their own
+    // per-type preference (haWebhook + telegram enabled) rather than silently
+    // collapsing onto the generic system_alert (in-app only) default.
+    it('routes a digest notification to the Home Assistant webhook when the type is not overridden', async () => {
+      mockPreferences.getPreference.mockResolvedValue({
+        id: 'pref-digest',
+        userId: TEST_USER,
+        notificationType: 'digest',
+        mode: 'instant',
+        enabledChannels: ['inApp', 'telegram', 'haWebhook'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockDb.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([]),
+        }),
+      });
+      mockWebhookService.sendWebhook.mockResolvedValue(true);
+
+      await service.createAndDispatch({
+        userId: TEST_USER,
+        type: 'digest',
+        title: 'Your weekly digest',
+        message: 'Here is what happened this week.',
+      });
+
+      // Give dispatch async a tick to settle
+      await new Promise((r) => setTimeout(r, 10));
+
+      // The preference lookup must key off the notification's own type ('digest'),
+      // not a hardcoded generic fallback.
+      expect(mockPreferences.getPreference).toHaveBeenCalledWith(TEST_USER, 'digest');
+      expect(mockWebhookService.sendWebhook).toHaveBeenCalledWith(
+        TEST_USER,
+        expect.objectContaining({ title: 'Your weekly digest', type: 'digest' }),
+      );
+    });
   });
 
   describe('getUnbriefedInsights / markBriefed', () => {

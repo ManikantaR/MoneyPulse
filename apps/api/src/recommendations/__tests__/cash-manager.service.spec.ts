@@ -239,7 +239,10 @@ describe('CashManagerService — notifyBenchmarkRateMove (market_event)', () => 
     expect(notifications.createAndDispatch).toHaveBeenCalledTimes(1);
     const payload = notifications.createAndDispatch.mock.calls[0][0];
     expect(payload.userId).toBe('user-1');
-    expect(payload.notificationType).toBe('market_event');
+    // #223: routes through its own 'benchmark_rate_move' preference (default
+    // instant + inApp/telegram/haWebhook) rather than 'market_event', whose
+    // DEFAULT_PREFERENCES mode is 'off' and was suppressing delivery entirely.
+    expect(payload.notificationType).toBe('benchmark_rate_move');
     expect(payload.message).toContain('32bps');
     expect(payload.message).toContain('4.50%');
     expect(payload.message).toContain('4.82%');

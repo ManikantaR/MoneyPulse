@@ -36,7 +36,26 @@ const DEFAULT_PREFERENCES: Record<NotificationType, {
   // The brief message itself always dispatches "instant" (at the user's configured hour) —
   // it IS the batched delivery, so it must never be re-deferred into another brief.
   daily_brief: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'webPush'] },
+
+  // #223: digests + advisor/coach notifications. These are all cron- or
+  // event-delivered once (a daily/weekly/monthly digest, a weekly advisor recap, a
+  // one-off coach nudge, etc.) — same reasoning as daily_brief above, they must
+  // dispatch "instant" and never be re-deferred into a brief. The user has asked
+  // for all alerts to also reach Home Assistant, so haWebhook is enabled by default
+  // alongside inApp + telegram.
+  digest: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  advisor_digest: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  advisor_review: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  bill_overdue: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  benchmark_rate_move: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  idle_cash: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  investment_coach_contribution: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  savings_coach: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  monthly_close_freshness_nudge: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
 };
+
+/** Source-of-truth list of all registered notification types (mirrors the DB enum). */
+export const NOTIFICATION_TYPES = Object.keys(DEFAULT_PREFERENCES) as NotificationType[];
 
 @Injectable()
 export class NotificationPreferencesService {
@@ -93,29 +112,82 @@ export class NotificationPreferencesService {
     userId: string,
     notificationType: NotificationType,
   ): Promise<NotificationPreference> {
-    const rows = await this.db
-      .select()
-      .from(schema.notificationPreferences)
-      .where(
-        and(
-          eq(schema.notificationPreferences.userId, userId),
-          eq(schema.notificationPreferences.notificationType, notificationType),
-        ),
-      )
-      .limit(1);
+    // Guard the enum-comparison query: an unregistered/unseeded type would make
+    // Postgres reject `notification_type = '<type>'` (invalid enum input), which —
+    // upstream, inside dispatch()'s try/catch — used to be swallowed into total
+    // silence (in-app row created, but zero routing to Telegram/HA, no log at all).
+    // Validate against the known set *before* querying so a bad type degrades
+    // loudly and gracefully instead of throwing.
+    const isRegistered = (schema.notificationTypeEnum.enumValues as readonly string[]).includes(
+      notificationType,
+    );
+
+    if (!isRegistered) {
+      this.logger.warn(
+        `Notification type "${notificationType}" is not registered in the notification_type ` +
+          `enum / DEFAULT_PREFERENCES — falling back to in-app-only delivery. Register it in ` +
+          `db/schema.ts + a migration + DEFAULT_PREFERENCES to restore Telegram/HA routing.`,
+      );
+      return {
+        id: '',
+        userId,
+        notificationType,
+        mode: 'instant',
+        enabledChannels: ['inApp'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+
+    let rows: any[];
+    try {
+      rows = await this.db
+        .select()
+        .from(schema.notificationPreferences)
+        .where(
+          and(
+            eq(schema.notificationPreferences.userId, userId),
+            eq(schema.notificationPreferences.notificationType, notificationType),
+          ),
+        )
+        .limit(1);
+    } catch (err) {
+      // Defense in depth: even a registered type could hit an unexpected DB error
+      // (e.g. enum drift between app + DB). Never let this throw out of dispatch().
+      this.logger.warn(
+        `Failed to load notification preference for type "${notificationType}": ` +
+          `${(err as Error).message} — falling back to in-app-only delivery.`,
+      );
+      return {
+        id: '',
+        userId,
+        notificationType,
+        mode: 'instant',
+        enabledChannels: ['inApp'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
 
     if (rows.length > 0) {
       return rows[0];
     }
 
-    // Return default
+    // Return default. `defaults` should always exist for a registered enum value, but
+    // guard against enum/DEFAULT_PREFERENCES drift rather than throwing on undefined.
     const defaults = DEFAULT_PREFERENCES[notificationType];
+    if (!defaults) {
+      this.logger.warn(
+        `Notification type "${notificationType}" is in the notification_type enum but has ` +
+          `no DEFAULT_PREFERENCES entry — falling back to in-app-only delivery.`,
+      );
+    }
     return {
       id: '', // Will be created on first update
       userId,
       notificationType,
-      mode: defaults.mode,
-      enabledChannels: defaults.enabledChannels,
+      mode: defaults?.mode ?? 'instant',
+      enabledChannels: defaults?.enabledChannels ?? ['inApp'],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
