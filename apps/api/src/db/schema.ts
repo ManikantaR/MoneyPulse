@@ -92,6 +92,18 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'advisor_insight',
   'system_alert',
   'daily_brief',
+  // 40.x digests + advisor/coach notifications (#223) — cron- or event-delivered
+  // once each; must route through their own preference (not the generic
+  // system_alert default) so they can reach Telegram/HA per DEFAULT_PREFERENCES.
+  'digest',
+  'advisor_digest',
+  'advisor_review',
+  'bill_overdue',
+  'benchmark_rate_move',
+  'idle_cash',
+  'investment_coach_contribution',
+  'savings_coach',
+  'monthly_close_freshness_nudge',
 ]);
 export const notificationModeEnum = pgEnum('notification_mode', [
   'instant',

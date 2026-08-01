@@ -147,7 +147,11 @@ export class CashManagerService {
         await this.notificationsService.createAndDispatch({
           userId: user.id,
           type: 'benchmark_rate_move',
-          notificationType: 'market_event',
+          // #223: route through its own 'benchmark_rate_move' preference (instant +
+          // inApp/telegram/haWebhook by default) rather than 'market_event', whose
+          // DEFAULT_PREFERENCES mode is 'off' — that was silently suppressing every
+          // benchmark-rate-move alert end-to-end (in-app included).
+          notificationType: 'benchmark_rate_move',
           source: 'market',
           severity: 'insight',
           title: `${BENCHMARK_RATE_METRIC_LABEL} moved ${move.deltaBps}bps`,
