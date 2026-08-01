@@ -539,3 +539,30 @@ export const patchMonthlyCloseSchema = z.object({
 });
 
 export type PatchMonthlyCloseInput = z.infer<typeof patchMonthlyCloseSchema>;
+
+// ── Settings: Setup Progress (#225) ─────────────────────────
+// Response shape for `GET /settings/setup-progress` — on-the-fly setup-completeness
+// tracker. `kind: 'user-data'` steps count toward `percent`'s denominator;
+// `kind: 'server-config'` steps (API-key/env integrations) are informational only.
+
+export const setupProgressStepKindSchema = z.enum(['user-data', 'server-config']);
+
+export const setupProgressStepSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  done: z.boolean(),
+  unlocks: z.string(),
+  href: z.string(),
+  kind: setupProgressStepKindSchema,
+});
+
+export const setupProgressSchema = z.object({
+  percent: z.int().min(0).max(100),
+  completed: z.int().min(0),
+  total: z.int().min(0),
+  steps: z.array(setupProgressStepSchema),
+});
+
+export type SetupProgressStepKind = z.infer<typeof setupProgressStepKindSchema>;
+export type SetupProgressStep = z.infer<typeof setupProgressStepSchema>;
+export type SetupProgress = z.infer<typeof setupProgressSchema>;
