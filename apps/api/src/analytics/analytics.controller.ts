@@ -5,6 +5,7 @@ import { BalanceSnapshotService } from './balance-snapshot.service';
 import { ForecastService } from './forecast.service';
 import { AccountFreshnessService } from './account-freshness.service';
 import { BudgetPlanService } from './budget-plan.service';
+import { computeSafeToSpend } from './brief.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -13,6 +14,7 @@ import {
   spendingTrendQuerySchema,
   topMerchantsQuerySchema,
   forecastQuerySchema,
+  safeToSpendQuerySchema,
   savingsRateQuerySchema,
   budgetPlanQuerySchema,
 } from '@moneypulse/shared';
@@ -21,6 +23,7 @@ import type {
   SpendingTrendQuery,
   TopMerchantsQuery,
   ForecastQuery,
+  SafeToSpendQuery,
   SavingsRateQuery,
   BudgetPlanQuery,
   AuthTokenPayload,
@@ -400,6 +403,35 @@ export class AnalyticsController {
     @CurrentUser() user: AuthTokenPayload,
   ) {
     const data = await this.forecastService.forecast(user.sub, query.days);
+    return { data };
+  }
+
+  /**
+   * GET /analytics/safe-to-spend?horizonDays=30|60|90&goalContributionsCents=N
+   *
+   * #40.1/#40.4 — safe-to-spend across the requested horizon: the lowest projected
+   * combined liquid balance within the window (already net of every recurring bill
+   * occurrence forecast over that window), minus any amount reserved for savings
+   * goals. Reuses the exact forecast + `computeSafeToSpend` math the daily brief and
+   * the `get_safe_to_spend` MCP tool are built on, so the web UI, chat, and digest
+   * never diverge.
+   *
+   * @param query - Validated horizon (30/60/90 days) and goal-contribution amount.
+   * @param user - JWT token payload containing user identity.
+   * @returns `{ data: SafeToSpendResult }`
+   */
+  @Get('safe-to-spend')
+  @ApiOperation({ summary: 'Safe-to-spend over a 30/60/90-day horizon' })
+  async safeToSpend(
+    @Query(new ZodValidationPipe(safeToSpendQuerySchema)) query: SafeToSpendQuery,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const forecast = await this.forecastService.forecast(user.sub, query.horizonDays);
+    const data = computeSafeToSpend(
+      forecast,
+      query.horizonDays,
+      query.goalContributionsCents,
+    );
     return { data };
   }
 

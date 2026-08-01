@@ -35,6 +35,8 @@ const ALL_TOOLS = [
   { name: 'get_monthly_close', description: 'y', inputSchema: { type: 'object' } },
   { name: 'get_financial_health', description: 'z', inputSchema: { type: 'object' } },
   { name: 'get_car_affordability', description: 'aa', inputSchema: { type: 'object' } },
+  { name: 'get_safe_to_spend', description: 'bb', inputSchema: { type: 'object' } },
+  { name: 'get_college_plan', description: 'cc', inputSchema: { type: 'object' } },
   { name: 'get_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   { name: 'search_transactions', description: 'ROW-LEVEL', inputSchema: { type: 'object' } },
   {
