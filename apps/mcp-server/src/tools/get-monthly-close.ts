@@ -64,7 +64,7 @@ export function registerGetMonthlyClose(server: McpServer) {
         `  Close complete: ${freshness.isComplete ? 'yes' : 'NO — missing/stale data present'}`,
         freshness.isComplete
           ? undefined
-          : `  Freshness gaps: missing manual assets [${(freshness.missingManualAssets ?? []).join(', ')}], stale accounts [${(freshness.staleAccounts ?? []).length}], unverified loans [${(freshness.unverifiedLoans ?? []).join(', ')}]`,
+          : `  Freshness gaps: missing manual assets [${(freshness.missingManualAssets ?? []).join(', ')}], stale accounts [${(freshness.staleAccounts ?? []).length}], unverified loans [${(freshness.unverifiedLoans ?? []).join(', ')}], missing investment prices [${(freshness.missingInvestmentPrices ?? []).join(', ')}]`,
       ]
         .filter(Boolean)
         .join('\n');

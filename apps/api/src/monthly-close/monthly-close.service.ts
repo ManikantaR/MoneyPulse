@@ -305,6 +305,13 @@ export class MonthlyCloseService {
     // holdings/market prices. ──
     const portfolio = await this.investmentsService.getPortfolioValueAsOf(userId, lastDay);
     let investmentAssetCents = regularInvestmentAssetCents;
+    // Holdings with no security_prices row on or before month-end contribute
+    // marketValueCents: null and are excluded from portfolio.totalCents — flag
+    // them so the month is surfaced as incomplete instead of silently persisting
+    // an undercounted total (issue #213).
+    const missingInvestmentPrices: string[] = portfolio.holdings
+      .filter((h: any) => h.marketValueCents === null)
+      .map((h: any) => h.ticker);
     if (portfolio.holdings.length > 0) {
       investmentAssetCents += portfolio.totalCents;
     } else {
@@ -366,7 +373,7 @@ export class MonthlyCloseService {
       emergencyFundMonths,
       hasHighInterestDebt: false,
       employerMatch: { available: false, captured: null },
-      freshness: { missingManualAssets, staleAccounts, unverifiedLoans },
+      freshness: { missingManualAssets, staleAccounts, unverifiedLoans, missingInvestmentPrices },
     };
   }
 

@@ -24,6 +24,7 @@ describe('MonthlyCloseService', () => {
   let service: MonthlyCloseService;
   let mockDb: any;
   let notificationsService: { createAndDispatch: any };
+  let investmentsService: { getPortfolioValue: any; getPortfolioValueAsOf: any };
 
   const draftRow = { id: 'snap-1', userId: 'user-1', snapshotMonth: '2026-06-01', status: 'draft' };
 
@@ -40,19 +41,17 @@ describe('MonthlyCloseService', () => {
     };
 
     notificationsService = { createAndDispatch: vi.fn().mockResolvedValue({}) };
+    investmentsService = {
+      getPortfolioValue: vi.fn().mockResolvedValue({ totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false }),
+      getPortfolioValueAsOf: vi.fn().mockResolvedValue({ totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MonthlyCloseService,
         { provide: DATABASE_CONNECTION, useValue: mockDb },
         { provide: ManualAssetsService, useValue: { findAll: vi.fn().mockResolvedValue([]) } },
-        {
-          provide: InvestmentsService,
-          useValue: {
-            getPortfolioValue: vi.fn().mockResolvedValue({ totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false }),
-            getPortfolioValueAsOf: vi.fn().mockResolvedValue({ totalCents: 0, holdings: [], staleFound: false, missingPriceFound: false }),
-          },
-        },
+        { provide: InvestmentsService, useValue: investmentsService },
         { provide: LoansService, useValue: { getBalanceForMonth: vi.fn() } },
         { provide: NotificationsService, useValue: notificationsService },
       ],
@@ -67,12 +66,42 @@ describe('MonthlyCloseService', () => {
       expect(input.month).toBe('2026-06-01');
       expect(input.takeHomeIncomeCents).toBe(0);
       expect(input.transactions).toEqual([]);
-      expect(input.freshness).toEqual({ missingManualAssets: [], staleAccounts: [], unverifiedLoans: [] });
+      expect(input.freshness).toEqual({
+        missingManualAssets: [],
+        staleAccounts: [],
+        unverifiedLoans: [],
+        missingInvestmentPrices: [],
+      });
 
       const saved = await service.draft('user-1', '2026-06');
       expect(saved).toEqual(draftRow);
       // No existing row (select resolves []) -> insert path, not update.
       expect(mockDb.insert).toHaveBeenCalledWith(expect.anything());
+    });
+
+    it('flags missingInvestmentPrices instead of silently zeroing the total when a held ticker has no price for the month (#213)', async () => {
+      (investmentsService.getPortfolioValueAsOf as any).mockResolvedValue({
+        totalCents: 0,
+        holdings: [
+          {
+            investmentAccountId: 'acct-inv',
+            ticker: 'VTI',
+            shareCount: '10',
+            asOf: '2026-06-30',
+            isStale: false,
+            priceDate: null,
+            closeCents: null,
+            marketValueCents: null,
+          },
+        ],
+        staleFound: false,
+        missingPriceFound: true,
+        staleDays: 10,
+      });
+
+      const input = await service.gatherInputs('user-1', '2026-06');
+      expect(input.investmentAssetCents).toBe(0);
+      expect(input.freshness.missingInvestmentPrices).toEqual(['VTI']);
     });
   });
 
