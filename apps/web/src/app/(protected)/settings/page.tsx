@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdvisorSettingsSection } from '@/components/AdvisorSettingsSection';
 import { SuitabilitySettingsSection } from '@/components/SuitabilitySettingsSection';
+import { SetupProgressCard } from '@/components/SetupProgressCard';
 import { useSendTestNotification } from '@/lib/hooks/useNotifications';
 
 export default function SettingsPage() {
@@ -88,6 +89,8 @@ export default function SettingsPage() {
         <h1 className="text-4xl font-extrabold tracking-tight">Settings</h1>
         <p className="text-[var(--muted-foreground)]">Manage your preferences and integrations</p>
       </div>
+
+      <SetupProgressCard />
 
       {/* Theme */}
       <section className="space-y-3 rounded-2xl bg-[var(--surface-container-low)] p-6">
