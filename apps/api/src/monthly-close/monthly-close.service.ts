@@ -603,9 +603,9 @@ export class MonthlyCloseService {
         const wasMissing = !(await this.findRow(userId, month));
         const drafted = await this.draftUnlessConfirmed(userId, month);
         if (drafted && wasMissing) created += 1;
-        await this.maybeNudgeFreshness(userId, month);
         month = addMonths(month, 1);
       }
+      await this.maybeNudgeFreshness(userId, targetMonth);
       return created;
     }
 

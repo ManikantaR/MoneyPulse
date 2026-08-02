@@ -195,4 +195,35 @@ describe('MonthlyCloseService', () => {
       expect(notificationsService.createAndDispatch).not.toHaveBeenCalled();
     });
   });
+
+  describe('runAutoDraftForUser nudge targeting (#231)', () => {
+    it('first-run backfill sends at most one freshness nudge, and it targets targetMonth — never an older backfilled month', async () => {
+      // No prior closes -> first-run backfill path.
+      (service as any).findAll = vi.fn().mockResolvedValue([]);
+      // Activity goes back far enough to trigger a multi-month backfill.
+      (service as any).earliestActivityMonth = vi.fn().mockResolvedValue('2026-04-01');
+      (service as any).draftUnlessConfirmed = vi.fn().mockResolvedValue(true);
+      (service as any).findRow = vi.fn().mockResolvedValue(null);
+      const nudgeSpy = vi.spyOn(service as any, 'maybeNudgeFreshness').mockResolvedValue(true);
+
+      const targetMonth = '2026-06-01';
+      await (service as any).runAutoDraftForUser('user-1', targetMonth);
+
+      expect(nudgeSpy).toHaveBeenCalledTimes(1);
+      expect(nudgeSpy).toHaveBeenCalledWith('user-1', targetMonth);
+    });
+
+    it('non-first-run still nudges only targetMonth (unchanged behavior)', async () => {
+      (service as any).findAll = vi.fn().mockResolvedValue([draftRow]);
+      (service as any).draftUnlessConfirmed = vi.fn().mockResolvedValue(false);
+      (service as any).findRow = vi.fn().mockResolvedValue(draftRow);
+      const nudgeSpy = vi.spyOn(service as any, 'maybeNudgeFreshness').mockResolvedValue(true);
+
+      const targetMonth = '2026-06-01';
+      await (service as any).runAutoDraftForUser('user-1', targetMonth);
+
+      expect(nudgeSpy).toHaveBeenCalledTimes(1);
+      expect(nudgeSpy).toHaveBeenCalledWith('user-1', targetMonth);
+    });
+  });
 });
