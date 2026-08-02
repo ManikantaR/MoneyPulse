@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Check, Server } from 'lucide-react';
 import { useSetupProgress } from '@/lib/hooks/useSettings';
 import type { SetupProgressStep } from '@moneypulse/shared';
@@ -72,12 +73,12 @@ export function SetupProgressCard() {
                 </span>
               ) : (
                 <div className="flex flex-col gap-0.5">
-                  <a
+                  <Link
                     href={step.href}
                     className="text-sm font-medium text-[var(--primary)] hover:underline"
                   >
                     {step.label}
-                  </a>
+                  </Link>
                   <span className="text-xs text-[var(--muted-foreground)]">
                     unlocks: {step.unlocks}
                   </span>
