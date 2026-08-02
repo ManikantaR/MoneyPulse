@@ -44,6 +44,7 @@ import { useUpcomingBills } from '@/lib/hooks/useBills';
 import { useSubscriptions } from '@/lib/hooks/useSubscriptions';
 import { formatCents } from '@/lib/format';
 import { Repeat } from 'lucide-react';
+import { DashboardSetupBanner } from '@/components/DashboardSetupBanner';
 
 /** Dashboard page — main financial overview with KPI cards and charts. */
 export default function DashboardPage() {
@@ -140,6 +141,8 @@ export default function DashboardPage() {
           onChange={(f, t) => { setFrom(f); setTo(t); }}
         />
       </div>
+
+      <DashboardSetupBanner />
 
       {/* Net Worth — hero metric, clickable Assets & Liabilities */}
       {nw && (
