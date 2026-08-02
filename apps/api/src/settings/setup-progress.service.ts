@@ -278,11 +278,17 @@ export class SetupProgressService {
     const completed = countable.filter((s) => s.done).length;
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+    const dismissedAtRaw = userSettings?.setupTrackerDismissedAt ?? null;
+    const dismissedAt = dismissedAtRaw
+      ? new Date(dismissedAtRaw).toISOString()
+      : null;
+
     return {
       percent,
       completed,
       total,
       steps: steps.map(({ applicable: _applicable, ...step }) => step),
+      dismissedAt,
     };
   }
 }

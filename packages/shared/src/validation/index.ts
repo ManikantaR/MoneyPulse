@@ -229,6 +229,9 @@ export const updateUserSettingsSchema = z.object({
   dailyBriefEnabled: z.boolean().optional(),
   dailyBriefHour: z.number().int().min(0).max(23).optional(),
   proactiveAdvisorEnabled: z.boolean().optional(),
+  // #229 (sub-issue 2/4): true dismisses the setup-progress widget (stores "now" server-side),
+  // false/null clears the dismissal so the widget re-surfaces immediately.
+  setupTrackerDismissed: z.boolean().nullable().optional(),
 });
 
 export const sendDigestSchema = z.object({
@@ -561,6 +564,11 @@ export const setupProgressSchema = z.object({
   completed: z.int().min(0),
   total: z.int().min(0),
   steps: z.array(setupProgressStepSchema),
+  // #229 (sub-issue 2/4): when the user last dismissed the setup-progress widget, or
+  // null if it's never been dismissed / the dismissal has been cleared server-side.
+  // The web card (sub-3/4) decides whether to still honor this — e.g. it should stop
+  // honoring it once `completed`/`percent` has increased since this timestamp.
+  dismissedAt: z.iso.datetime().nullable(),
 });
 
 export type SetupProgressStepKind = z.infer<typeof setupProgressStepKindSchema>;
