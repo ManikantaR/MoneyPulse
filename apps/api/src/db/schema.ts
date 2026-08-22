@@ -104,6 +104,25 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'investment_coach_contribution',
   'savings_coach',
   'monthly_close_freshness_nudge',
+  // #watchdog-market-alerts: 16 more types dispatched via createAndDispatch but
+  // missing from this enum, which silently downgraded them to in-app-only
+  // delivery (dropping Telegram/HA routing). See 0035 migration.
+  'subscription_price_increase',
+  'budget_alert',
+  'savings_milestone',
+  'balance_reminder',
+  'cashflow_low',
+  'spending_anomaly',
+  'refi_opportunity',
+  'market_update',
+  'duplicate_charge',
+  'new_recurring',
+  'price_creep',
+  'fee_detected',
+  'budget_pace',
+  'stat_anomaly',
+  'fuel_vs_market',
+  'power_vs_market',
 ]);
 export const notificationModeEnum = pgEnum('notification_mode', [
   'instant',
