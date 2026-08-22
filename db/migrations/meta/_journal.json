@@ -246,6 +246,13 @@
       "when": 1784561200000,
       "tag": "0034_setup_tracker_dismissed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784561300000,
+      "tag": "0035_notification_type_watchdog_market_alerts",
+      "breakpoints": true
     }
   ]
 }

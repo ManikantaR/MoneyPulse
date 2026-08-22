@@ -52,6 +52,28 @@ const DEFAULT_PREFERENCES: Record<NotificationType, {
   investment_coach_contribution: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
   savings_coach: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
   monthly_close_freshness_nudge: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+
+  // #watchdog-market-alerts: 16 more types dispatched via createAndDispatch but
+  // missing from this map. Record<NotificationType> requires every enum key, so
+  // omitting any of these fails the build. Default to instant + inApp/telegram/
+  // haWebhook to match the digest/bill_overdue entries above and restore
+  // Telegram/HA routing.
+  subscription_price_increase: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  budget_alert: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  savings_milestone: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  balance_reminder: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  cashflow_low: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  spending_anomaly: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  refi_opportunity: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  market_update: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  duplicate_charge: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  new_recurring: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  price_creep: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  fee_detected: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  budget_pace: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  stat_anomaly: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  fuel_vs_market: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  power_vs_market: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
 };
 
 /** Source-of-truth list of all registered notification types (mirrors the DB enum). */
