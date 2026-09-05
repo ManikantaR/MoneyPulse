@@ -9,7 +9,14 @@ export type AccountType =
   | 'cash_sweep';
 export type InvestmentAccountType = 'brokerage' | 'retirement' | 'stock_plan';
 export type FileType = 'csv' | 'excel' | 'pdf';
-export type UploadStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type UploadStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'orphaned'
+  | 'empty'
+  | 'stalled';
 export type BudgetPeriod = 'monthly' | 'weekly';
 export type RuleMatchType = 'contains' | 'startsWith' | 'regex' | 'exact';
 export type RuleField = 'description' | 'merchant';
@@ -278,6 +285,12 @@ export interface FileUpload {
   rowsErrored: number;
   errorLog: FileUploadError[];
   archivedPath: string | null;
+  /** Watcher-provenance columns (Import Pipeline Radar Phase 1), used to derive the swim-lane. */
+  originalFilename?: string | null;
+  watcherBank?: string | null;
+  watcherSlug?: string | null;
+  detectedAt?: string | null;
+  stagedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

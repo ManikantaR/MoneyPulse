@@ -68,6 +68,29 @@ export interface OverdueAccount {
   daysOverdue: number;
 }
 
+export type CoverageCellStatus = 'received' | 'late' | 'empty' | 'missing' | 'due' | 'na';
+
+export interface CoverageCell {
+  /** First day of the month, e.g. "2026-03" */
+  month: string;
+  status: CoverageCellStatus;
+  uploadId: string | null;
+}
+
+export interface AccountCoverage {
+  accountId: string;
+  nickname: string;
+  lastFour: string;
+  cells: CoverageCell[];
+}
+
+interface MonthUploadRow {
+  id: string;
+  status: string;
+  rows_imported: number;
+  created_at: string | Date;
+}
+
 @Injectable()
 export class StatementScheduleService {
   private readonly logger = new Logger(StatementScheduleService.name);
@@ -350,5 +373,83 @@ export class StatementScheduleService {
         accounts: overdue,
       },
     });
+  }
+
+  /**
+   * Import Pipeline Radar Phase 3 — per-account, per-month coverage grid.
+   * Reuses this service's `expected date` derivation (cadence/expectedDayOfMonth/
+   * cadenceDays/graceDays) rather than re-deriving it, applied per calendar month
+   * instead of only "next occurrence from lastSatisfiedAt".
+   */
+  async getCoverageForAccount(
+    accountId: string,
+    nickname: string,
+    lastFour: string,
+    months: number,
+  ): Promise<AccountCoverage> {
+    const schedule = await this.getSchedule(accountId);
+    const now = new Date();
+
+    // Oldest -> newest, `months` calendar months ending with the current month.
+    const monthStarts: Date[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      monthStarts.push(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)));
+    }
+    const earliest = monthStarts[0];
+
+    const rows = await this.db.execute(sql`
+      SELECT id, status, rows_imported, created_at
+      FROM file_uploads
+      WHERE account_id = ${accountId}
+        AND created_at >= ${earliest}
+      ORDER BY created_at ASC
+    `);
+    const uploads: MonthUploadRow[] = rows.rows ?? rows;
+
+    const cells: CoverageCell[] = monthStarts.map((monthStart) => {
+      const monthKey = `${monthStart.getUTCFullYear()}-${String(monthStart.getUTCMonth() + 1).padStart(2, '0')}`;
+      const monthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
+      const inMonth = uploads.filter((u) => {
+        const t = new Date(u.created_at).getTime();
+        return t >= monthStart.getTime() && t < monthEnd.getTime();
+      });
+
+      const received = inMonth.find((u) => u.status === 'completed' && u.rows_imported > 0);
+      const emptyUpload = inMonth.find((u) => u.status === 'completed' && u.rows_imported === 0);
+
+      let expectedDate: Date | null = null;
+      let graceDeadline: Date | null = null;
+      if (schedule?.enabled) {
+        if (schedule.cadence === 'monthly' && schedule.expectedDayOfMonth) {
+          expectedDate = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), schedule.expectedDayOfMonth));
+        } else if (schedule.cadenceDays) {
+          // Approximate a due date within the month for non-monthly cadences.
+          expectedDate = new Date(monthStart.getTime() + schedule.cadenceDays * 24 * 60 * 60 * 1000);
+        }
+        if (expectedDate) {
+          graceDeadline = new Date(expectedDate.getTime() + schedule.graceDays * 24 * 60 * 60 * 1000);
+        }
+      }
+
+      if (received) {
+        const isLate = graceDeadline ? new Date(received.created_at).getTime() > graceDeadline.getTime() : false;
+        return { month: monthKey, status: isLate ? 'late' : 'received', uploadId: received.id };
+      }
+      if (emptyUpload) {
+        return { month: monthKey, status: 'empty', uploadId: emptyUpload.id };
+      }
+      if (!schedule?.enabled || !graceDeadline) {
+        return { month: monthKey, status: 'na', uploadId: null };
+      }
+      if (now.getTime() > graceDeadline.getTime()) {
+        return { month: monthKey, status: 'missing', uploadId: null };
+      }
+      if (now.getTime() >= expectedDate!.getTime()) {
+        return { month: monthKey, status: 'due', uploadId: null };
+      }
+      return { month: monthKey, status: 'na', uploadId: null };
+    });
+
+    return { accountId, nickname, lastFour, cells };
   }
 }

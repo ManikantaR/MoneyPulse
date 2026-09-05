@@ -18,6 +18,7 @@ import { SyncModule } from '../sync/sync.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
 import { BillsModule } from '../bills/bills.module';
+import { AccountsModule } from '../accounts/accounts.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { BillsModule } from '../bills/bills.module';
     AnalyticsModule,
     EmbeddingsModule,
     BillsModule,
+    AccountsModule,
   ],
   controllers: [IngestionController, IngestionEventsController],
   providers: [

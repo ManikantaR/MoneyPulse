@@ -83,6 +83,43 @@ export function useReassignUpload() {
   });
 }
 
+export interface CoverageCell {
+  month: string;
+  status: 'received' | 'late' | 'empty' | 'missing' | 'due' | 'na';
+  uploadId: string | null;
+}
+
+export interface AccountCoverage {
+  accountId: string;
+  nickname: string;
+  lastFour: string;
+  cells: CoverageCell[];
+}
+
+/** Import Pipeline Radar Phase 3 — accounts x months coverage grid. */
+export function useIngestionCoverage(months = 6) {
+  return useQuery({
+    queryKey: ['ingestion', 'coverage', months],
+    queryFn: () =>
+      api.get<{ data: AccountCoverage[] }>(`/ingestion/coverage?months=${months}`),
+  });
+}
+
+export interface PipelineSummary {
+  processed: number;
+  needsAttention: number;
+  txnsImported: number;
+  overdue: number;
+}
+
+/** Import Pipeline Radar Phase 3 — summary counts for the top-of-page cards. */
+export function usePipelineSummary() {
+  return useQuery({
+    queryKey: ['ingestion', 'pipeline-summary'],
+    queryFn: () => api.get<{ data: PipelineSummary }>('/ingestion/pipeline/summary'),
+  });
+}
+
 /** Delete an upload and its associated transactions. */
 export function useDeleteUpload() {
   const queryClient = useQueryClient();

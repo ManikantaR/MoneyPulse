@@ -173,6 +173,39 @@ export class IngestionService {
   }
 
   /**
+   * Import Pipeline Radar Phase 3 — cheap counts for the pipeline summary cards.
+   * Scoped to the caller's uploads (rows without a resolvable userId, e.g.
+   * `orphaned` watcher failures, are intentionally excluded — same scoping as
+   * `listUploads`).
+   */
+  async getPipelineSummary(userId: string) {
+    const rows = await this.db
+      .select()
+      .from(schema.fileUploads)
+      .where(eq(schema.fileUploads.userId, userId));
+
+    const now = new Date();
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+    let processed = 0;
+    let needsAttention = 0;
+    let txnsImported = 0;
+
+    for (const row of rows as any[]) {
+      if (['orphaned', 'failed', 'stalled', 'empty'].includes(row.status)) {
+        needsAttention++;
+      }
+      const createdAt = new Date(row.createdAt);
+      if (createdAt >= startOfMonth && row.status === 'completed') {
+        processed++;
+        txnsImported += row.rowsImported ?? 0;
+      }
+    }
+
+    return { processed, needsAttention, txnsImported };
+  }
+
+  /**
    * Patch status fields on a file upload record (called by the BullMQ job processor).
    *
    * @param uploadId - The upload UUID to update

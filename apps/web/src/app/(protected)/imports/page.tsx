@@ -2,12 +2,16 @@
 
 import { FileText, CheckCircle2, AlertCircle, Loader2, Clock, X, Trash2, ChevronDown, ChevronRight, BarChart3, FileWarning, SkipForward, Upload, RefreshCw } from 'lucide-react';
 import { useAccounts } from '@/lib/hooks/useAccounts';
-import { useUploads, useDeleteUpload, useReprocessUpload } from '@/lib/hooks/useUpload';
+import { useUploads, useDeleteUpload, useReprocessUpload, usePipelineSummary } from '@/lib/hooks/useUpload';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/format';
 import { useMemo, useState, Fragment } from 'react';
 import { MobileCard } from '@/components/MobileCard';
+import { ImportSwimLane } from '@/components/ImportSwimLane';
+import { CoverageGrid } from '@/components/CoverageGrid';
 import type { FileUpload } from '@moneypulse/shared';
+
+const NEEDS_ATTENTION_STATUSES = ['orphaned', 'failed', 'stalled', 'empty'];
 
 function StepItem({ icon, label, detail, status }: {
   icon: React.ReactNode;
@@ -42,10 +46,13 @@ function StepItem({ icon, label, detail, status }: {
 export default function ImportsPage() {
   const { data: uploadsData, isLoading } = useUploads();
   const { data: accountsData } = useAccounts();
+  const { data: summaryData } = usePipelineSummary();
   const deleteUpload = useDeleteUpload();
   const reprocessUpload = useReprocessUpload();
   const [errorUpload, setErrorUpload] = useState<FileUpload | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [view, setView] = useState<'attention' | 'all'>('attention');
+  const [expandedAttentionId, setExpandedAttentionId] = useState<string | null>(null);
 
   const uploads = uploadsData?.data ?? [];
   const accounts = accountsData?.data ?? [];
@@ -100,6 +107,16 @@ export default function ImportsPage() {
   const totalImported = sortedUploads.reduce((s, u) => s + u.rowsImported, 0);
   const totalFiles = sortedUploads.length;
 
+  const summary = summaryData?.data;
+  const needsAttentionUploads = useMemo(
+    () => sortedUploads.filter((u) => NEEDS_ATTENTION_STATUSES.includes(u.status)),
+    [sortedUploads],
+  );
+  const recentSuccesses = useMemo(
+    () => sortedUploads.filter((u) => u.status === 'completed').slice(0, 5),
+    [sortedUploads],
+  );
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -111,29 +128,13 @@ export default function ImportsPage() {
         </p>
       </div>
 
-      {/* Summary cards */}
+      {/* Pipeline summary cards (exceptions-first) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         {[
-          {
-            label: 'Total Files',
-            value: totalFiles,
-            color: 'text-[var(--primary)]',
-          },
-          {
-            label: 'Completed',
-            value: sortedUploads.filter((u) => u.status === 'completed').length,
-            color: 'text-emerald-500',
-          },
-          {
-            label: 'Failed',
-            value: sortedUploads.filter((u) => u.status === 'failed').length,
-            color: 'text-red-500',
-          },
-          {
-            label: 'Rows Imported',
-            value: totalImported,
-            color: 'text-[var(--secondary)]',
-          },
+          { label: 'Processed (this month)', value: summary?.processed ?? '—', color: 'text-emerald-500' },
+          { label: 'Needs Attention', value: summary?.needsAttention ?? needsAttentionUploads.length, color: 'text-red-500' },
+          { label: 'Overdue Accounts', value: summary?.overdue ?? '—', color: 'text-amber-500' },
+          { label: 'Txns Imported (this month)', value: summary?.txnsImported ?? '—', color: 'text-[var(--secondary)]' },
         ].map((stat) => (
           <div
             key={stat.label}
@@ -149,6 +150,102 @@ export default function ImportsPage() {
         ))}
       </div>
 
+      {/* Needs attention (exceptions-first default view) */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold">Needs attention</h2>
+        {needsAttentionUploads.length === 0 ? (
+          <p className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 text-sm text-[var(--muted-foreground)]">
+            Nothing needs attention right now — every import is healthy.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {needsAttentionUploads.map((upload) => {
+              const isOpen = expandedAttentionId === upload.id;
+              return (
+                <div key={upload.id} className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 text-left"
+                    onClick={() => setExpandedAttentionId(isOpen ? null : upload.id)}
+                  >
+                    <span className="flex items-center gap-2">
+                      {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      <span className="font-medium">{upload.originalFilename ?? upload.filename}</span>
+                    </span>
+                    <span className="text-xs font-bold uppercase text-red-500">{upload.status}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="mt-3 space-y-3">
+                      <ImportSwimLane upload={upload} />
+                      <div className="flex gap-2">
+                        {['failed', 'stalled', 'empty'].includes(upload.status) && (
+                          <button
+                            type="button"
+                            onClick={() => reprocessUpload.mutate(upload.id)}
+                            className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-bold text-white"
+                          >
+                            Reprocess
+                          </button>
+                        )}
+                        <a
+                          href={`/imports/${upload.id}`}
+                          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-bold"
+                        >
+                          Open details
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {recentSuccesses.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-widest text-[var(--muted-foreground)]">
+              Recent successes
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {recentSuccesses.map((u) => (
+                <a
+                  key={u.id}
+                  href={`/imports/${u.id}`}
+                  className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400"
+                >
+                  {u.originalFilename ?? u.filename} · {u.rowsImported} rows
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Accounts x months coverage grid */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold">Coverage</h2>
+        <CoverageGrid />
+      </section>
+
+      {/* All imports (full history), behind a tab */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setView(view === 'all' ? 'attention' : 'all')}
+            className={cn(
+              'rounded-full px-4 py-1.5 text-sm font-bold transition-colors',
+              view === 'all'
+                ? 'bg-[var(--primary)] text-white'
+                : 'border border-[var(--border)] text-[var(--muted-foreground)]',
+            )}
+          >
+            {view === 'all' ? 'All imports (showing)' : 'Show all imports'}
+          </button>
+        </div>
+        {view !== 'all' ? null : (
+      <>
       {/* Loading / empty states */}
       {isLoading && (
         <p className="py-12 text-center text-sm text-[var(--muted-foreground)]">Loading...</p>
@@ -490,6 +587,9 @@ export default function ImportsPage() {
           })}
         </div>
       )}
+      </>
+        )}
+      </section>
 
       {/* Error details modal */}
       {errorUpload && (

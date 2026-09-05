@@ -21,6 +21,7 @@ import { useUploadDetail, useReprocessUpload, useReassignUpload } from '@/lib/ho
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { useCategories } from '@/lib/hooks/useCategories';
+import { ImportSwimLane } from '@/components/ImportSwimLane';
 import { cn } from '@/lib/utils';
 import { formatDate, formatCents } from '@/lib/format';
 
@@ -192,6 +193,11 @@ export default function ImportDetailPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Per-file journey swim-lane (Import Pipeline Radar Phase 3) */}
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4">
+        <ImportSwimLane upload={upload} />
       </div>
 
       {/* Reprocess/reassign feedback banner */}
