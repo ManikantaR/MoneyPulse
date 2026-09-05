@@ -50,6 +50,17 @@ export const uploadStatusEnum = pgEnum('upload_status', [
   'stalled',
 ]);
 export const budgetPeriodEnum = pgEnum('budget_period', ['monthly', 'weekly']);
+// Import Pipeline Radar Phase 4: how often an account's statement is expected.
+export const statementCadenceEnum = pgEnum('statement_cadence', [
+  'monthly',
+  'weekly',
+  'biweekly',
+  'custom',
+]);
+export const statementScheduleSourceEnum = pgEnum('statement_schedule_source', [
+  'learned',
+  'manual',
+]);
 export const ruleMatchTypeEnum = pgEnum('rule_match_type', [
   'contains',
   'starts_with',
@@ -130,6 +141,10 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   // primary checking balance dipping below a configurable floor before an
   // upcoming recurring bill. See shortfall-detector.service.ts.
   'cashflow_shortfall',
+  // Import Pipeline Radar Phase 4: "forgot to download" — an account's learned
+  // (or manually set) statement cadence says a statement should have arrived by
+  // now, and no satisfying import has landed. See statement-schedule.service.ts.
+  'statement_overdue',
 ]);
 export const notificationModeEnum = pgEnum('notification_mode', [
   'instant',
@@ -360,6 +375,42 @@ export const fileUploads = pgTable('file_uploads', {
     .notNull()
     .defaultNow(),
 });
+
+// ── Statement Schedule (Import Pipeline Radar Phase 4) ─────────
+// Auto-learned (or manually set) per-account expectation of when the next
+// statement/import should land, so a statement that was never downloaded
+// (no file, no event) can still be detected as an absence against a schedule.
+
+export const statementSchedule = pgTable(
+  'statement_schedule',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id)
+      .unique(),
+    cadence: statementCadenceEnum('cadence').notNull(),
+    /** For cadence='monthly': the day of month a statement typically posts (mode of history). */
+    expectedDayOfMonth: integer('expected_day_of_month'),
+    /** For cadence='weekly'|'biweekly'|'custom': gap in days between statements (7/14/N). */
+    cadenceDays: integer('cadence_days'),
+    /** Days of slack after the expected date before flagging overdue. */
+    graceDays: integer('grace_days').notNull().default(5),
+    /** Most recent satisfying import (file_uploads: status='completed', rowsImported>0). */
+    lastSatisfiedAt: timestamp('last_satisfied_at', { withTimezone: true }),
+    /** User-set "don't alert me until this date" override. */
+    snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
+    source: statementScheduleSourceEnum('source').notNull().default('learned'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('idx_statement_schedule_account_id').on(table.accountId)],
+);
 
 // ── Transactions ────────────────────────────────────────────
 

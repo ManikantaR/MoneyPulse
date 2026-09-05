@@ -257,6 +257,23 @@ export class JobsModule implements OnModuleInit {
         { name: 'monthly-close-auto-draft' },
       ),
 
+      // Import Pipeline Radar Phase 4 — daily "forgot to download" overdue-statement
+      // sweep, 1 PM UTC (after the morning freshness/cashflow sweeps above).
+      this.alertsQueue.upsertJobScheduler(
+        'daily-statement-schedule-check',
+        { pattern: '0 13 * * *' },
+        { name: 'statement-schedule-check' },
+      ),
+
+      // Import Pipeline Radar: the freshness-check handler existed but was never
+      // scheduled (orphaned) — wire it up. Daily 12 PM UTC, ahead of the
+      // statement-schedule-check above.
+      this.alertsQueue.upsertJobScheduler(
+        'daily-freshness-check',
+        { pattern: '0 12 * * *' },
+        { name: 'freshness-check' },
+      ),
+
       // Frequent sync delivery sweep for outbox events.
       this.syncQueue.upsertJobScheduler(
         'sync-delivery-sweep',

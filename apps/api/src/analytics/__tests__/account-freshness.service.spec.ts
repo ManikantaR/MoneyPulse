@@ -95,6 +95,8 @@ describe('AccountFreshnessService', () => {
 
       // Mock execute calls for transaction/import queries
       mockDb.execute
+        // acc-1 statement_schedule lookup (none — falls back to flat threshold)
+        .mockResolvedValueOnce({ rows: [] })
         // acc-1 transaction date (fresh)
         .mockResolvedValueOnce({
           rows: [{ date: recentDate.toISOString() }],
@@ -103,6 +105,8 @@ describe('AccountFreshnessService', () => {
         .mockResolvedValueOnce({
           rows: [{ updated_at: now.toISOString() }],
         })
+        // acc-2 statement_schedule lookup (none)
+        .mockResolvedValueOnce({ rows: [] })
         // acc-2 transaction date (stale)
         .mockResolvedValueOnce({
           rows: [{ date: staleTxnDate.toISOString() }],
