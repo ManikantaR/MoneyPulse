@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { parse } from 'csv-parse/sync';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, and, isNull, sql } from 'drizzle-orm';
+import { eq, and, isNull, sql, lt, inArray } from 'drizzle-orm';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { selectParser } from '../ingestion/parsers/parser-registry';
 import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
@@ -34,6 +34,13 @@ interface IngestionJobData {
   filePath: string;
   fileType: 'csv' | 'excel' | 'pdf';
 }
+
+/**
+ * A `file_uploads` row stuck in 'processing' or 'pending' longer than this is
+ * considered stalled (worker crashed, job lost, etc.) and gets flipped to
+ * 'failed' by the stalled-upload sweep so it's visible and re-runnable.
+ */
+export const STALLED_UPLOAD_THRESHOLD_MS = 15 * 60 * 1000;
 
 @Processor(INGESTION_QUEUE)
 export class IngestionProcessor extends WorkerHost {
@@ -88,6 +95,9 @@ export class IngestionProcessor extends WorkerHost {
     }
     if (job.name === 'bills-redetect') {
       return this.processBillsRedetectSweep();
+    }
+    if (job.name === 'stalled-upload-reconcile') {
+      return this.processStalledUploadSweep();
     }
 
     const { uploadId, userId, accountId, filePath, fileType } = job.data as IngestionJobData;
@@ -887,5 +897,52 @@ export class IngestionProcessor extends WorkerHost {
     }
 
     this.logger.log(`Bills redetect sweep: processed ${rows.length} user(s)`);
+  }
+
+  /**
+   * Phase 0 / BS-6 stalled-job sweep — runs every 15 min via upsertJobScheduler.
+   *
+   * Finds `file_uploads` rows still in 'processing' or 'pending' whose
+   * `updatedAt` is older than `STALLED_UPLOAD_THRESHOLD_MS` (default 15 min) —
+   * meaning the worker that should have finished (or picked up) the job never
+   * reported back, most likely because it crashed or the job was lost — and
+   * flips them to 'failed' with an explanatory errorLog. This does not change
+   * the upload status enum (Phase 0 reuses 'failed'); it only makes stalled
+   * uploads visible and re-runnable instead of sitting invisibly forever.
+   */
+  private async processStalledUploadSweep(): Promise<void> {
+    const cutoff = new Date(Date.now() - STALLED_UPLOAD_THRESHOLD_MS);
+
+    const stalled = await this.db
+      .select({ id: schema.fileUploads.id, status: schema.fileUploads.status })
+      .from(schema.fileUploads)
+      .where(
+        and(
+          inArray(schema.fileUploads.status, ['processing', 'pending']),
+          lt(schema.fileUploads.updatedAt, cutoff),
+        ),
+      );
+
+    if (stalled.length === 0) {
+      this.logger.debug('Stalled-upload sweep: no stalled uploads found');
+      return;
+    }
+
+    for (const upload of stalled) {
+      await this.ingestionService.updateUploadStatus(upload.id, {
+        status: 'failed',
+        errorLog: [
+          {
+            row: 0,
+            error: `Ingestion job stalled — no update for over ${Math.round(
+              STALLED_UPLOAD_THRESHOLD_MS / 60000,
+            )} minutes (was '${upload.status}'). The worker likely crashed or the job was lost; re-drop the file to retry.`,
+            raw: '',
+          },
+        ],
+      });
+    }
+
+    this.logger.log(`Stalled-upload sweep: flagged ${stalled.length} stalled upload(s) as failed`);
   }
 }
