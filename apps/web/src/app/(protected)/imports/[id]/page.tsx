@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowLeft,
   FileText,
@@ -14,8 +14,10 @@ import {
   TrendingUp,
   TrendingDown,
   X,
+  RefreshCw,
+  Wrench,
 } from 'lucide-react';
-import { useUploadDetail } from '@/lib/hooks/useUpload';
+import { useUploadDetail, useReprocessUpload, useReassignUpload } from '@/lib/hooks/useUpload';
 import { useAccounts } from '@/lib/hooks/useAccounts';
 import { useTransactions } from '@/lib/hooks/useTransactions';
 import { useCategories } from '@/lib/hooks/useCategories';
@@ -34,6 +36,39 @@ export default function ImportDetailPage() {
   const accounts = accountsData?.data ?? [];
   const transactions = txnData?.data ?? [];
   const categories = categoriesData?.data ?? [];
+
+  const reprocess = useReprocessUpload();
+  const reassign = useReassignUpload();
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignAccountId, setReassignAccountId] = useState('');
+
+  const canReprocess = upload && ['failed', 'stalled', 'empty'].includes(upload.status);
+  const canReassign = !!upload;
+
+  async function handleReprocess() {
+    if (!upload) return;
+    setBanner(null);
+    try {
+      await reprocess.mutateAsync(upload.id);
+      setBanner({ type: 'success', text: 'Reprocessing started — status will update shortly.' });
+    } catch (err: any) {
+      setBanner({ type: 'error', text: err?.message ?? 'Failed to reprocess this upload.' });
+    }
+  }
+
+  async function handleReassign() {
+    if (!upload || !reassignAccountId) return;
+    setBanner(null);
+    try {
+      await reassign.mutateAsync({ uploadId: upload.id, accountId: reassignAccountId });
+      setBanner({ type: 'success', text: 'Account reassigned — reprocessing started.' });
+      setShowReassign(false);
+      setReassignAccountId('');
+    } catch (err: any) {
+      setBanner({ type: 'error', text: err?.message ?? 'Failed to reassign this upload.' });
+    }
+  }
 
   const accountMap = useMemo(
     () => Object.fromEntries(accounts.map((a) => [a.id, `${a.nickname} (••${a.lastFour})`])),
@@ -132,7 +167,84 @@ export default function ImportDetailPage() {
             Uploaded {formatDate(upload.createdAt)} · {accountMap[upload.accountId] ?? 'Unknown account'} · {upload.fileType.toUpperCase()}
           </p>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {canReprocess && (
+            <button
+              onClick={handleReprocess}
+              disabled={reprocess.isPending}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-semibold transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+            >
+              {reprocess.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Reprocess
+            </button>
+          )}
+          {canReassign && (
+            <button
+              onClick={() => setShowReassign((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-semibold transition-colors hover:bg-[var(--muted)]"
+            >
+              <Wrench className="h-4 w-4" />
+              Fix &amp; re-run
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Reprocess/reassign feedback banner */}
+      {banner && (
+        <div
+          className={cn(
+            'flex items-center justify-between rounded-xl border p-3 text-sm font-medium',
+            banner.type === 'success'
+              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+              : 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400',
+          )}
+        >
+          <span>{banner.text}</span>
+          <button onClick={() => setBanner(null)} className="ml-3 shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Fix & re-run: account picker */}
+      {showReassign && (
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
+          <h3 className="mb-3 text-sm font-extrabold uppercase tracking-widest text-[var(--muted-foreground)]">
+            Fix &amp; re-run
+          </h3>
+          <p className="mb-4 text-sm text-[var(--muted-foreground)]">
+            Point this file at the correct account and re-run ingestion. Any transactions already
+            imported from this file will be removed before it re-runs under the new account.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={reassignAccountId}
+              onChange={(e) => setReassignAccountId(e.target.value)}
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface-container-low)] px-3 py-2 text-sm"
+            >
+              <option value="">Select an account…</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nickname} (••{a.lastFour})
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleReassign}
+              disabled={!reassignAccountId || reassign.isPending}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-bold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {reassign.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Reassign &amp; re-run
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

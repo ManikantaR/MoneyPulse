@@ -1,8 +1,8 @@
 'use client';
 
-import { FileText, CheckCircle2, AlertCircle, Loader2, Clock, X, Trash2, ChevronDown, ChevronRight, BarChart3, FileWarning, SkipForward, Upload } from 'lucide-react';
+import { FileText, CheckCircle2, AlertCircle, Loader2, Clock, X, Trash2, ChevronDown, ChevronRight, BarChart3, FileWarning, SkipForward, Upload, RefreshCw } from 'lucide-react';
 import { useAccounts } from '@/lib/hooks/useAccounts';
-import { useUploads, useDeleteUpload } from '@/lib/hooks/useUpload';
+import { useUploads, useDeleteUpload, useReprocessUpload } from '@/lib/hooks/useUpload';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/format';
 import { useMemo, useState, Fragment } from 'react';
@@ -43,6 +43,7 @@ export default function ImportsPage() {
   const { data: uploadsData, isLoading } = useUploads();
   const { data: accountsData } = useAccounts();
   const deleteUpload = useDeleteUpload();
+  const reprocessUpload = useReprocessUpload();
   const [errorUpload, setErrorUpload] = useState<FileUpload | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -274,6 +275,16 @@ export default function ImportsPage() {
                     {formatDate(upload.createdAt)}
                   </td>
                   <td className="px-6 py-4 text-right">
+                    {['failed', 'stalled', 'empty'].includes(upload.status) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); reprocessUpload.mutate(upload.id); }}
+                        disabled={reprocessUpload.isPending}
+                        className="mr-1 rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] disabled:opacity-50"
+                        title="Reprocess"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </button>
+                    )}
                     {(upload.status === 'completed' || upload.status === 'failed') && (
                       <button
                         onClick={(e) => {

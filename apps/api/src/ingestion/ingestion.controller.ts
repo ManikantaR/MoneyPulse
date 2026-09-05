@@ -18,8 +18,14 @@ import { IngestionService } from './ingestion.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { MAX_UPLOAD_SIZE_BYTES } from '@moneypulse/shared';
+import { MAX_UPLOAD_SIZE_BYTES, csvFormatConfigSchema } from '@moneypulse/shared';
 import type { AuthTokenPayload } from '@moneypulse/shared';
+
+const reassignUploadSchema = z.object({
+  accountId: z.string().min(1),
+  csvFormatConfig: csvFormatConfigSchema.optional(),
+});
+type ReassignUploadInput = z.infer<typeof reassignUploadSchema>;
 
 const watcherEventSchema = z.object({
   stage: z.enum(['detected', 'renamed', 'staged', 'failed']),
@@ -125,6 +131,42 @@ export class IngestionController {
     @CurrentUser() user: AuthTokenPayload,
   ) {
     return this.ingestionService.deleteUpload(id, user.sub);
+  }
+
+  /**
+   * POST /uploads/:id/reprocess — re-run ingestion for a `failed`, `stalled`,
+   * or `empty` upload without re-dropping the file. Locates the source file
+   * via `archivedPath` (if the original run archived it) or reconstructs the
+   * original staged path from provenance columns. Safe to click twice —
+   * rejects with 400 if the upload is already pending/processing.
+   */
+  @Post(':id/reprocess')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Re-run ingestion for a failed/stalled/empty upload' })
+  async reprocess(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const upload = await this.ingestionService.reprocessUpload(id, user.sub);
+    return { data: upload };
+  }
+
+  /**
+   * POST /uploads/:id/reassign — fix-and-rerun: point an `orphaned` upload
+   * (or one imported under the wrong account) at the correct account,
+   * optionally overriding CSV format config for this run, deletes any
+   * transactions already imported from this file, and re-runs ingestion.
+   */
+  @Post(':id/reassign')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Fix account/mapping and re-run ingestion for an upload' })
+  async reassign(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(reassignUploadSchema)) body: ReassignUploadInput,
+    @CurrentUser() user: AuthTokenPayload,
+  ) {
+    const upload = await this.ingestionService.reassignUpload(id, user.sub, body);
+    return { data: upload };
   }
 }
 
