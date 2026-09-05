@@ -45,6 +45,9 @@ export const uploadStatusEnum = pgEnum('upload_status', [
   'processing',
   'completed',
   'failed',
+  'orphaned',
+  'empty',
+  'stalled',
 ]);
 export const budgetPeriodEnum = pgEnum('budget_period', ['monthly', 'weekly']);
 export const ruleMatchTypeEnum = pgEnum('rule_match_type', [
@@ -328,12 +331,11 @@ export const categories: any = pgTable(
 
 export const fileUploads = pgTable('file_uploads', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  accountId: uuid('account_id')
-    .notNull()
-    .references(() => accounts.id),
+  // Nullable: an `orphaned` row (no MoneyPulse account matches the watch-folder
+  // slug) or a lightweight `failed` row created from a watcher-side failure
+  // event has no resolvable user/account yet.
+  userId: uuid('user_id').references(() => users.id),
+  accountId: uuid('account_id').references(() => accounts.id),
   filename: varchar('filename', { length: 500 }).notNull(),
   fileType: fileTypeEnum('file_type').notNull(),
   fileHash: varchar('file_hash', { length: 64 }).notNull(),
@@ -343,6 +345,14 @@ export const fileUploads = pgTable('file_uploads', {
   rowsErrored: integer('rows_errored').notNull().default(0),
   errorLog: jsonb('error_log').default([]),
   archivedPath: text('archived_path'),
+  // Watcher-provenance columns (Phase 1 of Import Pipeline Radar): populated
+  // either by the watch-folder ingestion path (watcher.service.ts) or by the
+  // future laptop watcher via POST /ingestion/watcher-events.
+  originalFilename: text('original_filename'),
+  watcherBank: text('watcher_bank'),
+  watcherSlug: text('watcher_slug'),
+  detectedAt: timestamp('detected_at', { withTimezone: true }),
+  stagedAt: timestamp('staged_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

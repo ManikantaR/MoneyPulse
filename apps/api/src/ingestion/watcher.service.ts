@@ -14,7 +14,7 @@ import { basename, relative, join } from 'path';
 import { createHash } from 'crypto';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { INGESTION_QUEUE, WATCH_FOLDER_DIR } from '@moneypulse/shared';
 import { decryptField } from '../common/crypto';
 
@@ -163,12 +163,7 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
     filePath: string,
   ): Promise<'enqueued' | 'skipped' | 'error'> {
     const ext = filePath.split('.').pop()?.toLowerCase();
-    if (!['csv', 'xlsx', 'xls', 'pdf'].includes(ext || '')) {
-      this.logger.debug(`Ignoring non-data file: ${filePath}`);
-      return 'skipped';
-    }
-
-    this.logger.log(`New file detected: ${filePath}`);
+    const originalFilename = basename(filePath);
 
     try {
       const relativePath = relative(this.watchDir, filePath);
@@ -181,9 +176,28 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
 
       const slug = parts[0];
 
+      if (!['csv', 'xlsx', 'xls', 'pdf'].includes(ext || '')) {
+        this.logger.warn(
+          `Unsupported file type under slug "${slug}": ${filePath}`,
+        );
+        await this.recordOrphan(
+          slug,
+          originalFilename,
+          `Unsupported file type for "${originalFilename}" (only .csv, .xlsx, .xls, .pdf are supported)`,
+        );
+        return 'skipped';
+      }
+
+      this.logger.log(`New file detected: ${filePath}`);
+
       const account = await this.findAccountBySlug(slug);
       if (!account) {
         this.logger.warn(`No account found for slug "${slug}". Skipping.`);
+        await this.recordOrphan(
+          slug,
+          originalFilename,
+          `No MoneyPulse account matches slug '${slug}'`,
+        );
         return 'skipped';
       }
 
@@ -221,6 +235,9 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
           userId: account.userId,
           accountId: account.id,
           filename: basename(filePath),
+          originalFilename: basename(filePath),
+          watcherSlug: slug,
+          detectedAt: new Date(),
           fileType,
           fileHash,
           status: 'pending',
@@ -242,6 +259,74 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
     } catch (err: any) {
       this.logger.error(`Watch folder error for ${filePath}: ${err.message}`);
       return 'error';
+    }
+  }
+
+  /**
+   * Record a `file_uploads` row with status `orphaned` for a file that cannot
+   * be routed to a parse job (no matching account for its slug, or an
+   * unsupported file type sitting in a slug folder). Previously these files
+   * were silently dropped with no trace anywhere (BS-3/BS-4).
+   *
+   * Deduplicates on `watcherSlug` + `originalFilename` so re-scans (the
+   * startup reconciliation scan, or repeated chokidar `add` events) don't
+   * pile up duplicate orphaned rows for the same file.
+   *
+   * @param slug - Watch-folder subdirectory name the file was found under
+   * @param originalFilename - Basename of the file as seen by the watcher
+   * @param reason - Human-readable explanation stored in `errorLog`
+   */
+  private async recordOrphan(
+    slug: string,
+    originalFilename: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const existing = await this.db
+        .select()
+        .from(schema.fileUploads)
+        .where(
+          and(
+            eq(schema.fileUploads.watcherSlug, slug),
+            eq(schema.fileUploads.originalFilename, originalFilename),
+            eq(schema.fileUploads.status, 'orphaned'),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        this.logger.debug(
+          `Orphan already recorded for ${slug}/${originalFilename}; skipping duplicate row`,
+        );
+        return;
+      }
+
+      // fileType is a NOT NULL enum on file_uploads; for orphaned rows the
+      // value is informational only (no parse job is ever enqueued for
+      // them), so unrecognized extensions fall back to 'csv'.
+      const ext = originalFilename.split('.').pop()?.toLowerCase();
+      const fileType =
+        ext === 'xlsx' || ext === 'xls'
+          ? 'excel'
+          : ext === 'pdf'
+            ? 'pdf'
+            : 'csv';
+
+      await this.db.insert(schema.fileUploads).values({
+        filename: originalFilename,
+        originalFilename,
+        watcherSlug: slug,
+        fileType,
+        fileHash: createHash('sha256')
+          .update(`orphaned:${slug}:${originalFilename}`)
+          .digest('hex'),
+        status: 'orphaned',
+        errorLog: [{ row: 0, error: reason, raw: '' }],
+      });
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to record orphaned file ${slug}/${originalFilename}: ${err.message}`,
+      );
     }
   }
 

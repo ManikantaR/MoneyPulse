@@ -225,7 +225,10 @@ export class IngestionProcessor extends WorkerHost {
         }
 
         await this.ingestionService.updateUploadStatus(uploadId, {
-          status: 'completed',
+          status: this.determineImportStatus(
+            dedupResult.newTransactions.length,
+            pdfResult.errors.length,
+          ),
           rowsImported: dedupResult.newTransactions.length,
           rowsSkipped: dedupResult.skippedCount,
           rowsErrored: pdfResult.errors.length,
@@ -276,8 +279,11 @@ export class IngestionProcessor extends WorkerHost {
       }
 
       if (rows.length === 0) {
+        // No errors and nothing to import — distinguish from a healthy
+        // 'completed' import so a 0-row file doesn't look indistinguishable
+        // from a real import (BS-7).
         await this.ingestionService.updateUploadStatus(uploadId, {
-          status: 'completed',
+          status: this.determineImportStatus(0, 0),
           rowsImported: 0,
           rowsSkipped: 0,
           rowsErrored: 0,
@@ -385,9 +391,12 @@ export class IngestionProcessor extends WorkerHost {
         this.logger.warn(`Failed to archive file: ${err}`);
       }
 
-      // Update status
+      // Update status.
       await this.ingestionService.updateUploadStatus(uploadId, {
-        status: 'completed',
+        status: this.determineImportStatus(
+          dedupResult.newTransactions.length,
+          parseResult.errors.length,
+        ),
         rowsImported: dedupResult.newTransactions.length,
         rowsSkipped: dedupResult.skippedCount,
         rowsErrored: parseResult.errors.length,
@@ -557,6 +566,29 @@ export class IngestionProcessor extends WorkerHost {
 
     // No preamble detected — return as-is
     return text;
+  }
+
+  /**
+   * Decide the terminal `file_uploads` status for a completed parse pass
+   * (Phase 1 / BS-7 fix).
+   *
+   * - `rowsImported > 0` → 'completed' (unchanged behavior).
+   * - `rowsImported === 0` with row errors → 'failed': nothing was imported
+   *   because parsing broke down, which is a real failure, not a silent no-op.
+   * - `rowsImported === 0` with zero errors (e.g. every row was a duplicate,
+   *   or the file had no data rows) → 'empty', so it's never indistinguishable
+   *   from a healthy 'completed' import.
+   *
+   * @param rowsImported - Count of newly inserted transactions
+   * @param errorsCount - Count of row-level parse errors
+   */
+  private determineImportStatus(
+    rowsImported: number,
+    errorsCount: number,
+  ): 'completed' | 'failed' | 'empty' {
+    if (rowsImported > 0) return 'completed';
+    if (errorsCount > 0) return 'failed';
+    return 'empty';
   }
 
   /**
@@ -906,8 +938,7 @@ export class IngestionProcessor extends WorkerHost {
    * `updatedAt` is older than `STALLED_UPLOAD_THRESHOLD_MS` (default 15 min) —
    * meaning the worker that should have finished (or picked up) the job never
    * reported back, most likely because it crashed or the job was lost — and
-   * flips them to 'failed' with an explanatory errorLog. This does not change
-   * the upload status enum (Phase 0 reuses 'failed'); it only makes stalled
+   * flips them to 'stalled' with an explanatory errorLog, making stalled
    * uploads visible and re-runnable instead of sitting invisibly forever.
    */
   private async processStalledUploadSweep(): Promise<void> {
@@ -930,7 +961,7 @@ export class IngestionProcessor extends WorkerHost {
 
     for (const upload of stalled) {
       await this.ingestionService.updateUploadStatus(upload.id, {
-        status: 'failed',
+        status: 'stalled',
         errorLog: [
           {
             row: 0,
@@ -943,6 +974,6 @@ export class IngestionProcessor extends WorkerHost {
       });
     }
 
-    this.logger.log(`Stalled-upload sweep: flagged ${stalled.length} stalled upload(s) as failed`);
+    this.logger.log(`Stalled-upload sweep: flagged ${stalled.length} stalled upload(s) as 'stalled'`);
   }
 }

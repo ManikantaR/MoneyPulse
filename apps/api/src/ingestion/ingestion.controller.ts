@@ -13,11 +13,25 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { z } from 'zod/v4';
 import { IngestionService } from './ingestion.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { MAX_UPLOAD_SIZE_BYTES } from '@moneypulse/shared';
 import type { AuthTokenPayload } from '@moneypulse/shared';
+
+const watcherEventSchema = z.object({
+  stage: z.enum(['detected', 'renamed', 'staged', 'failed']),
+  slug: z.string().min(1),
+  originalFilename: z.string().min(1),
+  renamedFilename: z.string().min(1).optional(),
+  bank: z.string().min(1).optional(),
+  detectedAt: z.string().optional(),
+  stagedAt: z.string().optional(),
+  error: z.string().optional(),
+});
+type WatcherEventInput = z.infer<typeof watcherEventSchema>;
 
 @ApiTags('Uploads')
 @Controller('uploads')
@@ -111,5 +125,31 @@ export class IngestionController {
     @CurrentUser() user: AuthTokenPayload,
   ) {
     return this.ingestionService.deleteUpload(id, user.sub);
+  }
+}
+
+/**
+ * POST /ingestion/watcher-events — future hand-off point for the laptop
+ * watcher (bank-statement-watcher repo). Reports a single stage of the
+ * watcher's local pipeline (detected/renamed/staged/failed) so that
+ * provenance and watcher-side failures become visible on the matching
+ * `file_uploads` row instead of only surfacing (or vanishing) once the file
+ * physically reaches the NAS watch folder. Wiring the watcher itself to call
+ * this endpoint is a separate follow-up in that repo.
+ */
+@ApiTags('Ingestion')
+@Controller('ingestion')
+@UseGuards(JwtAuthGuard)
+export class IngestionEventsController {
+  constructor(private readonly ingestionService: IngestionService) {}
+
+  @Post('watcher-events')
+  @HttpCode(202)
+  @ApiOperation({ summary: 'Report a watcher pipeline stage event' })
+  async watcherEvent(
+    @Body(new ZodValidationPipe(watcherEventSchema)) body: WatcherEventInput,
+  ) {
+    const result = await this.ingestionService.recordWatcherEvent(body);
+    return { data: { result } };
   }
 }
