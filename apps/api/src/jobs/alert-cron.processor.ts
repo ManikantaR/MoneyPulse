@@ -6,6 +6,7 @@ import { DigestService } from '../analytics/digest.service';
 import { BriefService } from '../analytics/brief.service';
 import { BalanceSnapshotService } from '../analytics/balance-snapshot.service';
 import { ForecastService } from '../analytics/forecast.service';
+import { ShortfallDetectorService } from '../analytics/shortfall-detector.service';
 import { FreshnessDetectorService } from '../analytics/freshness-detector.service';
 import { WatchdogDetectorService } from '../analytics/watchdog-detector.service';
 import { MarketInsightDetectorService } from '../analytics/market-insight-detector.service';
@@ -37,6 +38,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly briefService: BriefService,
     private readonly balanceSnapshotService: BalanceSnapshotService,
     private readonly forecastService: ForecastService,
+    private readonly shortfallDetectorService: ShortfallDetectorService,
     private readonly freshnessDetectorService: FreshnessDetectorService,
     private readonly watchdogDetectorService: WatchdogDetectorService,
     private readonly marketInsightDetectorService: MarketInsightDetectorService,
@@ -129,6 +131,10 @@ export class AlertCronProcessor extends WorkerHost {
 
       case 'cashflow-sweep':
         await this.forecastService.checkAndAlertAll();
+        break;
+
+      case 'cashflow-shortfall-sweep':
+        await this.shortfallDetectorService.checkAndAlertAllUsers();
         break;
 
       case 'bills-roll-forward': {

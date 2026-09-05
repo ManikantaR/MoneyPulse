@@ -13,7 +13,7 @@ describe('AlertCronProcessor — monthly-close-auto-draft', () => {
     const noop = {} as any;
     const processor = new AlertCronProcessor(
       noop, noop, noop, noop, noop, noop, noop, noop, noop, noop,
-      noop, noop, noop, noop, noop, noop, noop, noop,
+      noop, noop, noop, noop, noop, noop, noop, noop, noop,
       monthlyCloseService as any,
       { add: vi.fn() } as any,
     );
