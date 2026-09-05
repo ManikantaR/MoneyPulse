@@ -21,6 +21,7 @@ import { InvestmentCoachService } from '../recommendations/investment-coach.serv
 import { SavingsCoachService } from '../recommendations/savings-coach.service';
 import { RateWatchlistService } from '../rate-watchlist/rate-watchlist.service';
 import { MonthlyCloseService } from '../monthly-close/monthly-close.service';
+import { StatementScheduleService } from '../analytics/statement-schedule.service';
 
 const MARKET_DATA_JITTER_MAX_MS = 15 * 60_000; // spread load on the free EIA/FRED tiers
 
@@ -53,6 +54,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly savingsCoachService: SavingsCoachService,
     private readonly rateWatchlistService: RateWatchlistService,
     private readonly monthlyCloseService: MonthlyCloseService,
+    private readonly statementScheduleService: StatementScheduleService,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
   ) {
     super();
@@ -258,6 +260,13 @@ export class AlertCronProcessor extends WorkerHost {
         );
         break;
       }
+
+      // Import Pipeline Radar Phase 4 — "forgot to download": auto-learned
+      // per-account statement cadence, alerts (consolidated, deduped, escalating)
+      // when an expected statement is overdue.
+      case 'statement-schedule-check':
+        await this.statementScheduleService.checkAndAlertAllUsers();
+        break;
 
       default:
         this.logger.warn(`Unknown alert job: ${job.name}`);

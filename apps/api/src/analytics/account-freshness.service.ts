@@ -60,6 +60,28 @@ export class AccountFreshnessService {
     let activeCount = 0;
 
     for (const account of accounts) {
+      // Import Pipeline Radar Phase 4: prefer the account's learned/manual
+      // statement_schedule cadence over the flat threshold when one exists.
+      let effectiveThresholdDays = freshnessThresholdDays;
+      const scheduleRows = await this.db.execute(sql`
+        SELECT cadence, cadence_days, grace_days
+        FROM statement_schedule
+        WHERE account_id = ${account.id} AND enabled = true
+        LIMIT 1
+      `);
+      const schedule = (scheduleRows.rows ?? scheduleRows)[0];
+      if (schedule) {
+        const cadenceDaysEquivalent =
+          schedule.cadence === 'monthly'
+            ? 31
+            : schedule.cadence === 'weekly'
+              ? 7
+              : schedule.cadence === 'biweekly'
+                ? 14
+                : Number(schedule.cadence_days ?? freshnessThresholdDays);
+        effectiveThresholdDays = cadenceDaysEquivalent + Number(schedule.grace_days ?? 0);
+      }
+
       // Get last transaction date for the account
       const lastTxn = await this.db.execute(sql`
         SELECT date
@@ -101,7 +123,7 @@ export class AccountFreshnessService {
           );
           staleDays = daysSinceLastTxn;
 
-          if (daysSinceLastTxn > freshnessThresholdDays) {
+          if (daysSinceLastTxn > effectiveThresholdDays) {
             status = 'stale';
             staleCount++;
           } else {
