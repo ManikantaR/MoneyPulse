@@ -8,18 +8,22 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createHash } from 'crypto';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, writeFile, access } from 'fs/promises';
 import { join, basename } from 'path';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { unlink } from 'fs/promises';
-import { INGESTION_QUEUE, MAX_UPLOAD_SIZE_BYTES } from '@moneypulse/shared';
-import type { FileType } from '@moneypulse/shared';
+import { INGESTION_QUEUE, MAX_UPLOAD_SIZE_BYTES, WATCH_FOLDER_DIR } from '@moneypulse/shared';
+import type { FileType, CsvFormatConfig } from '@moneypulse/shared';
+
+/** Upload statuses that a reprocess (or reassign, which reprocesses) may act on. */
+const REPROCESSABLE_STATUSES = ['failed', 'stalled', 'empty', 'orphaned'] as const;
 
 @Injectable()
 export class IngestionService {
   private readonly uploadDir: string;
+  private readonly watchDir: string;
 
   constructor(
     @Inject(DATABASE_CONNECTION) private readonly db: any,
@@ -27,6 +31,7 @@ export class IngestionService {
     private readonly config: ConfigService,
   ) {
     this.uploadDir = this.config.get<string>('UPLOAD_DIR') ?? '/tmp/moneypulse/uploads';
+    this.watchDir = this.config.get<string>('WATCH_FOLDER_DIR') || WATCH_FOLDER_DIR;
   }
 
   /**
@@ -188,6 +193,208 @@ export class IngestionService {
       .update(schema.fileUploads)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(schema.fileUploads.id, uploadId));
+  }
+
+  /**
+   * Resolve the on-disk path of the source file for an upload, in priority order:
+   * 1. `archivedPath`, if set and the file still exists there.
+   * 2. The original staged path, reconstructed from provenance columns:
+   *    - Watcher-ingested files live at `{watchDir}/{watcherSlug}/{originalFilename}`.
+   *    - Manually-uploaded files live at `{uploadDir}/{userId}/{fileHash}_{sanitized filename}`
+   *      (the same server-controlled name `uploadFile()` writes to).
+   *
+   * @returns The resolved path, or `null` if no candidate exists on disk.
+   */
+  private async resolveSourceFilePath(upload: any): Promise<string | null> {
+    const candidates: string[] = [];
+    if (upload.archivedPath) candidates.push(upload.archivedPath);
+
+    if (upload.watcherSlug) {
+      const name = upload.originalFilename ?? upload.filename;
+      if (name) candidates.push(join(this.watchDir, upload.watcherSlug, name));
+    }
+    if (upload.userId && upload.fileHash && upload.filename) {
+      const safeBasename = basename(upload.filename).replace(/[^\w.\-]/g, '_');
+      candidates.push(join(this.uploadDir, upload.userId, `${upload.fileHash}_${safeBasename}`));
+    }
+
+    for (const candidate of candidates) {
+      try {
+        await access(candidate);
+        return candidate;
+      } catch {
+        // not found here — try next candidate
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Reset a `file_uploads` row for a clean re-run and re-enqueue the parse job.
+   * Shared by `reprocessUpload()` and `reassignUpload()` — the only difference
+   * between the two callers is which `accountId` / `csvFormatConfig` end up on
+   * the job.
+   */
+  private async runReprocess(
+    upload: any,
+    accountId: string,
+    csvFormatConfig?: CsvFormatConfig,
+  ) {
+    const filePath = await this.resolveSourceFilePath(upload);
+    if (!filePath) {
+      throw new BadRequestException(
+        'Source file no longer available on disk — re-drop it to import.',
+      );
+    }
+
+    await this.db
+      .update(schema.fileUploads)
+      .set({
+        status: 'pending',
+        errorLog: [],
+        rowsImported: 0,
+        rowsSkipped: 0,
+        rowsErrored: 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.fileUploads.id, upload.id));
+
+    await this.ingestionQueue.add(
+      'parse-file',
+      {
+        uploadId: upload.id,
+        userId: upload.userId,
+        accountId,
+        filePath,
+        fileType: upload.fileType,
+        ...(csvFormatConfig ? { csvFormatConfig } : {}),
+      },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      },
+    );
+
+    return this.getUploadStatus(upload.id, upload.userId);
+  }
+
+  /**
+   * POST /uploads/:id/reprocess — re-run ingestion for a file that previously
+   * failed, stalled, or produced no rows, without requiring a re-drop.
+   * Dedup on `txnHash` makes this idempotent — no double-imported transactions.
+   *
+   * Rejects uploads that are pending/processing (already running) or
+   * completed/orphaned (completed has nothing new to do; orphaned has no
+   * account yet — use `reassignUpload()` instead).
+   */
+  async reprocessUpload(uploadId: string, userId: string) {
+    const rows = await this.db
+      .select()
+      .from(schema.fileUploads)
+      .where(
+        and(eq(schema.fileUploads.id, uploadId), eq(schema.fileUploads.userId, userId)),
+      )
+      .limit(1);
+    if (rows.length === 0) throw new NotFoundException('Upload not found');
+    const upload = rows[0];
+
+    if (upload.status === 'pending' || upload.status === 'processing') {
+      throw new BadRequestException(
+        'This upload is already being processed.',
+      );
+    }
+    if (upload.status === 'orphaned') {
+      throw new BadRequestException(
+        'This file has no account assigned — use fix-and-rerun (reassign) to pick an account first.',
+      );
+    }
+    if (upload.status === 'completed') {
+      throw new BadRequestException(
+        'This upload already completed successfully — nothing to reprocess.',
+      );
+    }
+    if (!upload.accountId) {
+      throw new BadRequestException(
+        'This upload has no account assigned — use fix-and-rerun (reassign) instead.',
+      );
+    }
+
+    return this.runReprocess(upload, upload.accountId);
+  }
+
+  /**
+   * POST /uploads/:id/reassign — fix-and-rerun: point an `orphaned` file (or
+   * one imported under the wrong account) at the correct account, optionally
+   * overriding CSV format config for this run, and re-run ingestion.
+   *
+   * If the upload had already imported transactions (status `completed` or
+   * `empty`) under the old/wrong account, those transactions are deleted
+   * first (keyed on `sourceFileId`, same as the Delete-upload path) so no
+   * stale rows are left behind under the wrong account.
+   */
+  async reassignUpload(
+    uploadId: string,
+    userId: string,
+    dto: { accountId: string; csvFormatConfig?: CsvFormatConfig },
+  ) {
+    // Orphaned rows (and lightweight watcher-failure rows) have no `userId`
+    // yet — they aren't owned by anyone until a user claims them via reassign
+    // — so look up by id alone and enforce ownership explicitly, rather than
+    // filtering by userId up front (which would 404 every orphaned row for
+    // every user, making them impossible to ever claim).
+    const rows = await this.db
+      .select()
+      .from(schema.fileUploads)
+      .where(eq(schema.fileUploads.id, uploadId))
+      .limit(1);
+    if (rows.length === 0) throw new NotFoundException('Upload not found');
+    const upload = rows[0];
+
+    if (upload.userId && upload.userId !== userId) {
+      throw new NotFoundException('Upload not found');
+    }
+
+    if (upload.status === 'pending' || upload.status === 'processing') {
+      throw new BadRequestException(
+        'This upload is already being processed.',
+      );
+    }
+
+    // Verify the target account belongs to this user (404 to avoid enumeration).
+    const account = await this.db
+      .select()
+      .from(schema.accounts)
+      .where(
+        and(
+          eq(schema.accounts.id, dto.accountId),
+          eq(schema.accounts.userId, userId),
+          isNull(schema.accounts.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (account.length === 0) throw new NotFoundException('Account not found');
+
+    // Remove any transactions already imported from this file under the old
+    // account so reassigning never leaves stale rows behind (same delete
+    // logic as the Delete-upload path, keyed on sourceFileId).
+    await this.db
+      .delete(schema.transactions)
+      .where(eq(schema.transactions.sourceFileId, uploadId));
+
+    await this.db
+      .update(schema.fileUploads)
+      .set({
+        accountId: dto.accountId,
+        userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.fileUploads.id, uploadId));
+
+    return this.runReprocess(
+      { ...upload, accountId: dto.accountId, userId },
+      dto.accountId,
+      dto.csvFormatConfig,
+    );
   }
 
   /**

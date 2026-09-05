@@ -33,6 +33,12 @@ interface IngestionJobData {
   accountId: string;
   filePath: string;
   fileType: 'csv' | 'excel' | 'pdf';
+  /**
+   * Optional per-run CSV format override, set by the fix-and-rerun
+   * (reassign) endpoint when the caller supplies a corrected mapping. Only
+   * applied for this run — it does not persist onto the account.
+   */
+  csvFormatConfig?: import('@moneypulse/shared').CsvFormatConfig;
 }
 
 /**
@@ -100,7 +106,8 @@ export class IngestionProcessor extends WorkerHost {
       return this.processStalledUploadSweep();
     }
 
-    const { uploadId, userId, accountId, filePath, fileType } = job.data as IngestionJobData;
+    const { uploadId, userId, accountId, filePath, fileType, csvFormatConfig: csvFormatConfigOverride } =
+      job.data as IngestionJobData;
     this.logger.log(`Processing upload ${uploadId}: ${filePath}`);
 
     try {
@@ -292,14 +299,15 @@ export class IngestionProcessor extends WorkerHost {
       }
 
       // Select parser
+      const csvFormatConfig = csvFormatConfigOverride ?? account.csvFormatConfig;
       const parser = selectParser(
         headers,
         account.institution,
-        account.csvFormatConfig,
+        csvFormatConfig,
       );
 
       // Apply skipRows from generic config (skip non-header leading rows)
-      const skipRows = account.csvFormatConfig?.skipRows ?? 0;
+      const skipRows = csvFormatConfig?.skipRows ?? 0;
       const dataRows = skipRows > 0 ? rows.slice(skipRows) : rows;
       // rowOffset: 1-based; row 1 = header, data starts at row 2 + any skipped rows
       const rowOffset = 2 + skipRows;

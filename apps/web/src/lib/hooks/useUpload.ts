@@ -42,6 +42,47 @@ export function useUploadDetail(id: string) {
   });
 }
 
+/** Re-run ingestion for a failed/stalled/empty upload without re-dropping the file. */
+export function useReprocessUpload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uploadId: string) =>
+      api.post<{ data: FileUpload }>(`/uploads/${uploadId}/reprocess`, {}),
+    onSuccess: (_data, uploadId) => {
+      queryClient.invalidateQueries({ queryKey: ['uploads'] });
+      queryClient.invalidateQueries({ queryKey: ['uploads', uploadId] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
+/** Fix-and-rerun: reassign an upload to a different account (optionally overriding CSV mapping) and re-run ingestion. */
+export function useReassignUpload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      uploadId,
+      accountId,
+      csvFormatConfig,
+    }: {
+      uploadId: string;
+      accountId: string;
+      csvFormatConfig?: Record<string, unknown>;
+    }) =>
+      api.post<{ data: FileUpload }>(`/uploads/${uploadId}/reassign`, {
+        accountId,
+        ...(csvFormatConfig ? { csvFormatConfig } : {}),
+      }),
+    onSuccess: (_data, { uploadId }) => {
+      queryClient.invalidateQueries({ queryKey: ['uploads'] });
+      queryClient.invalidateQueries({ queryKey: ['uploads', uploadId] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+}
+
 /** Delete an upload and its associated transactions. */
 export function useDeleteUpload() {
   const queryClient = useQueryClient();
