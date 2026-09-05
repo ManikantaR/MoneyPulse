@@ -74,6 +74,10 @@ const DEFAULT_PREFERENCES: Record<NotificationType, {
   stat_anomaly: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
   fuel_vs_market: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
   power_vs_market: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+
+  // Cash-flow shortfall radar: proactive, speaks on Home Assistant — same
+  // instant + inApp/telegram/haWebhook defaults as idle_cash/bill_overdue above.
+  cashflow_shortfall: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
 };
 
 /** Source-of-truth list of all registered notification types (mirrors the DB enum). */

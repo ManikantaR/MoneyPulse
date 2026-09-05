@@ -253,6 +253,20 @@
       "when": 1784561300000,
       "tag": "0035_notification_type_watchdog_market_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784561400000,
+      "tag": "0036_notification_type_cashflow_shortfall",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1784561500000,
+      "tag": "0037_cashflow_floor_cents",
+      "breakpoints": true
     }
   ]
 }

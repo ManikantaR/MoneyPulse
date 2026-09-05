@@ -142,6 +142,16 @@ export class JobsModule implements OnModuleInit {
         { name: 'bills-roll-forward' },
       ),
 
+      // Cash-flow shortfall radar — daily morning sweep (6:30 AM UTC, after bills
+      // roll-forward + the cashflow-sweep low-balance check above) warning BEFORE
+      // an upcoming recurring bill would push the primary checking balance below
+      // the user's configurable floor.
+      this.alertsQueue.upsertJobScheduler(
+        'daily-cashflow-shortfall-check',
+        { pattern: '30 6 * * *' },
+        { name: 'cashflow-shortfall-sweep' },
+      ),
+
       // Watchdog budget-pace sweep (11.5) — daily 7 AM UTC, distinct from the
       // 80%/100% actual-spend alerts in alert-engine.service.ts.
       this.alertsQueue.upsertJobScheduler(

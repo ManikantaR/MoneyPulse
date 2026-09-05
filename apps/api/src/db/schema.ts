@@ -123,6 +123,10 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   'stat_anomaly',
   'fuel_vs_market',
   'power_vs_market',
+  // Cash-flow shortfall radar: proactive warning when the forecast projects the
+  // primary checking balance dipping below a configurable floor before an
+  // upcoming recurring bill. See shortfall-detector.service.ts.
+  'cashflow_shortfall',
 ]);
 export const notificationModeEnum = pgEnum('notification_mode', [
   'instant',
@@ -251,6 +255,10 @@ export const userSettings = pgTable('user_settings', {
    *  re-surfaces the tracker once `percent`/`completed` has moved on since this was set,
    *  so dismissal means "hide until something changes", not "hide forever". */
   setupTrackerDismissedAt: timestamp('setup_tracker_dismissed_at', { withTimezone: true }),
+  /** Cash-flow shortfall radar (#cashflow-shortfall-radar): the checking-balance
+   *  floor the forecast is compared against before an upcoming bill. Null falls
+   *  back to shortfall-detector.service.ts's DEFAULT_CASHFLOW_FLOOR_CENTS ($500). */
+  cashflowFloorCents: integer('cashflow_floor_cents'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
