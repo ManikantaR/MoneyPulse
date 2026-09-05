@@ -9,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as chokidar from 'chokidar';
-import { readFile } from 'fs/promises';
-import { basename, relative } from 'path';
+import { readFile, readdir } from 'fs/promises';
+import { basename, relative, join } from 'path';
 import { createHash } from 'crypto';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
@@ -59,12 +59,85 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.watcher.on('add', (filePath) => this.handleNewFile(filePath));
+
+      // Startup reconciliation scan: chokidar's `ignoreInitial: true` means files
+      // already sitting in the watch folder when the process (re)starts — e.g. the
+      // API was down when a statement was dropped — would otherwise NEVER be
+      // ingested, with no error or alert. Run an explicit scan through the same
+      // handleNewFile() path once the watcher is ready so dedup + account
+      // resolution + enqueue behave identically to a live `add` event. Content-hash
+      // dedup makes this safe to run on every boot.
+      this.watcher.once('ready', () => {
+        this.scanExistingFiles().catch((err) =>
+          this.logger.error(`Startup reconciliation scan failed: ${err}`),
+        );
+      });
+
       this.logger.log(`Watch folder active: ${this.watchDir}`);
     } catch (err) {
       this.logger.warn(
         `Watch folder not available: ${err}. Auto-import disabled.`,
       );
     }
+  }
+
+  /**
+   * Startup reconciliation scan (Phase 0 / BS-2 fix).
+   *
+   * Enumerates every `*.csv`/`*.xlsx`/`*.pdf` file directly under each
+   * `<watchDir>/<slug>/` subdirectory (excluding `.archived` subdirectories and
+   * dot/partial files) and routes each one through `handleNewFile()` — the same
+   * code path chokidar's live `add` event uses. Files already ingested are
+   * skipped naturally by the content-hash dedup in `handleNewFile()`, so this is
+   * idempotent and safe to run on every boot.
+   */
+  private async scanExistingFiles(): Promise<void> {
+    let found = 0;
+    let enqueued = 0;
+    let skipped = 0;
+
+    let topEntries: import('fs').Dirent[];
+    try {
+      topEntries = await readdir(this.watchDir, { withFileTypes: true });
+    } catch (err) {
+      this.logger.warn(`Startup scan: cannot read watch dir ${this.watchDir}: ${err}`);
+      return;
+    }
+
+    for (const entry of topEntries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === '.archived' || entry.name.startsWith('.')) continue;
+
+      const slugDir = join(this.watchDir, entry.name);
+      let files: import('fs').Dirent[];
+      try {
+        files = await readdir(slugDir, { withFileTypes: true });
+      } catch (err) {
+        this.logger.warn(`Startup scan: cannot read ${slugDir}: ${err}`);
+        continue;
+      }
+
+      for (const file of files) {
+        if (!file.isFile()) continue;
+        if (file.name.startsWith('.')) continue;
+
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (!['csv', 'xlsx', 'pdf'].includes(ext || '')) continue;
+
+        found++;
+        const filePath = join(slugDir, file.name);
+        const result = await this.handleNewFile(filePath);
+        if (result === 'enqueued') {
+          enqueued++;
+        } else {
+          skipped++;
+        }
+      }
+    }
+
+    this.logger.log(
+      `Startup reconciliation scan complete: found ${found}, enqueued ${enqueued}, skipped ${skipped}`,
+    );
   }
 
   /**
@@ -82,13 +155,17 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
    * account, deduplicates by SHA-256, creates a `file_uploads` record, and enqueues
    * a BullMQ parse job.
    *
-   * @param filePath - Absolute path to the file detected by Chokidar
+   * @param filePath - Absolute path to the file detected by Chokidar (or the startup scan)
+   * @returns `'enqueued'` if a new parse job was queued, `'skipped'` for duplicates/no-account/
+   *   invalid-path, or `'error'` if an unexpected exception occurred
    */
-  private async handleNewFile(filePath: string) {
+  private async handleNewFile(
+    filePath: string,
+  ): Promise<'enqueued' | 'skipped' | 'error'> {
     const ext = filePath.split('.').pop()?.toLowerCase();
     if (!['csv', 'xlsx', 'xls', 'pdf'].includes(ext || '')) {
       this.logger.debug(`Ignoring non-data file: ${filePath}`);
-      return;
+      return 'skipped';
     }
 
     this.logger.log(`New file detected: ${filePath}`);
@@ -99,7 +176,7 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
       const parts = normalizedRelativePath.split('/');
       if (parts.length < 2) {
         this.logger.warn(`File not in account subfolder: ${filePath}`);
-        return;
+        return 'skipped';
       }
 
       const slug = parts[0];
@@ -107,7 +184,7 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
       const account = await this.findAccountBySlug(slug);
       if (!account) {
         this.logger.warn(`No account found for slug "${slug}". Skipping.`);
-        return;
+        return 'skipped';
       }
 
       const buffer = await readFile(filePath);
@@ -127,7 +204,7 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
             .where(eq(schema.fileUploads.id, existing[0].id));
         } else {
           this.logger.log(`Duplicate file skipped: ${filePath}`);
-          return;
+          return 'skipped';
         }
       }
 
@@ -161,8 +238,10 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `Auto-import queued: ${filePath} → account ${account.nickname}`,
       );
+      return 'enqueued';
     } catch (err: any) {
       this.logger.error(`Watch folder error for ${filePath}: ${err.message}`);
+      return 'error';
     }
   }
 

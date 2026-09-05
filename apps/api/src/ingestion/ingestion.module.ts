@@ -71,5 +71,17 @@ export class IngestionModule implements OnModuleInit {
       { every: 24 * 60 * 60 * 1000 }, // every 24 hours
       { name: 'bills-redetect' },
     );
+
+    // Phase 0 / BS-6: stalled-job sweep. A `file_uploads` row can get stuck in
+    // 'processing' (or 'pending' after being enqueued) forever if the worker
+    // crashes/is killed mid-job or a BullMQ job is lost — with no error and no
+    // visibility. Every 15 minutes, flip anything older than the stall
+    // threshold to 'failed' with an explanatory errorLog so it's visible and
+    // re-runnable (dedup makes re-drop/re-ingest safe).
+    await this.ingestionQueue.upsertJobScheduler(
+      'stalled-upload-sweep',
+      { every: 15 * 60 * 1000 }, // every 15 minutes
+      { name: 'stalled-upload-reconcile' },
+    );
   }
 }
