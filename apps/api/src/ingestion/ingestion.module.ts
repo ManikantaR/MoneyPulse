@@ -3,7 +3,10 @@ import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { IngestionService } from './ingestion.service';
-import { IngestionController } from './ingestion.controller';
+import {
+  IngestionController,
+  IngestionEventsController,
+} from './ingestion.controller';
 import { DedupService } from './dedup.service';
 import { ArchiverService } from './archiver.service';
 import { WatcherService } from './watcher.service';
@@ -27,7 +30,7 @@ import { BillsModule } from '../bills/bills.module';
     EmbeddingsModule,
     BillsModule,
   ],
-  controllers: [IngestionController],
+  controllers: [IngestionController, IngestionEventsController],
   providers: [
     IngestionService,
     DedupService,

@@ -2,8 +2,9 @@
  * Phase 0 / BS-6: a `file_uploads` row can get stuck in 'processing' (or
  * 'pending' after enqueue) forever if the worker crashes or a BullMQ job is
  * lost, with no error and no visibility. These tests cover the periodic
- * stalled-upload sweep that flips old rows to 'failed' with an explanatory
- * errorLog, reusing the existing upload status enum (no new status added).
+ * stalled-upload sweep that flips old rows to 'stalled' with an explanatory
+ * errorLog. (Phase 1 update: this previously reused 'failed'; it now uses the
+ * dedicated 'stalled' status added to the upload_status enum.)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IngestionProcessor, STALLED_UPLOAD_THRESHOLD_MS } from '../ingestion.processor';
@@ -37,7 +38,7 @@ describe('IngestionProcessor stalled-upload sweep', () => {
     (processor as any).logger = { log: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() };
   });
 
-  it('flips a stalled "processing" row older than the threshold to "failed" with an errorLog', async () => {
+  it('flips a stalled "processing" row older than the threshold to "stalled" with an errorLog', async () => {
     mockDb.where.mockResolvedValue([{ id: 'upload-stale', status: 'processing' }]);
 
     await (processor as any).processStalledUploadSweep();
@@ -45,7 +46,7 @@ describe('IngestionProcessor stalled-upload sweep', () => {
     expect(updateUploadStatus).toHaveBeenCalledTimes(1);
     const [uploadId, data] = updateUploadStatus.mock.calls[0];
     expect(uploadId).toBe('upload-stale');
-    expect(data.status).toBe('failed');
+    expect(data.status).toBe('stalled');
     expect(Array.isArray(data.errorLog)).toBe(true);
     expect(data.errorLog[0].error).toMatch(/stalled/i);
   });

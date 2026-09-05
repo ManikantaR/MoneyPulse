@@ -191,6 +191,107 @@ export class IngestionService {
   }
 
   /**
+   * Handle a watcher-stage event from the laptop watcher (POST
+   * /ingestion/watcher-events). This is the future hand-off point that will
+   * let the watcher report `detected` / `renamed` / `staged` / `failed`
+   * stages before (or instead of) the file ever reaching the NAS watch
+   * folder — making watcher-side failures visible in `file_uploads` (BS-5)
+   * instead of vanishing before ingestion ever sees them.
+   *
+   * Matching strategy (best-effort, never creates a spurious
+   * transactions-bearing row):
+   *   1. Try to match an existing row by `watcherSlug` + filename
+   *      (renamedFilename, falling back to originalFilename).
+   *   2. If found, upsert the provenance columns onto it (and flip status to
+   *      'failed' with the error for a `failed` stage event).
+   *   3. If not found and the stage is `failed`, create a lightweight
+   *      `failed` row so the watcher-side failure is still visible.
+   *   4. If not found and the stage is anything else, there is nothing safe
+   *      to attach the provenance to yet — log and return so a later ingest
+   *      can populate it once the file actually arrives.
+   *
+   * @returns `'matched'` if an existing row was updated, `'created'` if a
+   *   lightweight failed row was created, or `'unmatched'` if neither applied
+   */
+  async recordWatcherEvent(event: {
+    stage: 'detected' | 'renamed' | 'staged' | 'failed';
+    slug: string;
+    originalFilename: string;
+    renamedFilename?: string;
+    bank?: string;
+    detectedAt?: string;
+    stagedAt?: string;
+    error?: string;
+  }): Promise<'matched' | 'created' | 'unmatched'> {
+    const candidateFilenames = [event.renamedFilename, event.originalFilename].filter(
+      (f): f is string => !!f,
+    );
+
+    let existing: any[] = [];
+    for (const filename of candidateFilenames) {
+      existing = await this.db
+        .select()
+        .from(schema.fileUploads)
+        .where(
+          and(
+            eq(schema.fileUploads.watcherSlug, event.slug),
+            eq(schema.fileUploads.originalFilename, filename),
+          ),
+        )
+        .limit(1);
+      if (existing.length > 0) break;
+    }
+
+    const provenance: Record<string, unknown> = {
+      watcherSlug: event.slug,
+      updatedAt: new Date(),
+    };
+    if (event.bank) provenance.watcherBank = event.bank;
+    if (event.detectedAt) provenance.detectedAt = new Date(event.detectedAt);
+    if (event.stagedAt) provenance.stagedAt = new Date(event.stagedAt);
+    if (event.renamedFilename) provenance.originalFilename = event.renamedFilename;
+    else if (event.originalFilename) provenance.originalFilename = event.originalFilename;
+
+    if (existing.length > 0) {
+      if (event.stage === 'failed') {
+        provenance.status = 'failed';
+        provenance.errorLog = [
+          { row: 0, error: event.error ?? 'Watcher reported a failure', raw: '' },
+        ];
+      }
+      await this.db
+        .update(schema.fileUploads)
+        .set(provenance)
+        .where(eq(schema.fileUploads.id, existing[0].id));
+      return 'matched';
+    }
+
+    if (event.stage === 'failed') {
+      // Lightweight row: no user/account is known yet (both nullable),
+      // just enough to surface the failure in the same table (BS-5).
+      await this.db.insert(schema.fileUploads).values({
+        filename: event.renamedFilename ?? event.originalFilename,
+        originalFilename: event.originalFilename,
+        watcherSlug: event.slug,
+        watcherBank: event.bank,
+        detectedAt: event.detectedAt ? new Date(event.detectedAt) : undefined,
+        stagedAt: event.stagedAt ? new Date(event.stagedAt) : undefined,
+        fileType: 'csv',
+        fileHash: createHash('sha256')
+          .update(`watcher-failed:${event.slug}:${event.originalFilename}:${Date.now()}`)
+          .digest('hex'),
+        status: 'failed',
+        errorLog: [
+          { row: 0, error: event.error ?? 'Watcher reported a failure', raw: '' },
+        ],
+      });
+      return 'created';
+    }
+
+    return 'unmatched';
+  }
+
+  /**
    * Delete an upload record and its associated transactions.
    * Only allowed for completed or failed uploads (not in-progress).
    */
