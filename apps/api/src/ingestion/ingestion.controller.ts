@@ -4,6 +4,7 @@ import {
   Get,
   Delete,
   Param,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -15,11 +16,16 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { z } from 'zod/v4';
 import { IngestionService } from './ingestion.service';
+import { AccountsService } from '../accounts/accounts.service';
+import { StatementScheduleService } from '../analytics/statement-schedule.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { MAX_UPLOAD_SIZE_BYTES, csvFormatConfigSchema } from '@moneypulse/shared';
 import type { AuthTokenPayload } from '@moneypulse/shared';
+
+const DEFAULT_COVERAGE_MONTHS = 6;
+const MAX_COVERAGE_MONTHS = 24;
 
 const reassignUploadSchema = z.object({
   accountId: z.string().min(1),
@@ -183,7 +189,11 @@ export class IngestionController {
 @Controller('ingestion')
 @UseGuards(JwtAuthGuard)
 export class IngestionEventsController {
-  constructor(private readonly ingestionService: IngestionService) {}
+  constructor(
+    private readonly ingestionService: IngestionService,
+    private readonly accountsService: AccountsService,
+    private readonly statementScheduleService: StatementScheduleService,
+  ) {}
 
   @Post('watcher-events')
   @HttpCode(202)
@@ -193,5 +203,48 @@ export class IngestionEventsController {
   ) {
     const result = await this.ingestionService.recordWatcherEvent(body);
     return { data: { result } };
+  }
+
+  /**
+   * GET /ingestion/coverage?months=6 — Import Pipeline Radar Phase 3.
+   * Accounts x months coverage grid, read-only, scoped to the caller's own accounts.
+   */
+  @Get('coverage')
+  @ApiOperation({ summary: 'Accounts x months import coverage grid' })
+  async coverage(
+    @CurrentUser() user: AuthTokenPayload,
+    @Query('months') monthsRaw?: string,
+  ) {
+    const parsed = monthsRaw ? Number.parseInt(monthsRaw, 10) : DEFAULT_COVERAGE_MONTHS;
+    const months = Number.isFinite(parsed) && parsed > 0
+      ? Math.min(parsed, MAX_COVERAGE_MONTHS)
+      : DEFAULT_COVERAGE_MONTHS;
+
+    const accounts = await this.accountsService.findByUser(user.sub);
+    const data = await Promise.all(
+      accounts.map((account: any) =>
+        this.statementScheduleService.getCoverageForAccount(
+          account.id,
+          account.nickname,
+          account.lastFour,
+          months,
+        ),
+      ),
+    );
+    return { data };
+  }
+
+  /**
+   * GET /ingestion/pipeline/summary — Import Pipeline Radar Phase 3.
+   * Cheap counts for the top-of-page summary cards.
+   */
+  @Get('pipeline/summary')
+  @ApiOperation({ summary: 'Pipeline summary counts (processed / needs attention / overdue / txns)' })
+  async pipelineSummary(@CurrentUser() user: AuthTokenPayload) {
+    const [summary, overdue] = await Promise.all([
+      this.ingestionService.getPipelineSummary(user.sub),
+      this.statementScheduleService.getOverdueAccountsForUser(user.sub),
+    ]);
+    return { data: { ...summary, overdue: overdue.length } };
   }
 }
