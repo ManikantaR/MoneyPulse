@@ -191,7 +191,7 @@ export class StatementScheduleService {
       INSERT INTO statement_schedule
         (account_id, cadence, expected_day_of_month, cadence_days, grace_days, last_satisfied_at, source, enabled, updated_at)
       VALUES
-        (${accountId}, ${cadence}, ${expectedDayOfMonth}, ${cadenceDays}, ${graceDays}, ${lastSatisfiedAt}, 'learned', true, now())
+        (${accountId}, ${cadence}, ${expectedDayOfMonth}, ${cadenceDays}, ${graceDays}, ${lastSatisfiedAt.toISOString()}::timestamptz, 'learned', true, now())
       ON CONFLICT (account_id) DO UPDATE SET
         cadence = EXCLUDED.cadence,
         expected_day_of_month = EXCLUDED.expected_day_of_month,
@@ -226,7 +226,7 @@ export class StatementScheduleService {
     if (imports.length === 0) return;
     const lastSatisfiedAt = imports[imports.length - 1].createdAt;
     await this.db.execute(sql`
-      UPDATE statement_schedule SET last_satisfied_at = ${lastSatisfiedAt}, updated_at = now()
+      UPDATE statement_schedule SET last_satisfied_at = ${lastSatisfiedAt.toISOString()}::timestamptz, updated_at = now()
       WHERE account_id = ${accountId}
     `);
   }
@@ -264,7 +264,7 @@ export class StatementScheduleService {
   async snooze(accountId: string, days: number): Promise<StatementScheduleRow | null> {
     const snoozedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
     await this.db.execute(sql`
-      UPDATE statement_schedule SET snoozed_until = ${snoozedUntil}, updated_at = now()
+      UPDATE statement_schedule SET snoozed_until = ${snoozedUntil.toISOString()}::timestamptz, updated_at = now()
       WHERE account_id = ${accountId}
     `);
     return this.getSchedule(accountId);
@@ -401,7 +401,7 @@ export class StatementScheduleService {
       SELECT id, status, rows_imported, created_at
       FROM file_uploads
       WHERE account_id = ${accountId}
-        AND created_at >= ${earliest}
+        AND created_at >= ${earliest.toISOString()}::timestamptz
       ORDER BY created_at ASC
     `);
     const uploads: MonthUploadRow[] = rows.rows ?? rows;
