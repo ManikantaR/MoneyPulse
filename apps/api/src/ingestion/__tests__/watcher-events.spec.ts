@@ -73,6 +73,26 @@ describe('POST /ingestion/watcher-events', () => {
     expect(methodGuards).toContain(JwtAuthGuard);
   });
 
+  it('every route handler on IngestionEventsController carries an explicit guard (no auth-bypass-by-omission)', () => {
+    // There is no class-level @UseGuards on this controller (it can't be —
+    // watcher-events needs a different guard than the rest, and Nest ANDs
+    // class-level + method-level guards rather than letting one override the
+    // other). That means every single handler MUST declare its own
+    // @UseGuards or it is silently unauthenticated. This test fails loudly
+    // if a route method is ever added without one.
+    const prototype = IngestionEventsController.prototype;
+    const handlerNames = Object.getOwnPropertyNames(prototype).filter(
+      (name) => name !== 'constructor' && typeof (prototype as any)[name] === 'function',
+    );
+
+    expect(handlerNames.length).toBeGreaterThan(0);
+    for (const name of handlerNames) {
+      const guards = Reflect.getMetadata(GUARDS_METADATA, (prototype as any)[name]);
+      expect(guards, `handler "${name}" is missing @UseGuards`).toBeDefined();
+      expect(guards.length, `handler "${name}" has an empty @UseGuards([])`).toBeGreaterThan(0);
+    }
+  });
+
   describe('IngestKeyOrJwtGuard', () => {
     beforeEach(() => {
       jwtCanActivate.mockReset();
@@ -318,8 +338,8 @@ describe('POST /ingestion/watcher-events', () => {
       expect(inserted.userId).toBe('user-1');
     });
 
-    it('attaches the resolved account onto a matched row (API-key auth)', async () => {
-      mockDb = makeDb([{ id: 'upload-1' }]);
+    it('attaches the resolved account onto a matched row with no prior owner (API-key auth)', async () => {
+      mockDb = makeDb([{ id: 'upload-1', accountId: null }]);
       (service as any).db = mockDb;
 
       await service.recordWatcherEvent({
@@ -332,6 +352,38 @@ describe('POST /ingestion/watcher-events', () => {
       const patch = updateSet.mock.calls[0][0];
       expect(patch.accountId).toBe('acct-1');
       expect(patch.userId).toBe('user-1');
+    });
+
+    it('re-attaches the same account onto a matched row already owned by it (API-key auth)', async () => {
+      mockDb = makeDb([{ id: 'upload-1', accountId: 'acct-1' }]);
+      (service as any).db = mockDb;
+
+      await service.recordWatcherEvent({
+        stage: 'staged',
+        slug: 'citi-checking-1234',
+        originalFilename: 'raw-export.csv',
+        resolvedAccount: { id: 'acct-1', userId: 'user-1' },
+      });
+
+      const patch = updateSet.mock.calls[0][0];
+      expect(patch.accountId).toBe('acct-1');
+      expect(patch.userId).toBe('user-1');
+    });
+
+    it('does NOT reassign ownership of a matched row already owned by a different account (filename-collision guard)', async () => {
+      mockDb = makeDb([{ id: 'upload-1', accountId: 'other-acct', userId: 'other-user' }]);
+      (service as any).db = mockDb;
+
+      await service.recordWatcherEvent({
+        stage: 'staged',
+        slug: 'citi-checking-1234',
+        originalFilename: 'raw-export.csv',
+        resolvedAccount: { id: 'acct-1', userId: 'user-1' },
+      });
+
+      const patch = updateSet.mock.calls[0][0];
+      expect(patch.accountId).toBeUndefined();
+      expect(patch.userId).toBeUndefined();
     });
   });
 });

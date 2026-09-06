@@ -224,7 +224,13 @@ export class IngestionEventsController {
     let resolvedAccount: { id: string; userId: string } | undefined;
 
     if (!user) {
-      // API-key auth: no req.user to derive ownership from.
+      // API-key auth: no req.user to derive ownership from. Resolve the
+      // owning account purely from body.slug — note this means the one
+      // shared INGEST_API_KEY can attach/create provenance for *any*
+      // account whose slug it names (no per-caller scoping). Acceptable for
+      // the intended deployment (a single trusted headless daemon on the
+      // home LAN), but do not reuse this key/guard for a multi-tenant or
+      // internet-facing caller without adding per-key→account scoping.
       const account = await this.watcherService.findAccountBySlug(body.slug);
       if (!account) {
         this.logger.warn(

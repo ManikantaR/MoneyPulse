@@ -500,12 +500,21 @@ export class IngestionService {
     if (event.stagedAt) provenance.stagedAt = new Date(event.stagedAt);
     if (event.renamedFilename) provenance.originalFilename = event.renamedFilename;
     else if (event.originalFilename) provenance.originalFilename = event.originalFilename;
-    if (event.resolvedAccount) {
-      provenance.accountId = event.resolvedAccount.id;
-      provenance.userId = event.resolvedAccount.userId;
-    }
 
     if (existing.length > 0) {
+      // Only attach the resolved owner to a matched row if it has no owner
+      // yet, or is already owned by that same account. A row matched purely
+      // by watcherSlug + filename that's already owned by a *different*
+      // account must never be silently reassigned — that would let a
+      // filename collision (or a slug reused after account changes) hijack
+      // someone else's upload.
+      if (
+        event.resolvedAccount &&
+        (!existing[0].accountId || existing[0].accountId === event.resolvedAccount.id)
+      ) {
+        provenance.accountId = event.resolvedAccount.id;
+        provenance.userId = event.resolvedAccount.userId;
+      }
       if (event.stage === 'failed') {
         provenance.status = 'failed';
         provenance.errorLog = [
