@@ -4,7 +4,7 @@
  * Encrypted values are stored as: iv:authTag:ciphertext (hex-encoded)
  * The ENCRYPTION_KEY env var must be a 64-char hex string (32 bytes).
  */
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'crypto';
 
 const ALGO = 'aes-256-gcm';
 const IV_LENGTH = 12; // 96-bit IV recommended for GCM
@@ -62,6 +62,21 @@ export function decryptField(encrypted: string): string {
   } catch {
     return encrypted; // decryption failed — return as-is (might be plaintext)
   }
+}
+
+/**
+ * Constant-time string comparison (e.g. for shared API keys / webhook secrets).
+ * Guards against timing attacks that could let an attacker infer a secret
+ * byte-by-byte from response latency. Returns `false` immediately (no
+ * `timingSafeEqual` call) when lengths differ — this is a bit-length leak,
+ * not a secret-content leak, and is how every standard implementation of
+ * this pattern (crypto.timingSafeEqual's own precondition) behaves.
+ */
+export function constantTimeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 /** Check if a value appears to be encrypted (matches iv:tag:ciphertext hex format). */

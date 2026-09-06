@@ -19,6 +19,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
 import { BillsModule } from '../bills/bills.module';
 import { AccountsModule } from '../accounts/accounts.module';
+import { IngestKeyOrJwtGuard } from '../common/guards/ingest-key-or-jwt.guard';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { AccountsModule } from '../accounts/accounts.module';
     WatcherService,
     PdfProxyService,
     IngestionProcessor,
+    IngestKeyOrJwtGuard,
   ],
   exports: [IngestionService, DedupService, PdfProxyService],
 })

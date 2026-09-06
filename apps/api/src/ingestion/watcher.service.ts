@@ -333,10 +333,14 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
   /**
    * Find an active (non-deleted) account whose generated slug matches the given string.
    *
+   * Public: also reused by `IngestionEventsController` (Phase 5a) to resolve the
+   * owning account/user for watcher-events calls authenticated via the shared
+   * `INGEST_API_KEY` (no JWT, so no `req.user` to derive it from).
+   *
    * @param slug - Slug string extracted from the watch-folder subdirectory name (e.g. `bofa-checking-1234`)
    * @returns The matching account row or `null` if no match is found
    */
-  private async findAccountBySlug(slug: string) {
+  async findAccountBySlug(slug: string) {
     const accounts = await this.db
       .select()
       .from(schema.accounts)

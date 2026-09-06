@@ -462,6 +462,15 @@ export class IngestionService {
     detectedAt?: string;
     stagedAt?: string;
     error?: string;
+    /**
+     * Owning account, pre-resolved from `event.slug` by the caller (Phase 5a:
+     * only populated when the request was authenticated via the shared
+     * `INGEST_API_KEY` instead of a JWT, since there's no `req.user` to derive
+     * ownership from in that case). When present, attached to whichever row
+     * is matched/created below. `undefined` for JWT-authenticated calls —
+     * unchanged behavior.
+     */
+    resolvedAccount?: { id: string; userId: string };
   }): Promise<'matched' | 'created' | 'unmatched'> {
     const candidateFilenames = [event.renamedFilename, event.originalFilename].filter(
       (f): f is string => !!f,
@@ -493,6 +502,19 @@ export class IngestionService {
     else if (event.originalFilename) provenance.originalFilename = event.originalFilename;
 
     if (existing.length > 0) {
+      // Only attach the resolved owner to a matched row if it has no owner
+      // yet, or is already owned by that same account. A row matched purely
+      // by watcherSlug + filename that's already owned by a *different*
+      // account must never be silently reassigned — that would let a
+      // filename collision (or a slug reused after account changes) hijack
+      // someone else's upload.
+      if (
+        event.resolvedAccount &&
+        (!existing[0].accountId || existing[0].accountId === event.resolvedAccount.id)
+      ) {
+        provenance.accountId = event.resolvedAccount.id;
+        provenance.userId = event.resolvedAccount.userId;
+      }
       if (event.stage === 'failed') {
         provenance.status = 'failed';
         provenance.errorLog = [
@@ -524,6 +546,9 @@ export class IngestionService {
         errorLog: [
           { row: 0, error: event.error ?? 'Watcher reported a failure', raw: '' },
         ],
+        ...(event.resolvedAccount
+          ? { accountId: event.resolvedAccount.id, userId: event.resolvedAccount.userId }
+          : {}),
       });
       return 'created';
     }

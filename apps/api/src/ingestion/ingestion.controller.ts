@@ -11,14 +11,17 @@ import {
   Body,
   HttpCode,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { z } from 'zod/v4';
 import { IngestionService } from './ingestion.service';
+import { WatcherService } from './watcher.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { StatementScheduleService } from '../analytics/statement-schedule.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { IngestKeyOrJwtGuard } from '../common/guards/ingest-key-or-jwt.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { MAX_UPLOAD_SIZE_BYTES, csvFormatConfigSchema } from '@moneypulse/shared';
@@ -187,21 +190,61 @@ export class IngestionController {
  */
 @ApiTags('Ingestion')
 @Controller('ingestion')
-@UseGuards(JwtAuthGuard)
 export class IngestionEventsController {
+  private readonly logger = new Logger(IngestionEventsController.name);
+
   constructor(
     private readonly ingestionService: IngestionService,
+    private readonly watcherService: WatcherService,
     private readonly accountsService: AccountsService,
     private readonly statementScheduleService: StatementScheduleService,
   ) {}
 
+  /**
+   * POST /ingestion/watcher-events — Phase 5a: also accepts the shared
+   * `X-Ingest-Key` header (see `IngestKeyOrJwtGuard`) so the headless laptop
+   * watcher (no user login/JWT) can call this endpoint directly, alongside
+   * the existing JWT-authenticated path used by browser/UI callers.
+   *
+   * When authenticated via API key there is no `req.user`, so the owning
+   * account/user is resolved from `body.slug` using the same slug→account
+   * logic the folder watcher uses (`WatcherService.findAccountBySlug`) — no
+   * parallel implementation. If the slug matches no account, respond 202
+   * without creating a row (never attach/create provenance with no owner).
+   * When authenticated via JWT, behavior is unchanged.
+   */
   @Post('watcher-events')
   @HttpCode(202)
+  @UseGuards(IngestKeyOrJwtGuard)
   @ApiOperation({ summary: 'Report a watcher pipeline stage event' })
   async watcherEvent(
     @Body(new ZodValidationPipe(watcherEventSchema)) body: WatcherEventInput,
+    @CurrentUser() user?: AuthTokenPayload,
   ) {
-    const result = await this.ingestionService.recordWatcherEvent(body);
+    let resolvedAccount: { id: string; userId: string } | undefined;
+
+    if (!user) {
+      // API-key auth: no req.user to derive ownership from. Resolve the
+      // owning account purely from body.slug — note this means the one
+      // shared INGEST_API_KEY can attach/create provenance for *any*
+      // account whose slug it names (no per-caller scoping). Acceptable for
+      // the intended deployment (a single trusted headless daemon on the
+      // home LAN), but do not reuse this key/guard for a multi-tenant or
+      // internet-facing caller without adding per-key→account scoping.
+      const account = await this.watcherService.findAccountBySlug(body.slug);
+      if (!account) {
+        this.logger.warn(
+          `watcher-events (API-key auth): no account matches slug "${body.slug}"; dropping event without an owner`,
+        );
+        return { data: { result: 'unmatched' } };
+      }
+      resolvedAccount = { id: account.id, userId: account.userId };
+    }
+
+    const result = await this.ingestionService.recordWatcherEvent({
+      ...body,
+      resolvedAccount,
+    });
     return { data: { result } };
   }
 
@@ -210,6 +253,7 @@ export class IngestionEventsController {
    * Accounts x months coverage grid, read-only, scoped to the caller's own accounts.
    */
   @Get('coverage')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Accounts x months import coverage grid' })
   async coverage(
     @CurrentUser() user: AuthTokenPayload,
@@ -239,6 +283,7 @@ export class IngestionEventsController {
    * Cheap counts for the top-of-page summary cards.
    */
   @Get('pipeline/summary')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Pipeline summary counts (processed / needs attention / overdue / txns)' })
   async pipelineSummary(@CurrentUser() user: AuthTokenPayload) {
     const [summary, overdue] = await Promise.all([
