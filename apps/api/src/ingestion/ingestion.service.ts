@@ -462,6 +462,15 @@ export class IngestionService {
     detectedAt?: string;
     stagedAt?: string;
     error?: string;
+    /**
+     * Owning account, pre-resolved from `event.slug` by the caller (Phase 5a:
+     * only populated when the request was authenticated via the shared
+     * `INGEST_API_KEY` instead of a JWT, since there's no `req.user` to derive
+     * ownership from in that case). When present, attached to whichever row
+     * is matched/created below. `undefined` for JWT-authenticated calls —
+     * unchanged behavior.
+     */
+    resolvedAccount?: { id: string; userId: string };
   }): Promise<'matched' | 'created' | 'unmatched'> {
     const candidateFilenames = [event.renamedFilename, event.originalFilename].filter(
       (f): f is string => !!f,
@@ -491,6 +500,10 @@ export class IngestionService {
     if (event.stagedAt) provenance.stagedAt = new Date(event.stagedAt);
     if (event.renamedFilename) provenance.originalFilename = event.renamedFilename;
     else if (event.originalFilename) provenance.originalFilename = event.originalFilename;
+    if (event.resolvedAccount) {
+      provenance.accountId = event.resolvedAccount.id;
+      provenance.userId = event.resolvedAccount.userId;
+    }
 
     if (existing.length > 0) {
       if (event.stage === 'failed') {
@@ -524,6 +537,9 @@ export class IngestionService {
         errorLog: [
           { row: 0, error: event.error ?? 'Watcher reported a failure', raw: '' },
         ],
+        ...(event.resolvedAccount
+          ? { accountId: event.resolvedAccount.id, userId: event.resolvedAccount.userId }
+          : {}),
       });
       return 'created';
     }
