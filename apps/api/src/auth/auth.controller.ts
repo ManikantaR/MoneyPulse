@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -64,7 +65,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password' })
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const { email, password } = req.body;
+    const { email, password } = req.body ?? {};
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      throw new BadRequestException('Email and password are required');
+    }
     const user = await this.authService.validateUser(email, password);
 
     if (!user) {
