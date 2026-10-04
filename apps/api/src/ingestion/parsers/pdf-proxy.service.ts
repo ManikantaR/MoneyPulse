@@ -134,7 +134,9 @@ export class PdfProxyService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.pdfServiceUrl}/health`);
+      const response = await fetch(`${this.pdfServiceUrl}/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
       return response.ok;
     } catch {
       return false;

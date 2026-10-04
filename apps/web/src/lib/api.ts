@@ -65,6 +65,17 @@ async function tryRefresh(): Promise<boolean> {
   return body?.data?.refreshed === true;
 }
 
+/**
+ * Message for a failed response without a JSON error body — e.g. when the API
+ * is down and Traefik serves the web app's page instead.
+ */
+function fallbackMessage(res: Response): string {
+  if (res.status === 404 || res.status >= 500) {
+    return `Service unavailable (${res.status}) — please try again shortly`;
+  }
+  return `Request failed (${res.status})`;
+}
+
 async function request<T>(
   path: string,
   options: FetchOptions = {},
@@ -97,7 +108,7 @@ async function request<T>(
         const err = await retryRes.json().catch(() => ({}));
         throw new ApiError(
           retryRes.status,
-          err.message || 'Request failed',
+          err.message || fallbackMessage(retryRes),
           err.error,
         );
       }
@@ -114,7 +125,7 @@ async function request<T>(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, err.message || 'Request failed', err.error);
+    throw new ApiError(res.status, err.message || fallbackMessage(res), err.error);
   }
 
   return res.json();
