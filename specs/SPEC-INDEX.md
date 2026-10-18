@@ -30,6 +30,7 @@
 | 11 | In Progress | Financial awareness: insights feed, daily brief, watchdog detectors, EIA/FRED market data, proactive advisor, semantic search | [PHASE11-AWARENESS-SPEC.md](PHASE11-AWARENESS-SPEC.md) | None (Web Push, not Firestore) |
 | 12 | Planned | Advisory agents: recommendation + decision memory, holdings & prices, Treasury/rate watchlist, Cash Manager, Investment Coach, Savings Coach | [PHASE12-ADVISORY-SPEC.md](PHASE12-ADVISORY-SPEC.md) | None |
 | 13 | Planned | Monthly Close: editable household financial-health sheet, manual assets, loan balance overrides, ratios, 6/12 month health view | [PHASE13-MONTHLY-CLOSE-SPEC.md](PHASE13-MONTHLY-CLOSE-SPEC.md) | None |
+| 14 | Planned | Import visibility: honest laptop watcher, signed TCC helper, agent heartbeat + silence alarm, staged Telegram/push/voice ladder, Downloads inventory, actions, coverage correlation (spans bank-statement-watcher) | [PHASE14-IMPORT-VISIBILITY-SPEC.md](PHASE14-IMPORT-VISIBILITY-SPEC.md) | None |
 
 ## Notes
 
