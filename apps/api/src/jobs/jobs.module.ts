@@ -14,6 +14,7 @@ import { MarketDataModule } from '../market-data/market-data.module';
 import { RecommendationsModule } from '../recommendations/recommendations.module';
 import { RateWatchlistModule } from '../rate-watchlist/rate-watchlist.module';
 import { MonthlyCloseModule } from '../monthly-close/monthly-close.module';
+import { IngestionModule } from '../ingestion/ingestion.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { MonthlyCloseModule } from '../monthly-close/monthly-close.module';
     RecommendationsModule,
     RateWatchlistModule,
     MonthlyCloseModule,
+    IngestionModule,
   ],
   providers: [AlertCronProcessor, ReminderProcessor, SyncDeliveryProcessor],
 })
@@ -54,6 +56,16 @@ export class JobsModule implements OnModuleInit {
         'daily-budget-check',
         { pattern: '0 8 * * *' },
         { name: 'budget-sweep' },
+      ),
+
+      // Phase 14 S2b — laptop watcher silence/unhealthy alarm sweep, every 15
+      // minutes (spec: "Alarms"). Also evaluated inline on every heartbeat by
+      // the controller for faster transitions; this sweep is what catches a
+      // watcher that stops sending heartbeats entirely.
+      this.alertsQueue.upsertJobScheduler(
+        'import-visibility-check',
+        { every: 15 * 60 * 1000 },
+        { name: 'import-visibility-check' },
       ),
 
       // Digest sweeps (UTC fixed times — user-local period key handles timezone dedupe)

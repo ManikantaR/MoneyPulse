@@ -12,7 +12,7 @@ import { mkdir, writeFile, access } from 'fs/promises';
 import { join, basename } from 'path';
 import { DATABASE_CONNECTION } from '../db/db.module';
 import * as schema from '../db/schema';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { unlink } from 'fs/promises';
 import { INGESTION_QUEUE, MAX_UPLOAD_SIZE_BYTES, WATCH_FOLDER_DIR } from '@moneypulse/shared';
 import type { FileType, CsvFormatConfig } from '@moneypulse/shared';
@@ -141,7 +141,13 @@ export class IngestionService {
 
   /**
    * Get upload status (polling endpoint).
-   * Scoped to userId — returns 404 for uploads not owned by this user.
+   * Scoped to userId, but also surfaces orphaned / null-user rows (Phase 14
+   * S2b, RC3e): a watcher-side failure with no resolvable account, or a
+   * folder-watch `orphaned` row, has `userId = null` until someone claims it
+   * via reassign. Hiding those from every user made them permanently
+   * invisible (the exact 2026-10-18 failure mode); any user may see and
+   * claim them, same as `reassignUpload` already allows. Rows owned by a
+   * *different* user are still 404.
    */
   async getUploadStatus(uploadId: string, userId: string) {
     const rows = await this.db
@@ -150,7 +156,7 @@ export class IngestionService {
       .where(
         and(
           eq(schema.fileUploads.id, uploadId),
-          eq(schema.fileUploads.userId, userId),
+          or(eq(schema.fileUploads.userId, userId), isNull(schema.fileUploads.userId)),
         ),
       )
       .limit(1);
@@ -159,7 +165,10 @@ export class IngestionService {
   }
 
   /**
-   * List all file upload records for a user, ordered by creation date (most recent last).
+   * List all file upload records for a user, ordered by creation date (most
+   * recent last). Also includes orphaned / null-user rows (see
+   * `getUploadStatus`) so they are visible and claimable from `/imports`
+   * instead of vanishing.
    *
    * @param userId - The user whose uploads to list
    * @returns Array of `FileUpload` rows
@@ -168,21 +177,22 @@ export class IngestionService {
     return this.db
       .select()
       .from(schema.fileUploads)
-      .where(eq(schema.fileUploads.userId, userId))
+      .where(or(eq(schema.fileUploads.userId, userId), isNull(schema.fileUploads.userId)))
       .orderBy(schema.fileUploads.createdAt);
   }
 
   /**
    * Import Pipeline Radar Phase 3 — cheap counts for the pipeline summary cards.
-   * Scoped to the caller's uploads (rows without a resolvable userId, e.g.
-   * `orphaned` watcher failures, are intentionally excluded — same scoping as
-   * `listUploads`).
+   * Includes orphaned / null-user rows (see `getUploadStatus`) in
+   * `needsAttention` so a stuck watcher failure with no owner yet is not
+   * silently excluded from the one place that is supposed to say "this needs
+   * attention" (same scoping as `listUploads`).
    */
   async getPipelineSummary(userId: string) {
     const rows = await this.db
       .select()
       .from(schema.fileUploads)
-      .where(eq(schema.fileUploads.userId, userId));
+      .where(or(eq(schema.fileUploads.userId, userId), isNull(schema.fileUploads.userId)));
 
     const now = new Date();
     const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
