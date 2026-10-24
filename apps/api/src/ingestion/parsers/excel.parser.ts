@@ -1,4 +1,8 @@
 import * as ExcelJS from 'exceljs';
+import { looksLikeHeaderRowCells } from './header-detection';
+
+/** How many leading rows to scan for a real header row before giving up. */
+const HEADER_SCAN_LIMIT = 30;
 
 /**
  * Excel Parser — reads .xlsx file buffer and converts the first sheet to an
@@ -6,6 +10,14 @@ import * as ExcelJS from 'exceljs';
  * are rejected at the upload layer before reaching this parser.
  * Uses exceljs (no ReDoS or prototype-pollution vulnerabilities).
  * Delegates to the appropriate CSV parser after conversion.
+ *
+ * Some bank exports (e.g. Amex .xlsx activity downloads) prefix the real
+ * table with a preamble of several rows (statement period, "Prepared for",
+ * account number, a blank row, etc.) before the actual column headers. We
+ * scan the first `HEADER_SCAN_LIMIT` rows for one that looks like a known
+ * bank header row (same signature the CSV ingestion path uses) and treat
+ * that as the header row, parsing everything below it. If nothing matches,
+ * we fall back to treating row 1 as the header row, as before.
  */
 export async function parseExcelToRows(buffer: Buffer): Promise<{
   headers: string[];
@@ -23,12 +35,18 @@ export async function parseExcelToRows(buffer: Buffer): Promise<{
     return { headers: [], rows: [] };
   }
 
+  const headerRowNumber = findHeaderRowNumber(worksheet);
+
   const headers: string[] = [];
   const rows: Record<string, string>[] = [];
 
   worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) {
-      // First row contains column headers; generate fallback names for blanks
+    if (rowNumber < headerRowNumber) {
+      // Preamble row above the detected header row; skip entirely.
+      return;
+    }
+    if (rowNumber === headerRowNumber) {
+      // Header row contains column headers; generate fallback names for blanks
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         const raw = cellToString(cell.value).trim();
         headers.push(raw !== '' ? raw : `col_${colNumber}`);
@@ -50,6 +68,29 @@ export async function parseExcelToRows(buffer: Buffer): Promise<{
   });
 
   return { headers, rows };
+}
+
+/**
+ * Scan the first `HEADER_SCAN_LIMIT` rows of the worksheet for the first one
+ * that looks like a known bank header row. Returns that row's 1-based row
+ * number, or `1` (the default/fallback) if nothing in the scan window matches.
+ */
+function findHeaderRowNumber(worksheet: ExcelJS.Worksheet): number {
+  const scanLimit = Math.min(HEADER_SCAN_LIMIT, worksheet.rowCount);
+
+  for (let rowNumber = 1; rowNumber <= scanLimit; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    const cells: string[] = [];
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cells.push(cellToString(cell.value));
+    });
+    if (cells.length > 0 && looksLikeHeaderRowCells(cells)) {
+      return rowNumber;
+    }
+  }
+
+  // Nothing matched a known signature — fall back to row 1, as before.
+  return 1;
 }
 
 /**

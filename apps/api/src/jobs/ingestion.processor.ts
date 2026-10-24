@@ -9,6 +9,7 @@ import { eq, and, isNull, sql, lt, inArray } from 'drizzle-orm';
 import { INGESTION_QUEUE } from '@moneypulse/shared';
 import { selectParser } from '../ingestion/parsers/parser-registry';
 import { parseExcelToRows } from '../ingestion/parsers/excel.parser';
+import { looksLikeHeaderRowText } from '../ingestion/parsers/header-detection';
 import { DedupService } from '../ingestion/dedup.service';
 import { ArchiverService } from '../ingestion/archiver.service';
 import { IngestionService } from '../ingestion/ingestion.service';
@@ -561,13 +562,9 @@ export class IngestionProcessor extends WorkerHost {
    */
   private stripCsvPreamble(text: string): string {
     const lines = text.split(/\r?\n/);
-    const knownHeaders = ['description', 'amount', 'reference number', 'running bal.', 'payee', 'posted date'];
 
     for (let i = 0; i < lines.length; i++) {
-      const lower = lines[i].toLowerCase();
-      const hasDate = lower.includes('date');
-      const hasKnown = knownHeaders.some((h) => lower.includes(h));
-      if (hasDate && hasKnown) {
+      if (looksLikeHeaderRowText(lines[i].toLowerCase())) {
         return lines.slice(i).join('\n');
       }
     }
