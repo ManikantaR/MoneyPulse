@@ -22,6 +22,38 @@ import {
  *
  * Sign: **POSITIVE = charge** (opposite of BofA/Chase!), negative = credit/refund
  */
+/**
+ * Every column Amex ships across its exports: the short/full CSV, plus the
+ * "include additional details" CSV and the .xlsx download, which add the
+ * Extended Details … Category columns.
+ */
+const AMEX_KNOWN_COLUMNS = [
+  'date',
+  'description',
+  'amount',
+  'card member',
+  'account #',
+  'account number',
+  'extended details',
+  'appears on your statement as',
+  'address',
+  'city/state',
+  'zip code',
+  'country',
+  'reference',
+  'category',
+];
+
+/** Amex CSVs use MM/DD/YYYY; .xlsx date cells arrive as ISO YYYY-MM-DD. */
+function parseAmexDate(dateStr: string): string | null {
+  const mdy = parseDateMMDDYYYY(dateStr);
+  if (mdy) return mdy;
+  const iso = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!iso) return null;
+  const parsed = new Date(`${iso[1]}-${iso[2]}-${iso[3]}`);
+  return isNaN(parsed.getTime()) ? null : `${iso[1]}-${iso[2]}-${iso[3]}`;
+}
+
 export class AmexParser implements BankParser {
   institution = 'amex' as const;
 
@@ -39,7 +71,7 @@ export class AmexParser implements BankParser {
     // Only allow Amex-known columns (short or full export)
     const allKnown = normalized
       .filter((h) => h !== '') // ignore trailing empty column
-      .every((h) => ['date', 'description', 'amount', 'card member', 'account #'].includes(h));
+      .every((h) => AMEX_KNOWN_COLUMNS.includes(h));
     return hasCore && noOtherBank && allKnown;
   }
 
@@ -53,7 +85,7 @@ export class AmexParser implements BankParser {
 
       try {
         const dateStr = row['Date'] || row['date'];
-        const date = parseDateMMDDYYYY(dateStr);
+        const date = parseAmexDate(dateStr);
         if (!date) {
           errors.push({
             row: rowNum,
