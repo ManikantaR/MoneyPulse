@@ -145,6 +145,13 @@ export const notificationTypeEnum = pgEnum('notification_type', [
   // (or manually set) statement cadence says a statement should have arrived by
   // now, and no satisfying import has landed. See statement-schedule.service.ts.
   'statement_overdue',
+  // Phase 14 S2: laptop-watcher heartbeat/alarm types. See
+  // watcher-agent.service.ts and specs/PHASE14-IMPORT-VISIBILITY-SPEC.md.
+  'watcher_silent',
+  'watcher_unhealthy',
+  'staged_not_ingested',
+  'import_failed',
+  'import_pipeline_daily',
 ]);
 export const notificationModeEnum = pgEnum('notification_mode', [
   'instant',
@@ -368,6 +375,57 @@ export const fileUploads = pgTable('file_uploads', {
   watcherSlug: text('watcher_slug'),
   detectedAt: timestamp('detected_at', { withTimezone: true }),
   stagedAt: timestamp('staged_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── Watcher Agents + Pipeline Alarms (Phase 14 S2) ──────────────
+// The laptop watcher's heartbeat record and the server-side alarm episodes
+// derived from it. See watcher-agent.service.ts and
+// specs/PHASE14-IMPORT-VISIBILITY-SPEC.md "Data Model".
+
+export const watcherAgents = pgTable('watcher_agents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  agentId: varchar('agent_id', { length: 64 }).notNull().unique(),
+  keyHash: varchar('key_hash', { length: 128 }),
+  version: varchar('version', { length: 100 }),
+  processPath: text('process_path'),
+  pythonVersion: varchar('python_version', { length: 32 }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastDiagnostics: jsonb('last_diagnostics'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const pipelineAlarms = pgTable('pipeline_alarms', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  type: varchar('type', { length: 64 }).notNull(),
+  scopeKey: varchar('scope_key', { length: 255 }).notNull(),
+  severity: varchar('severity', { length: 16 }).notNull().default('warning'),
+  openedAt: timestamp('opened_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastNotifiedAt: timestamp('last_notified_at', { withTimezone: true }),
+  snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  notificationId: uuid('notification_id'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

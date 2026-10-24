@@ -574,3 +574,33 @@ export const setupProgressSchema = z.object({
 export type SetupProgressStepKind = z.infer<typeof setupProgressStepKindSchema>;
 export type SetupProgressStep = z.infer<typeof setupProgressStepSchema>;
 export type SetupProgress = z.infer<typeof setupProgressSchema>;
+
+// ── Phase 14 S2: laptop watcher agent heartbeat ─────────────────
+// POST /api/ingestion/agent/heartbeat body. Unknown keys are stripped (plain
+// z.object), so an older/newer watcher that sends extra fields never breaks
+// this endpoint. `inventory` is accepted and ignored until S3.
+export const watcherHeartbeatDiagnosticsSchema = z.object({
+  downloadsReadable: z.boolean(),
+  downloadsReason: z.string().nullable().optional(),
+  nasMountPresent: z.boolean(),
+  deadLetterDepth: z.int().min(0).default(0),
+  retryQueueDepth: z.int().min(0).default(0),
+  quarantineDepth: z.int().min(0).default(0),
+  ignoredCount: z.int().min(0).default(0),
+  lastScanAt: z.iso.datetime().nullable().optional(),
+  lastStagedAt: z.iso.datetime().nullable().optional(),
+  processPath: z.string().optional(),
+  pythonVersion: z.string().optional(),
+});
+
+export const watcherHeartbeatSchema = z.object({
+  schemaVersion: z.int().min(1),
+  agentId: z.string().min(1),
+  version: z.string().min(1),
+  startedAt: z.iso.datetime(),
+  sentAt: z.iso.datetime(),
+  diagnostics: watcherHeartbeatDiagnosticsSchema,
+  inventory: z.array(z.unknown()).optional().default([]),
+});
+
+export type WatcherHeartbeatInput = z.infer<typeof watcherHeartbeatSchema>;

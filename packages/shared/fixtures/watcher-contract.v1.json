@@ -1,0 +1,49 @@
+{
+  "_comment": "Phase 14 S2 cross-repo contract pin. Source: MyMoney packages/shared/src/constants/import-visibility.ts. A watcher-repo copy at tests/fixtures/watcher-contract.v1.json must match this file; the watcher's reasons.py and heartbeat payload builders are asserted against it in that repo's pytest suite. Update both copies in the same change window.",
+  "schemaVersion": 1,
+  "reasons": [
+    "AGENT_SILENT",
+    "NO_DOWNLOADS_ACCESS",
+    "NO_LOCAL_NETWORK",
+    "NAS_MOUNT_MISSING",
+    "MISSED_WHILE_DOWN",
+    "UNSUPPORTED_TYPE",
+    "UNSTABLE_OR_TINY",
+    "READ_ERROR",
+    "UNKNOWN_BANK",
+    "NO_ACCOUNT_MATCH",
+    "RENAME_FAILED",
+    "TRANSFER_RETRYING",
+    "STAGED_NOT_INGESTED",
+    "SLUG_NO_ACCOUNT",
+    "PARSE_FAILED",
+    "STALLED",
+    "EMPTY",
+    "ALL_DUPLICATES",
+    "IGNORED_BY_USER"
+  ],
+  "heartbeatExample": {
+    "schemaVersion": 1,
+    "agentId": "00000000-0000-4000-8000-000000000000",
+    "version": "watcher@fictional-sha",
+    "startedAt": "2026-10-18T09:00:00Z",
+    "sentAt": "2026-10-18T09:05:00Z",
+    "diagnostics": {
+      "downloadsReadable": false,
+      "downloadsReason": "NO_DOWNLOADS_ACCESS",
+      "nasMountPresent": true,
+      "deadLetterDepth": 3,
+      "retryQueueDepth": 0,
+      "quarantineDepth": 1,
+      "ignoredCount": 7,
+      "lastScanAt": "2026-10-18T09:05:00Z",
+      "lastStagedAt": "2026-10-18T08:00:00Z",
+      "processPath": "~/Applications/BankWatcher.app",
+      "pythonVersion": "3.14.0"
+    },
+    "inventory": []
+  },
+  "heartbeatResponseExample": {
+    "commands": []
+  }
+}

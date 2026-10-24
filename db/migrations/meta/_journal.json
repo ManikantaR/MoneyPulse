@@ -295,6 +295,20 @@
       "when": 1784561900000,
       "tag": "0041_statement_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1784562000000,
+      "tag": "0042_watcher_agents_pipeline_alarms",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784562100000,
+      "tag": "0043_notification_type_import_visibility",
+      "breakpoints": true
     }
   ]
 }
