@@ -7,6 +7,36 @@ describe('AmexParser', () => {
     expect(parser.canParse(['Date', 'Description', 'Amount'])).toBe(true);
   });
 
+  it('should identify the Amex extended export (additional-details CSV / .xlsx)', () => {
+    expect(
+      parser.canParse([
+        'Date',
+        'Description',
+        'Card Member',
+        'Account #',
+        'Amount',
+        'Extended Details',
+        'Appears On Your Statement As',
+        'Address',
+        'City/State',
+        'Zip Code',
+        'Country',
+        'Reference',
+        'Category',
+        '',
+      ]),
+    ).toBe(true);
+  });
+
+  it('should parse ISO dates from .xlsx date cells', () => {
+    const result = parser.parseRows(
+      [{ Date: '2026-10-01', Description: 'EXAMPLE COFFEE', Amount: '4.5' }],
+      1,
+    );
+    expect(result.errors).toHaveLength(0);
+    expect(result.transactions[0].date).toBe('2026-10-01');
+  });
+
   it('should NOT match BofA headers', () => {
     expect(
       parser.canParse([
