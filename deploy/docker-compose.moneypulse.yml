@@ -91,6 +91,8 @@ services:
       TELEGRAM_CHAT_MAP: ${TELEGRAM_CHAT_MAP:-}
       TELEGRAM_DEFAULT_USER_ID: ${TELEGRAM_DEFAULT_USER_ID:-}
       INGEST_API_KEY: ${INGEST_API_KEY:-}
+      # Owner for key-authed watcher heartbeats / unknown-slug events (Phase 14 S2)
+      INGEST_DEFAULT_USER_ID: ${INGEST_DEFAULT_USER_ID:-}
       EIA_API_KEY: ${EIA_API_KEY:-}
       FRED_API_KEY: ${FRED_API_KEY:-}
     volumes:
