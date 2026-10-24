@@ -7,9 +7,13 @@ import {
   IngestionController,
   IngestionEventsController,
 } from './ingestion.controller';
+import { WatcherAgentController } from './watcher-agent.controller';
+import { WatcherAgentService } from './watcher-agent.service';
+import { ImportVisibilityDetector } from './import-visibility.detector';
 import { DedupService } from './dedup.service';
 import { ArchiverService } from './archiver.service';
 import { WatcherService } from './watcher.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { IngestionProcessor } from '../jobs/ingestion.processor';
 import { PdfProxyService } from './parsers/pdf-proxy.service';
 import { AuditModule } from '../audit/audit.module';
@@ -32,18 +36,21 @@ import { IngestKeyOrJwtGuard } from '../common/guards/ingest-key-or-jwt.guard';
     EmbeddingsModule,
     BillsModule,
     AccountsModule,
+    NotificationsModule,
   ],
-  controllers: [IngestionController, IngestionEventsController],
+  controllers: [IngestionController, IngestionEventsController, WatcherAgentController],
   providers: [
     IngestionService,
     DedupService,
     ArchiverService,
     WatcherService,
+    WatcherAgentService,
+    ImportVisibilityDetector,
     PdfProxyService,
     IngestionProcessor,
     IngestKeyOrJwtGuard,
   ],
-  exports: [IngestionService, DedupService, PdfProxyService],
+  exports: [IngestionService, DedupService, PdfProxyService, ImportVisibilityDetector],
 })
 export class IngestionModule implements OnModuleInit {
   constructor(

@@ -22,6 +22,7 @@ import { SavingsCoachService } from '../recommendations/savings-coach.service';
 import { RateWatchlistService } from '../rate-watchlist/rate-watchlist.service';
 import { MonthlyCloseService } from '../monthly-close/monthly-close.service';
 import { StatementScheduleService } from '../analytics/statement-schedule.service';
+import { ImportVisibilityDetector } from '../ingestion/import-visibility.detector';
 
 const MARKET_DATA_JITTER_MAX_MS = 15 * 60_000; // spread load on the free EIA/FRED tiers
 
@@ -55,6 +56,7 @@ export class AlertCronProcessor extends WorkerHost {
     private readonly rateWatchlistService: RateWatchlistService,
     private readonly monthlyCloseService: MonthlyCloseService,
     private readonly statementScheduleService: StatementScheduleService,
+    private readonly importVisibilityDetector: ImportVisibilityDetector,
     @InjectQueue('alerts') private readonly alertsQueue: Queue,
   ) {
     super();
@@ -74,6 +76,10 @@ export class AlertCronProcessor extends WorkerHost {
 
       case 'budget-pace-sweep':
         await this.watchdogDetectorService.checkBudgetPaceAllUsers();
+        break;
+
+      case 'import-visibility-check':
+        await this.importVisibilityDetector.sweep();
         break;
 
       case 'post-import-check': {
