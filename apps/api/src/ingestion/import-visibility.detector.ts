@@ -118,7 +118,7 @@ export class ImportVisibilityDetector {
 
   private async hasStatementDueSoon(userId: string): Promise<boolean> {
     try {
-      const due = await this.statementScheduleService.findDueOrOverdue?.(userId);
+      const due = await this.statementScheduleService.getOverdueAccountsForUser(userId);
       return Array.isArray(due) && due.length > 0;
     } catch {
       // Statement schedule is best-effort context for the 2h vs 24h

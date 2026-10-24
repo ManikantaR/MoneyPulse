@@ -34,7 +34,9 @@ function makeDeps(alarmRows: any[] = [], statementsDue = false) {
     createAndDispatch: vi.fn().mockResolvedValue(undefined),
   } as any;
   const statementScheduleService = {
-    findDueOrOverdue: vi.fn().mockResolvedValue(statementsDue ? [{ accountId: 'a1' }] : []),
+    getOverdueAccountsForUser: vi
+      .fn()
+      .mockResolvedValue(statementsDue ? [{ accountId: 'a1' }] : []),
   } as any;
   const detector = new ImportVisibilityDetector(
     db as any,
