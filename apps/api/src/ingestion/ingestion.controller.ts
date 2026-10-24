@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { z } from 'zod/v4';
 import { IngestionService } from './ingestion.service';
 import { WatcherService } from './watcher.service';
@@ -198,6 +199,7 @@ export class IngestionEventsController {
     private readonly watcherService: WatcherService,
     private readonly accountsService: AccountsService,
     private readonly statementScheduleService: StatementScheduleService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -221,7 +223,7 @@ export class IngestionEventsController {
     @Body(new ZodValidationPipe(watcherEventSchema)) body: WatcherEventInput,
     @CurrentUser() user?: AuthTokenPayload,
   ) {
-    let resolvedAccount: { id: string; userId: string } | undefined;
+    let resolvedAccount: { id?: string; userId: string } | undefined;
 
     if (!user) {
       // API-key auth: no req.user to derive ownership from. Resolve the
@@ -232,13 +234,33 @@ export class IngestionEventsController {
       // home LAN), but do not reuse this key/guard for a multi-tenant or
       // internet-facing caller without adding per-key→account scoping.
       const account = await this.watcherService.findAccountBySlug(body.slug);
-      if (!account) {
+      if (account) {
+        resolvedAccount = { id: account.id, userId: account.userId };
+      } else if (body.slug === 'unknown' && body.stage === 'failed') {
+        // Phase 14 S2 (RC3e): a `failed` event with slug="unknown" means the
+        // watcher never detected a bank at all (e.g. a permission error
+        // mislabeled as "unknown bank" — see RC3c), so there is no account
+        // to resolve. Previously this branch dropped the event entirely
+        // (202 'unmatched'), which is exactly the failure mode the
+        // 2026-10-18 incident hit: the one report that would have
+        // surfaced the problem was silently discarded. Fall back to the
+        // configured default owner so the row is still stored and visible
+        // on /imports, instead of vanishing.
+        const defaultUserId = this.configService.get<string>('INGEST_DEFAULT_USER_ID');
+        if (defaultUserId) {
+          resolvedAccount = { id: undefined, userId: defaultUserId };
+        } else {
+          this.logger.warn(
+            'watcher-events (API-key auth): slug="unknown" failed event with no INGEST_DEFAULT_USER_ID configured; dropping event without an owner',
+          );
+          return { data: { result: 'unmatched' } };
+        }
+      } else {
         this.logger.warn(
           `watcher-events (API-key auth): no account matches slug "${body.slug}"; dropping event without an owner`,
         );
         return { data: { result: 'unmatched' } };
       }
-      resolvedAccount = { id: account.id, userId: account.userId };
     }
 
     const result = await this.ingestionService.recordWatcherEvent({

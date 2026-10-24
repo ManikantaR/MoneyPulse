@@ -470,7 +470,7 @@ export class IngestionService {
      * is matched/created below. `undefined` for JWT-authenticated calls —
      * unchanged behavior.
      */
-    resolvedAccount?: { id: string; userId: string };
+    resolvedAccount?: { id?: string; userId: string };
   }): Promise<'matched' | 'created' | 'unmatched'> {
     const candidateFilenames = [event.renamedFilename, event.originalFilename].filter(
       (f): f is string => !!f,
@@ -510,9 +510,10 @@ export class IngestionService {
       // someone else's upload.
       if (
         event.resolvedAccount &&
-        (!existing[0].accountId || existing[0].accountId === event.resolvedAccount.id)
+        (!existing[0].accountId ||
+          (event.resolvedAccount.id && existing[0].accountId === event.resolvedAccount.id))
       ) {
-        provenance.accountId = event.resolvedAccount.id;
+        if (event.resolvedAccount.id) provenance.accountId = event.resolvedAccount.id;
         provenance.userId = event.resolvedAccount.userId;
       }
       if (event.stage === 'failed') {
@@ -547,7 +548,10 @@ export class IngestionService {
           { row: 0, error: event.error ?? 'Watcher reported a failure', raw: '' },
         ],
         ...(event.resolvedAccount
-          ? { accountId: event.resolvedAccount.id, userId: event.resolvedAccount.userId }
+          ? {
+              ...(event.resolvedAccount.id ? { accountId: event.resolvedAccount.id } : {}),
+              userId: event.resolvedAccount.userId,
+            }
           : {}),
       });
       return 'created';

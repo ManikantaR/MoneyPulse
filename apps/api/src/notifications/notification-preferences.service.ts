@@ -79,6 +79,19 @@ const DEFAULT_PREFERENCES: Record<NotificationType, {
   // instant + inApp/telegram/haWebhook defaults as idle_cash/bill_overdue above.
   cashflow_shortfall: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
   statement_overdue: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+
+  // Phase 14 S2: laptop-watcher visibility alarms. watcher_silent,
+  // watcher_unhealthy and staged_not_ingested run the Staged Delivery
+  // Ladder (per-episode instant + escalating channels), same as
+  // statement_overdue above. import_failed never runs the ladder — it only
+  // ever appears in the daily consolidated message and in-app (see spec
+  // "Alarms"), so it is registered 'off' for the external-instant path and
+  // carried solely by import_pipeline_daily.
+  watcher_silent: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  watcher_unhealthy: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  staged_not_ingested: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
+  import_failed: { mode: 'off', enabledChannels: ['inApp'] },
+  import_pipeline_daily: { mode: 'instant', enabledChannels: ['inApp', 'telegram', 'haWebhook'] },
 };
 
 /** Source-of-truth list of all registered notification types (mirrors the DB enum). */

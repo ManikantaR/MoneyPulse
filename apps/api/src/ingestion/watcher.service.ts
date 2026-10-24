@@ -122,7 +122,11 @@ export class WatcherService implements OnModuleInit, OnModuleDestroy {
         if (file.name.startsWith('.')) continue;
 
         const ext = file.name.split('.').pop()?.toLowerCase();
-        if (!['csv', 'xlsx', 'pdf'].includes(ext || '')) continue;
+        // Phase 14 S2: 'xls' was accepted by handleNewFile (see the
+        // extension check below) but never enumerated by the startup scan,
+        // so a legacy .xls statement already sitting in a watch-folder at
+        // boot was silently skipped until the next live filesystem event.
+        if (!['csv', 'xlsx', 'xls', 'pdf'].includes(ext || '')) continue;
 
         found++;
         const filePath = join(slugDir, file.name);
